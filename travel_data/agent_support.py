@@ -24,8 +24,9 @@ def confirmed_fields(msg):
     if isinstance(previous, list):
         for result in previous:
             result = _object(result)
-            if result.get('agent_name') == 'event_collection' and result.get('status') == 'success':
-                fields.update(_object(result.get('data')))
+            collected = _object(result.get('result')) if 'result' in result else result
+            if result.get('agent_name') == 'event_collection' and collected.get('status') == 'success':
+                fields.update(_object(collected.get('data')))
     return fields
 
 

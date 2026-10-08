@@ -99,3 +99,22 @@ def test_provider_failure_does_not_expose_exception_details():
     result = invoke('travel_guide', {'destination': '北京'}, FailingProvider())
     assert result['status'] == 'error'
     assert 'secret-token' not in json.dumps(result)
+
+
+@pytest.mark.parametrize('name,fields,required', CASES)
+@pytest.mark.parametrize('status', ['success', 'error'])
+def test_actual_orchestrator_nested_collector_result(name, fields, required, status):
+    provider = RecordingProvider()
+    registry = LazyAgentRegistry(None, {}, providers={name: provider})
+    payload = {
+        'context': {'user_preferences': {'origin': '杭州'}},
+        'previous_results': [{
+            'agent_name': 'event_collection', 'priority': 1,
+            'result': {'status': status, 'data': fields},
+        }],
+    }
+    result = json.loads(asyncio.run(registry[name].reply(Msg('user', json.dumps(payload), 'user'))).content)
+    assert result['status'] == ('ok' if status == 'success' else 'needs_input')
+    assert len(provider.queries) == (1 if status == 'success' else 0)
+    if status == 'success':
+        assert result['source'] == provider.source.to_dict()
