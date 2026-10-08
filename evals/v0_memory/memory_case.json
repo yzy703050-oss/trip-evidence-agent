@@ -1,0 +1,6 @@
+{
+  "id": "cross_session_hotel_preference",
+  "expected_agents": ["memory_query"],
+  "memory_facts": ["全季"],
+  "answer_facts": ["偏好", "全季"]
+}

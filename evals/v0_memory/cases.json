@@ -1,0 +1,8 @@
+[
+  {
+    "id": "beijing_travel_policy",
+    "expected_agents": ["rag_knowledge"],
+    "rag_gold_sources": ["01_travel_standards.txt"],
+    "answer_facts": ["500元"]
+  }
+]

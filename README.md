@@ -113,4 +113,3 @@ python -m evals.v0_memory.runner --cases evals/v0_memory/cases.json --user-id US
 | `evals/v0_memory/` | V0 EDD 用例与评分器 |
 
 记忆方案见 [设计说明](docs/design/v0-memory-redesign.md)。本仓库尚未附带开源许可证。
-

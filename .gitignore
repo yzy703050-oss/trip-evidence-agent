@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.vnev/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+/lib/
+/lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# AgentScope
+.agentscope/
+
+# Data
+data/rag_knowledge/
+data/models/
+data/memory/*.json
+data/memory/*/
+.claude/skills/ask-question/data/rag_knowledge/
+data/preferences/*.json
+!data/preferences/.gitkeep
+
+# Logs
+*.log
+
+# Secrets
+.env
+.env.*
+!.env.example
+!apps/**/.env.example
+
+# Local execution artifacts
+.superpowers/
+.rag-check/
+.resume_render/
+*.mp4
+
+# JavaScript
+node_modules/
+.next/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Archived duplicate project copy
+/居丽叶简历项目6：差旅出行助手/
+
+# OS
+.DS_Store
+Thumbs.db
