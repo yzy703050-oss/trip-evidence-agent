@@ -30,6 +30,41 @@ class EventType(StrEnum):
 logger = logging.getLogger(__name__)
 
 
+def normalize_schedule(schedule: list[dict]) -> list[dict]:
+    """Enforce sourced-query dependencies without changing legacy-only plans."""
+    domains = {"train_search", "hotel_search", "travel_guide"}
+    valid = domains | {"event_collection", "itinerary_planning", "memory_query",
+                       "preference", "information_query", "rag_knowledge"}
+    rows = []
+    seen = set()
+    for task in schedule:
+        if not isinstance(task, dict) or task.get("agent_name") not in valid:
+            continue
+        name = task["agent_name"]
+        if name in domains and name in seen:
+            continue
+        seen.add(name)
+        row = dict(task)
+        priority = row.get("priority", 999)
+        if not isinstance(priority, (int, float)) or isinstance(priority, bool):
+            priority = 999
+        row["priority"] = priority
+        rows.append(row)
+    if not domains.intersection(seen):
+        return sorted(rows, key=lambda row: row["priority"])
+    if "event_collection" not in seen:
+        rows.insert(0, {"agent_name": "event_collection", "priority": 1,
+                        "reason": "Collect confirmed query conditions", "expected_output": "Travel conditions and missing fields"})
+    collection_priority = max(row["priority"] for row in rows if row["agent_name"] == "event_collection")
+    domain_priority = collection_priority + 1
+    for row in rows:
+        if row["agent_name"] in domains:
+            row["priority"] = domain_priority
+        elif row["agent_name"] == "itinerary_planning":
+            row["priority"] = max(row["priority"], domain_priority + 1)
+    return sorted(rows, key=lambda row: row["priority"])
+
+
 class OrchestrationAgent(AgentBase):
     """协调器智能体 - 调度和协调多个子智能体"""
 
@@ -115,7 +150,7 @@ class OrchestrationAgent(AgentBase):
             )
 
         # 按优先级排序
-        sorted_schedule = sorted(agent_schedule, key=lambda x: x.get("priority", 999))
+        sorted_schedule = normalize_schedule(agent_schedule)
 
         logger.info(f"Orchestrating {len(sorted_schedule)} agents")
 
