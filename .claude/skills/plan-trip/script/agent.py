@@ -123,7 +123,7 @@ class ItineraryPlanningAgent(AgentBase):
 【任务说明与指南】
 {skill_instruction}
 
-仅生成日期、建议活动地点与时间，并引用已查询候选项的 selected_train_id、selected_hotel_id。不得自行生成报价、车次、房型、天气、开放或预约事实。请直接输出 JSON。
+仅生成日期、建议活动地点引用与时间。城市用 city_ref=guide_destination；地点用 location_ref=guide:<攻略事实下标>，仅引用 place/poi/attraction/location 类有来源事实；没有地点时用 suggestion:city_walk、suggestion:museum、suggestion:meal 或 suggestion:rest。不要输出自由文本 city/location。并引用已查询候选项的 selected_train_id、selected_hotel_id。不得自行生成报价、车次、房型、天气、开放或预约事实。请直接输出 JSON。
 """
 
         try:
@@ -166,8 +166,8 @@ class ItineraryPlanningAgent(AgentBase):
                     # 如果策略2也失败，抛出包含详细信息的异常
                     raise ValueError(f"All JSON parsing attempts failed. Strategy 2 error: {decode_err}")
 
-            if result is None:
-                raise ValueError("Parsed result is None")
+            if not isinstance(result, dict):
+                raise ValueError("JSON response must be an object")
 
         except Exception as e:
             logger.error(f"Itinerary planning failed: {e}")
@@ -176,23 +176,14 @@ class ItineraryPlanningAgent(AgentBase):
             raw_text = locals().get('text', 'N/A')
             logger.error(f"Raw response text (first 500 chars): {str(raw_text)[:500]}")
 
-            # 构建用户友好的错误消息
-            error_detail = str(e)
-            if "JSON" in error_detail or "parse" in error_detail.lower():
-                user_message = "抱歉，模型返回的数据格式有误，无法解析行程信息。请稍后重试或简化您的需求描述。"
+            # Only deterministic codes/messages survive the presentation guard.
+            if isinstance(e, TimeoutError):
+                code = "timeout"
+            elif isinstance(e, (ValueError, json.JSONDecodeError)):
+                code = "invalid_response"
             else:
-                user_message = f"行程规划过程中出现问题：{error_detail}"
-
-            result = {
-                "itinerary": {
-                    "title": "行程规划",
-                    "duration": "待完善",
-                    "daily_plans": []
-                },
-                "planning_complete": False,
-                "error": user_message,
-                "technical_error": str(e)  # 保留技术细节用于调试
-            }
+                code = "model_error"
+            result = {"status": "error", "error_code": code, "error": True, "planning_complete": False}
 
         # 最终输出由程序从查询结果重建事实。
         result = guard_itinerary(result, previous_results)

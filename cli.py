@@ -485,6 +485,10 @@ class AligoCLI:
                 continue
             if agent_name == "itinerary_planning":
                 data = guard_itinerary(data, results)
+                if "error" in data:
+                    self.console.print(data["error"], style="red", markup=False)
+                    has_output = True
+                    continue
                 self._display_sourced_plan(data)
 
             current_agent_shown = False  # 标记当前Agent是否有内容展示

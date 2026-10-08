@@ -129,7 +129,11 @@ def evaluate_case(
         "planned_route": Counter(planned) == Counter(expected),
         "executed_route": Counter(actual) == Counter(expected),
         "plan_execution_match": bool(plan_records) and Counter(actual) == Counter(planned),
-        "execution_success": all(event.get("status") == "success" for event in stages),
+        "execution_success": all(
+            event.get("status") == "success"
+            and "error" not in event.get("content", {}).get("data", {})
+            for event in stages
+        ),
     }
     if any(event.get("agent_name") in {"itinerary_planning", "train_search", "hotel_search", "travel_guide"} for event in stages):
         checks["sourced_realtime_output"] = sourced_output_valid(stages)

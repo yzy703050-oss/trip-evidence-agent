@@ -34,13 +34,17 @@ def _offer(item, kind):
     return (TrainOffer if kind == "train" else HotelOffer)(**value)
 
 
-def _suggestion(value):
-    # Suggestion fields cannot become an alternate carrier for factual claims.
-    if not isinstance(value, str) or len(value) > 100:
-        return None
-    if re.search(r"[0-9０-９]|元|¥|￥|票价|房价|开放|营业|预约|可订|余票|无票|无房|天气|晴|雨|雪|温度|免费|含税|取消", value):
-        return None
-    return value
+GENERIC_PLACES = {
+    "suggestion:city_walk": "市内漫步（地点待核实）",
+    "suggestion:museum": "博物馆参观（地点待核实）",
+    "suggestion:meal": "用餐休息（地点待核实）",
+    "suggestion:rest": "休息（地点待核实）",
+}
+PLANNER_ERRORS = {
+    "timeout": "行程规划失败：模型响应超时，请稍后重试。",
+    "invalid_response": "行程规划失败：返回格式无效，请重试。",
+    "model_error": "行程规划失败：模型服务异常，请稍后重试。",
+}
 
 
 def guard_itinerary(plan: dict, results: list[dict]) -> dict:
@@ -49,6 +53,7 @@ def guard_itinerary(plan: dict, results: list[dict]) -> dict:
     offers = {"train": {}, "hotel": {}}
     facts = []
     passengers = None
+    guide_destination = None
     for row in results:
         if not isinstance(row, dict):
             continue
@@ -56,6 +61,10 @@ def guard_itinerary(plan: dict, results: list[dict]) -> dict:
         data = result_data(row)
         if name not in DOMAIN_AGENTS or data.get("status") not in {"ok", "partial"}:
             continue
+        if name == "travel_guide":
+            destination = data.get("query", {}).get("destination")
+            if isinstance(destination, str) and destination:
+                guide_destination = destination
         if name == "train_search":
             count = data.get("query", {}).get("passengers")
             if type(count) is int and count > 0:
@@ -79,6 +88,10 @@ def guard_itinerary(plan: dict, results: list[dict]) -> dict:
     for kind in offers:
         offer_id = plan.get(f"selected_{kind}_id")
         selected[kind] = offers[kind].get(offer_id) if isinstance(offer_id, str) else None
+    places = dict(GENERIC_PLACES)
+    for index, fact in enumerate(facts):
+        if fact["kind"] in {"place", "poi", "attraction", "location"} and fact["source"] is not None:
+            places[f"guide:{index}"] = fact["content"]
     original = plan.get("itinerary", {})
     original = original if isinstance(original, dict) else {}
     days = []
@@ -93,18 +106,18 @@ def guard_itinerary(plan: dict, results: list[dict]) -> dict:
             day["date"] = date.fromisoformat(raw["date"]).isoformat()
         except (ValueError, TypeError, KeyError):
             pass
-        city = _suggestion(raw.get("city"))
-        if city:
-            day["city"] = city
+        if raw.get("city_ref") == "guide_destination" and guide_destination:
+            day["city_ref"] = "guide_destination"
+            day["city"] = guide_destination
         slots = raw.get("activities", raw.get("time_slots", []))
         day["activities"] = []
         for slot in slots if isinstance(slots, list) else []:
             if not isinstance(slot, dict):
                 continue
-            location = _suggestion(slot.get("location"))
-            if not location:
+            reference = slot.get("location_ref")
+            if not isinstance(reference, str) or reference not in places:
                 continue
-            activity = {"location": location}
+            activity = {"location_ref": reference, "location": places[reference]}
             time = slot.get("time", "")
             if isinstance(time, str) and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d(?:[-–](?:[01]\d|2[0-3]):[0-5]\d)?", time):
                 activity["time"] = time
@@ -112,7 +125,7 @@ def guard_itinerary(plan: dict, results: list[dict]) -> dict:
         days.append(day)
     budget = build_budget(selected["train"] if passengers else None, selected["hotel"], passengers or 1,
                           {"train", "hotel", "other"}).to_dict()
-    return {
+    guarded = {
         "itinerary": {"title": "行程安排建议", "duration": f"{len(days)}天", "daily_plans": days},
         "planning_complete": plan.get("planning_complete") is True,
         "selected_train_id": selected["train"].id if selected["train"] else None,
@@ -122,3 +135,8 @@ def guard_itinerary(plan: dict, results: list[dict]) -> dict:
         "guide_facts": facts,
         "budget": budget,
     }
+    if "error" in plan or plan.get("status") == "error":
+        code = plan.get("error_code")
+        code = code if isinstance(code, str) and code in PLANNER_ERRORS else "model_error"
+        guarded.update(status="error", error_code=code, error=PLANNER_ERRORS[code], planning_complete=False)
+    return guarded
