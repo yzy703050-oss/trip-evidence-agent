@@ -84,3 +84,16 @@ def test_intention_prompt_exposes_domains_and_query_only_boundary():
     prompt = prompts[0]
     assert all(name in prompt for name in ['train_search', 'hotel_search', 'travel_guide'])
     assert '无需' in prompt and '普通天气' in prompt
+
+
+def test_rendered_intention_prompt_separates_city_information_from_attractions():
+    prompts = []
+    async def model(messages):
+        prompts.append(messages[-1]['content'])
+        return SimpleNamespace(text='{}')
+    asyncio.run(IntentionAgent(model=model).reply(Msg('user', '北京有什么好玩的？', 'user')))
+    lines = prompts[0].splitlines()
+    city = next(line for line in lines if '"北京怎么样？"' in line)
+    attractions = next(line for line in lines if '"北京有什么好玩的？"' in line)
+    assert 'information_query' in city and 'travel_guide' not in city
+    assert 'travel_guide' in attractions and 'information_query' not in attractions

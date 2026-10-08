@@ -124,7 +124,8 @@ class IntentionAgent(AgentBase):
 【重要 - 意图区分原则】
 请基于语义理解判断意图，不要机械匹配关键词。同一个词在不同语境下可能对应不同意图：
 - "我去过北京吗？" → memory_query（询问自己的历史）
-- "北京怎么样？" / "北京有什么好玩的？" → information_query（询问客观信息）
+- "北京怎么样？" → information_query（一般城市信息，未请求景点或游玩攻略）
+- "北京有什么好玩的？" / "北京三天怎么玩？" → travel_guide（请求景点推荐或游玩攻略）
 - "我想去北京" → itinerary_planning（规划未来行程）
 
 优先级规则：
