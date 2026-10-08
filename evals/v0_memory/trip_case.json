@@ -1,0 +1,7 @@
+{
+  "id": "three_day_trip",
+  "expected_agents": ["preference", "event_collection", "itinerary_planning"],
+  "itinerary_days": 3,
+  "itinerary_hotel_brand": "全季",
+  "budget_limit_yuan": 3000
+}

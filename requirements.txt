@@ -1,0 +1,23 @@
+# -*- coding: utf-8 -*-
+# 基础（milvus_lite 依赖 pkg_resources，需 setuptools<82）
+setuptools>=69.0.0,<82
+
+# 多智能体框架
+agentscope==1.0.16
+mcp==1.30.0
+
+# LLM 调用
+requests==2.32.3
+pydantic-settings==2.10.1
+
+# RAG 与向量库。Windows 使用 Milvus Lite 3 的目录格式。
+pymilvus[milvus_lite]==2.6.9; sys_platform != "win32"
+pymilvus==3.0.1; sys_platform == "win32"
+milvus-lite==3.2.1; sys_platform == "win32"
+sentence-transformers==5.2.3
+
+# CLI 界面
+rich==13.9.4
+
+# 网络搜索（DDGS）
+ddgs==9.10.0
