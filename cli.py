@@ -25,6 +25,7 @@ from rich.layout import Layout
 from rich.live import Live
 from rich.text import Text
 import json
+from travel_data.plan_guard import guard_itinerary, result_data as sourced_data, DOMAIN_AGENTS
 
 # 导入系统组件
 from agentscope.model import OpenAIChatModel
@@ -476,8 +477,16 @@ class AligoCLI:
 
         for result in results:
             agent_name = result.get("agent_name", "")
-            status = result.get("status", "")
-            data = result.get("data", {})
+            status = result.get("result", result).get("status", "")
+            data = sourced_data(result)
+            if agent_name in DOMAIN_AGENTS:
+                self._display_sourced_result(agent_name, data)
+                has_output = True
+                continue
+            if agent_name == "itinerary_planning":
+                data = guard_itinerary(data, results)
+                self._display_sourced_plan(data)
+
             current_agent_shown = False  # 标记当前Agent是否有内容展示
 
             # 处理失败的智能体
@@ -717,6 +726,43 @@ class AligoCLI:
 
         return has_output
 
+    def _display_sourced_result(self, name: str, data: dict):
+        status = data.get("status", "error")
+        labels = {"ok": "查询完成", "partial": "部分完成", "needs_input": "需补充条件",
+                  "unavailable": "数据服务不可用", "error": "查询失败"}
+        self.console.print(f"{self._get_agent_display_name(name)}: {labels.get(status, '未知状态')} ({status})", markup=False)
+        for key, label in (("message", "说明"), ("missing_fields", "缺失条件")):
+            if data.get(key):
+                self.console.print(f"{label}: {data[key]}", markup=False)
+        source = data.get("source") or {}
+        self.console.print(f"来源: {source.get('provider', '未提供')} {source.get('url') or ''} 查询时间: {data.get('fetched_at') or source.get('fetched_at') or '未知'}", markup=False)
+        rows = [{"agent_name": name, "data": data}]
+        if status in {"ok", "partial"}:
+            if not data.get("items"):
+                self.console.print("查询完成，未返回候选项；无法确认库存。", markup=False)
+            for item in data.get("items", []):
+                if not isinstance(item, dict):
+                    continue
+                kind = "train" if name == "train_search" else "hotel"
+                checked = guard_itinerary({f"selected_{kind}_id": item.get("id")}, rows)
+                offer = checked.get(f"selected_{kind}") if name != "travel_guide" else None
+                if offer:
+                    self.console.print(json.dumps(offer, ensure_ascii=False), markup=False)
+            if name == "travel_guide":
+                for fact in guard_itinerary({}, rows)["guide_facts"]:
+                    self.console.print(json.dumps(fact, ensure_ascii=False), markup=False)
+
+    def _display_sourced_plan(self, data: dict):
+        for kind in ("train", "hotel"):
+            if data.get(f"selected_{kind}"):
+                self.console.print(json.dumps(data[f"selected_{kind}"], ensure_ascii=False), markup=False)
+        for fact in data.get("guide_facts", []):
+            self.console.print(json.dumps(fact, ensure_ascii=False), markup=False)
+        budget = data["budget"]
+        self.console.print(f"已知费用小计: {budget['known_subtotal_cny']} CNY", markup=False)
+        if budget["missing_categories"]:
+            self.console.print(f"未报价类别: {', '.join(budget['missing_categories'])}；完整预算尚未核实。", markup=False)
+
     def _get_agent_display_name(self, agent_name: str) -> str:
         """获取智能体的显示名称"""
         # 与 README / LazyAgentRegistry 保持一致，仅保留已存在的 6 个子智能体
@@ -727,6 +773,9 @@ class AligoCLI:
             "information_query": "信息查询",
             "rag_knowledge": "知识库查询",
             "memory_query": "记忆查询",
+            "train_search": "火车查询",
+            "hotel_search": "酒店查询",
+            "travel_guide": "旅游攻略",
         }
         return agent_display_names.get(agent_name, agent_name)
 

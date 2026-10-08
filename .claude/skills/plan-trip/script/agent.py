@@ -16,6 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 # sys.path.insert(0, str(project_root))
 
 from utils.json_parser import robust_json_parse, extract_json_from_async_response
+from travel_data.plan_guard import guard_itinerary
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,8 @@ class ItineraryPlanningAgent(AgentBase):
             except json.JSONDecodeError:
                 user_query = content
         elif isinstance(content, dict):
-            context_info = content
+            context_info = content.get("context", content)
+            previous_results = content.get("previous_results", [])
             user_query = content.get("rewritten_query", str(content))
             user_preferences = content.get("user_preferences", {})
 
@@ -121,7 +123,7 @@ class ItineraryPlanningAgent(AgentBase):
 【任务说明与指南】
 {skill_instruction}
 
-请直接输出 JSON 格式的行程规划。
+仅生成日期、建议活动地点与时间，并引用已查询候选项的 selected_train_id、selected_hotel_id。不得自行生成报价、车次、房型、天气、开放或预约事实。请直接输出 JSON。
 """
 
         try:
@@ -192,5 +194,6 @@ class ItineraryPlanningAgent(AgentBase):
                 "technical_error": str(e)  # 保留技术细节用于调试
             }
 
-        # 返回JSON字符串格式
+        # 最终输出由程序从查询结果重建事实。
+        result = guard_itinerary(result, previous_results)
         return Msg(name=self.name, content=json.dumps(result, ensure_ascii=False), role="assistant")
