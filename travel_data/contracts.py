@@ -130,6 +130,8 @@ class TrainOffer(Serializable):
             raise ValueError('available offer requires a sourced price')
         if self.remaining is not None and (type(self.remaining) is not int or self.remaining < 0):
             raise ValueError('remaining must be a nonnegative integer or None')
+        if self.remaining is not None and not isinstance(self.source, Source):
+            raise ValueError('inventory counts require a source')
 
 
 @dataclass(frozen=True)

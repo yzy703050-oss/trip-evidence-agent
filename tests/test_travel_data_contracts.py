@@ -45,6 +45,20 @@ def test_price_requires_source(factory):
         factory(source=None)
 
 
+@pytest.mark.parametrize('remaining', [0, 3])
+def test_inventory_count_requires_source_even_without_price(remaining):
+    with pytest.raises(ValueError):
+        train(price_cny=None, availability='unknown', remaining=remaining, source=None)
+
+
+@pytest.mark.parametrize('remaining', [0, 3])
+def test_sourced_inventory_count_retains_provenance_without_price(remaining):
+    data = train(price_cny=None, availability='unknown', remaining=remaining).to_dict()
+    assert data['remaining'] == remaining
+    assert data['source']['provider'] == 'authorized-test'
+    assert data['source']['fetched_at'].endswith('+00:00')
+
+
 def test_hotel_dates_must_define_positive_stay():
     with pytest.raises(ValueError):
         HotelQuery('Beijing', date(2026, 10, 9), date(2026, 10, 9), 2)
