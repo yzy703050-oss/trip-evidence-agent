@@ -32,6 +32,7 @@ from agentscope.model import OpenAIChatModel
 from config_agentscope import init_agentscope
 from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, get_settings
 from travel_data.juhe_train import JuheTrainProvider
+from travel_data.ddgs_guide import DDGSGuideProvider
 from context.memory_manager import MemoryManager
 from context.session_store import storage_component
 from context.telemetry import MeteredModel
@@ -136,6 +137,7 @@ class TripEvidenceCLI:
             self._agent_cache = {}
             train_key = get_settings().juhe_train_api_key
             providers = {"train_search": JuheTrainProvider(train_key)} if train_key.strip() else {}
+            providers['travel_guide'] = DDGSGuideProvider()
             lazy_registry = LazyAgentRegistry(
                 model=self.model,
                 cache=self._agent_cache,

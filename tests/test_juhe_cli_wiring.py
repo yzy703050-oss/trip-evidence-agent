@@ -58,7 +58,7 @@ def test_example_env_loads_with_optional_pricing_unset(monkeypatch):
 def test_empty_key_keeps_train_unavailable(monkeypatch, key):
     app, output = initialize(monkeypatch, key)
     registry = app.orchestrator.agent_registry
-    assert registry.providers == {}
+    assert 'train_search' not in registry.providers
     agent = registry['information_query'].tool_executor
     from agents.contracts import RunState
     result = asyncio.run(agent.execute('train_search', {'origin': '北京南', 'destination': '苏州北', 'departure_date': '2026-10-09'}, RunState('a'), call_id='1'))

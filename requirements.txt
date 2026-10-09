@@ -21,3 +21,5 @@ rich==13.9.4
 
 # 网络搜索（DDGS）
 ddgs==9.10.0
+# DDGS 9.10 browser profiles require primp 0.x
+primp==0.15.0
