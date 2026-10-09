@@ -4,6 +4,7 @@ from copy import deepcopy
 from time import perf_counter
 
 from travel_data.agent_support import make_query
+from travel_data.hotel_places import make_hotel_place_query
 from travel_data.candidates import CandidateStore, query_cache_key, candidate_view
 from travel_data.contracts import AgentDataResult
 from travel_data.providers import UnavailableProvider
@@ -15,7 +16,7 @@ TOOL_DOMAINS = {'train_search': 'train', 'hotel_search': 'hotel', 'travel_guide'
                 'weather_query': 'weather', 'web_search': 'web'}
 PARAMETERS = {
     'train_search': {'origin': 'string', 'destination': 'string', 'departure_date': 'string', 'passengers': 'integer'},
-    'hotel_search': {'city': 'string', 'check_in': 'string', 'check_out': 'string', 'guests': 'integer'},
+    'hotel_search': {'city': 'string', 'keywords': 'string', 'check_in': 'string', 'check_out': 'string', 'guests': 'integer'},
     'travel_guide': {'destination': 'string', 'visit_dates': 'array'},
     'weather_query': {'city': 'string', 'date': ['string', 'null']},
     'web_search': {'query': 'string'},
@@ -31,12 +32,17 @@ class ToolExecutor:
         self.public_provider = public_provider or PublicQueryProvider()
 
     def schemas(self):
-        return [{'type': 'function', 'function': {'name': name, 'description': f'查询{TOOL_DOMAINS[name]}，只返回真实来源数据。',
+        place_search = getattr(self.providers.get('hotel_search'), 'hotel_places', False) is True
+        return [{'type': 'function', 'function': {'name': name, 'description': (
+            '搜索城市内的真实酒店地点候选，city 必填，keywords 可选；无需入住日期或人数。'
+            '不提供房型、房价、空房或预算合格证明。' if name == 'hotel_search' and place_search
+            else f'查询{TOOL_DOMAINS[name]}，只返回真实来源数据。'),
             'parameters': {'type': 'object', 'properties': {
                 **{key: {'type': kind, **({'items': {'type': 'string'}} if kind == 'array' else {})} for key, kind in params.items()},
                 'constraints': {'type': 'object', 'description': '本地硬约束：hotel_max_total_cny/hotel_max_nightly_cny/train_max_total_cny/seat_class/departure_time_after/departure_time_before/available_only'},
                 'candidate_offset': {'type': 'integer', 'minimum': 0}, 'refresh': {'type': 'boolean'}},
-                'required': REQUIRED[name], 'additionalProperties': False}}} for name, params in PARAMETERS.items()]
+                'required': ['city'] if name == 'hotel_search' and place_search else REQUIRED[name],
+                'additionalProperties': False}}} for name, params in PARAMETERS.items()]
 
     async def execute(self, name, arguments, run, *, call_id):
         result = await self._execute(name, arguments, run, call_id=call_id)
@@ -68,13 +74,16 @@ class ToolExecutor:
             if 'refresh' in arguments and type(arguments['refresh']) is not bool:
                 raise ValueError('invalid refresh')
             if domain in {'train', 'hotel', 'guide'}:
-                typed, missing = make_query(domain, arguments)
+                provider = self.providers.get(name) or UnavailableProvider()
+                if domain == 'hotel' and getattr(provider, 'hotel_places', False) is True:
+                    typed, missing = make_hotel_place_query(arguments)
+                else:
+                    typed, missing = make_query(domain, arguments)
                 if missing:
                     result = failure('needs_input', missing)
                     run.domain_results[domain] = result
                     return result
                 query = typed.to_dict()
-                provider = self.providers.get(name) or UnavailableProvider()
                 fetch = lambda: provider.search(typed)
             else:
                 missing = [key for key in REQUIRED[name] if not isinstance(arguments.get(key), str) or not arguments[key].strip()]

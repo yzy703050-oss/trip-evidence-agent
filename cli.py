@@ -33,6 +33,7 @@ from config_agentscope import init_agentscope
 from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, get_settings
 from travel_data.juhe_train import JuheTrainProvider
 from travel_data.ddgs_guide import DDGSGuideProvider
+from travel_data.amap_hotel import AmapHotelProvider
 from context.memory_manager import MemoryManager
 from context.session_store import storage_component
 from context.telemetry import MeteredModel
@@ -138,6 +139,7 @@ class TripEvidenceCLI:
             train_key = get_settings().juhe_train_api_key
             providers = {"train_search": JuheTrainProvider(train_key)} if train_key.strip() else {}
             providers['travel_guide'] = DDGSGuideProvider()
+            providers['hotel_search'] = AmapHotelProvider(get_settings().amap_api_key)
             lazy_registry = LazyAgentRegistry(
                 model=self.model,
                 cache=self._agent_cache,
