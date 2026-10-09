@@ -312,7 +312,12 @@ class AligoCLI:
         try:
             orchestration_result = await retry_with_backoff(
                 lambda: self.orchestrator.reply(intention_result),
-                max_retries=max_retries,
+                # Replaying a train schedule can repeat a successful paid request
+                # after a later persistence failure. Retry only safe schedules.
+                max_retries=0 if any(
+                    isinstance(item, dict) and item.get("agent_name") == "train_search"
+                    for item in schedule
+                ) else max_retries,
                 base_delay_sec=rc.get("retry_base_delay_sec", 1.0),
                 max_delay_sec=rc.get("retry_max_delay_sec", 30.0),
                 on_retry=lambda attempt, exc: self.memory_manager.session_store.append_run({
