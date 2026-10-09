@@ -201,10 +201,10 @@ def test_itinerary_eval_distinguishes_feasible_and_worst_case_budget(tmp_path):
     )
     assert result["checks"]["itinerary_days"] is True
     assert result["checks"]["itinerary_hotel_brand"] is True
-    assert result["checks"]["budget_feasible_within_limit"] is True
+    assert result["checks"]["budget_feasible_within_limit"] is False
     assert result["checks"]["budget_components_within_limit"] is False
-    assert result["metrics"]["budget_component_lower_yuan"] == 2520
-    assert result["metrics"]["budget_component_upper_yuan"] == 3080
+    assert result["metrics"]["budget_component_lower_yuan"] is None
+    assert result["metrics"]["budget_component_upper_yuan"] is None
     assert result["passed"] is False
 
 

@@ -97,7 +97,10 @@ class IntentionAgent(AgentBase):
             "preference": "preference",
             "query-info": "information_query",
             "ask-question": "rag_knowledge",
-            "event-collection": "event_collection"
+            "event-collection": "event_collection",
+            "train-search": "train_search",
+            "hotel-search": "hotel_search",
+            "travel-guide": "travel_guide"
         }
         
         dynamic_skills_prompt = self.skill_loader.get_skill_prompt(skill_mapping)
@@ -121,7 +124,8 @@ class IntentionAgent(AgentBase):
 【重要 - 意图区分原则】
 请基于语义理解判断意图，不要机械匹配关键词。同一个词在不同语境下可能对应不同意图：
 - "我去过北京吗？" → memory_query（询问自己的历史）
-- "北京怎么样？" / "北京有什么好玩的？" → information_query（询问客观信息）
+- "北京怎么样？" → information_query（一般城市信息，未请求景点或游玩攻略）
+- "北京有什么好玩的？" / "北京三天怎么玩？" → travel_guide（请求景点推荐或游玩攻略）
 - "我想去北京" → itinerary_planning（规划未来行程）
 
 优先级规则：
@@ -199,15 +203,26 @@ class IntentionAgent(AgentBase):
 - information_query: 信息查询智能体（联网搜索）
 - rag_knowledge: RAG知识库智能体（查询企业知识库）
 
-**Priority 2（依赖 Priority 1）- 行程规划类：**
+**Priority 2（依赖事项收集）- 领域查询类：**
+- train_search: 查询火车车次、席别、票价和可订状态
+- hotel_search: 查询酒店房型、报价、库存和取消规则
+- travel_guide: 查询景点、路线、按日期天气、开放和预约依据
+- 三个领域查询可以同批并行，必须先执行 event_collection。
+
+**Priority 3（依赖本轮已请求查询）- 行程规划类：**
 - itinerary_planning: 行程规划智能体（需要事项收集的结果）
+
+只问火车票或酒店时无需安排 itinerary_planning。普通天气独立问答继续使用 information_query，
+无需 travel_guide。景点攻略使用 travel_guide；完整旅行按用户请求调度领域查询后再规划。
+意图识别不生成价格、库存或来源事实；用户画像地点不能作为已确认的查询条件。
 
 **说明：**
 - Priority 1 的智能体都是信息获取，互不依赖，可并行执行提升速度
 - Priority 2 的智能体需要使用 Priority 1 收集的信息
 - 示例：用户说"我要从天津去北京，喜欢住汉庭"
   → Priority 1: preference + event_collection（并行）
-  → Priority 2: itinerary_planning（使用 Priority 1 的结果）
+  → 请求领域数据时 Priority 2: train_search / hotel_search / travel_guide
+  → 最后一批: itinerary_planning（使用已完成的事项收集和本轮领域查询结果）
 
 请开始分析，直接输出JSON：
 """

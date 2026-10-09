@@ -9,7 +9,7 @@ import sys
 import importlib.util
 import inspect
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Mapping
 from rich.console import Console
 from agentscope.agent import AgentBase
 
@@ -20,7 +20,7 @@ class LazyAgentRegistry:
     自动扫描 .claude/skills 下的技能目录，动态加载 script/agent.py
     """
 
-    def __init__(self, model, cache: Dict, memory_manager=None):
+    def __init__(self, model, cache: Dict, memory_manager=None, providers: Mapping[str, object] | None = None):
         """
         初始化懒加载注册器
 
@@ -32,6 +32,7 @@ class LazyAgentRegistry:
         self.model = model
         self.cache = cache
         self.memory_manager = memory_manager
+        self.providers = dict(providers or {})
         self.console = Console()
         
         # 技能目录路径
@@ -50,7 +51,10 @@ class LazyAgentRegistry:
             "preference": "preference",
             "information_query": "query-info",
             "itinerary_planning": "plan-trip",
-            "event_collection": "event-collection"
+            "event_collection": "event-collection",
+            "train_search": "train-search",
+            "hotel_search": "hotel-search",
+            "travel_guide": "travel-guide",
         }
 
     def _discover_skills(self):
@@ -138,6 +142,9 @@ class LazyAgentRegistry:
             sig = inspect.signature(agent_class.__init__)
             if "memory_manager" in sig.parameters:
                 init_params["memory_manager"] = self.memory_manager
+            if "provider" in sig.parameters:
+                dispatch_name = next((key for key, value in self._legacy_mapping.items() if value == skill_name), agent_name)
+                init_params["provider"] = self.providers.get(dispatch_name)
                 
             agent_instance = agent_class(**init_params)
             

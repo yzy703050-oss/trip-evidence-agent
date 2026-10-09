@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from context.session_store import SessionStore
+from travel_data.plan_guard import guard_itinerary
 
 
 def _answer_text(stage_events: list[dict[str, Any]]) -> str:
@@ -73,6 +74,37 @@ def _budget_component_bounds(text: str) -> tuple[int, int] | None:
     return (sum(minima), sum(maxima)) if len(maxima) >= 2 else None
 
 
+def sourced_output_valid(stages: list[dict[str, Any]]) -> bool:
+    """Reject plan fields or factual output that cannot be reproduced from sources."""
+    rows = [{"agent_name": stage.get("agent_name"), "result": stage.get("content", {})} for stage in stages]
+    for stage in stages:
+        name = stage.get("agent_name")
+        if name in {"train_search", "hotel_search", "travel_guide"}:
+            data = stage.get("content", {}).get("data", {})
+            for item in data.get("items", []):
+                if not isinstance(item, dict):
+                    return False
+                kind = "train" if name == "train_search" else "hotel"
+                grounded = guard_itinerary({f"selected_{kind}_id": item.get("id")}, rows)
+                if name == "travel_guide":
+                    if item not in grounded["guide_facts"]:
+                        return False
+                elif grounded.get(f"selected_{kind}") != item:
+                    return False
+        if name == "itinerary_planning":
+            data = stage.get("content", {}).get("data", {})
+            if data != guard_itinerary(data, rows):
+                return False
+    return True
+
+
+def _stage_success(event: dict[str, Any]) -> bool:
+    data = event.get("content", {}).get("data", {})
+    return (event.get("status") == "success" and "error" not in data
+            and (event.get("agent_name") not in {"train_search", "hotel_search", "travel_guide"}
+                 or data.get("status") == "ok"))
+
+
 def evaluate_case(
     case: dict[str, Any],
     store: SessionStore,
@@ -104,8 +136,10 @@ def evaluate_case(
         "planned_route": Counter(planned) == Counter(expected),
         "executed_route": Counter(actual) == Counter(expected),
         "plan_execution_match": bool(plan_records) and Counter(actual) == Counter(planned),
-        "execution_success": all(event.get("status") == "success" for event in stages),
+        "execution_success": all(_stage_success(event) for event in stages),
     }
+    if any(event.get("agent_name") in {"itinerary_planning", "train_search", "hotel_search", "travel_guide"} for event in stages):
+        checks["sourced_realtime_output"] = sourced_output_valid(stages)
     answer = _answer_text(stages)
     if "memory_facts" in case:
         checks["memory_recall"] = _contains_facts(answer, case["memory_facts"])
@@ -135,15 +169,13 @@ def evaluate_case(
     budget_lower = None
     budget_upper = None
     if "budget_limit_yuan" in case:
-        bounds = _budget_component_bounds(str(itinerary.get("estimated_budget", "")))
-        if bounds is not None:
-            budget_lower, budget_upper = bounds
-        checks["budget_feasible_within_limit"] = (
-            budget_lower is not None and budget_lower <= case["budget_limit_yuan"]
-        )
-        checks["budget_components_within_limit"] = (
-            budget_upper is not None and budget_upper <= case["budget_limit_yuan"]
-        )
+        rows = [{"agent_name": stage.get("agent_name"), "result": stage.get("content", {})} for stage in stages]
+        plan = next((stage.get("content", {}).get("data", {}) for stage in stages if stage.get("agent_name") == "itinerary_planning"), {})
+        budget = guard_itinerary(plan, rows)["budget"]
+        if budget["complete"]:
+            budget_lower = budget_upper = float(budget["known_subtotal_cny"])
+        checks["budget_feasible_within_limit"] = budget_lower is not None and budget_lower <= case["budget_limit_yuan"]
+        checks["budget_components_within_limit"] = budget_upper is not None and budget_upper <= case["budget_limit_yuan"]
     judge_reason = None
     if judge is not None:
         question = next(
@@ -185,7 +217,7 @@ def evaluate_case(
         "budget_component_lower_yuan": budget_lower,
         "budget_component_upper_yuan": budget_upper,
         "failed_agents": [
-            event.get("agent_name") for event in stages if event.get("status") != "success"
+            event.get("agent_name") for event in stages if not _stage_success(event)
         ],
     }
     return {

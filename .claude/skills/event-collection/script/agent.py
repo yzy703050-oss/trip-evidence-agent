@@ -32,6 +32,7 @@ class EventCollectionAgent(AgentBase):
         if x is None:
             return Msg(name=self.name, content={}, role="assistant")
 
+        context = {}
         # 解析输入内容
         content = x.content if not isinstance(x, list) else x[-1].content
 
@@ -52,7 +53,7 @@ class EventCollectionAgent(AgentBase):
         # 构建用户背景信息
         background_info = ""
         if user_preferences:
-            bg_parts = ["【用户背景信息】（可用于推断缺失信息）"]
+            bg_parts = ["【用户背景信息】（仅用于偏好排序，不能作为已确认的查询条件）"]
             if user_preferences.get("home_location"):
                 bg_parts.append(f"• 家庭住址: {user_preferences['home_location']}")
             if user_preferences.get("hotel_brands"):
@@ -85,6 +86,13 @@ class EventCollectionAgent(AgentBase):
 5. duration_days - 行程天数
 6. return_location - 返程地
 7. trip_purpose - 行程目的
+8. passengers - confirmed train passenger count (positive integer; unknown null)
+9. guests - 用户明确提供的入住人数（正整数）
+10. check_in - 酒店入住日期（YYYY-MM-DD）
+11. check_out - 酒店离店日期（YYYY-MM-DD）
+
+For a general confirmed party size, emit passengers and guests when both domains apply. Keep explicit train passenger and hotel guest counts separate. Never copy hotel-only guests into passengers. Unknown train passengers may use the TrainQuery default of one; emit null when unknown.
+For guide dates start_date..end_date is inclusive; start_date alone is one day. Unknown dates stay null.
 
 【日期处理规则】（重要）
 - 当前时间是{current_date}
@@ -95,7 +103,8 @@ class EventCollectionAgent(AgentBase):
 【特殊处理】
 - 对于"北京一日游"这类：destination和origin都设为北京
 - 对于"一日游"：duration_days设为1
-- 如果用户没说出发地，但有家庭住址信息，可推断出发地为家庭住址
+- 用户没说出发地时保持缺失，不能从家庭住址推断已确认的出发地。
+- 人数、入住和离店日期缺失时设为 null；仅本轮有酒店需求时将酒店人数、入住和离店日期写入 missing_info；不能默认一人或将出发/返程日期自动当作酒店日期。
 
 【输出格式】(严格JSON)
 {{
@@ -106,6 +115,10 @@ class EventCollectionAgent(AgentBase):
     "duration_days": 1,
     "return_location": "北京",
     "trip_purpose": "旅游",
+    "passengers": null,
+    "guests": null,
+    "check_in": null,
+    "check_out": null,
     "missing_info": [],
     "extracted_count": 7,
     "summary": "北京一日游，2月27日"
@@ -174,6 +187,23 @@ class EventCollectionAgent(AgentBase):
                 "extracted_count": 0,
                 "error": str(e)
             }
+
+        # Keep omitted query conditions explicit, including model failure responses.
+        missing = result.get("missing_info", [])
+        if not isinstance(missing, list):
+            missing = []
+        requested = context.get("requested_domains")
+        intents = context.get("intents", [])
+        hotel_requested = ("hotel_search" in requested if isinstance(requested, list) else
+                           "hotel_search" in str(intents) or any(word in user_query for word in ("\u9152\u5e97", "\u5165\u4f4f", "\u4f4f\u4e24\u665a", "\u4f4f\u5bbf", "\u79bb\u5e97")))
+        if not hotel_requested:
+            missing = [field for field in missing if field not in {"guests", "check_in", "check_out"}]
+        for field in ("passengers", "guests", "check_in", "check_out"):
+            if result.get(field) in (None, ""):
+                result[field] = None
+                if hotel_requested and field != "passengers" and field not in missing:
+                    missing.append(field)
+        result["missing_info"] = missing
 
         # 返回JSON字符串格式
         return Msg(name=self.name, content=json.dumps(result, ensure_ascii=False), role="assistant")

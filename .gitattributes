@@ -1,0 +1,7 @@
+# Existing Windows files store CRLF in Git. Treat carriage returns as line endings,
+# retaining checks for trailing spaces without rewriting their baseline contents.
+.claude/skills/event-collection/SKILL.md whitespace=cr-at-eol
+.claude/skills/event-collection/script/agent.py whitespace=cr-at-eol
+.claude/skills/plan-trip/script/agent.py whitespace=cr-at-eol
+agents/intention_agent.py whitespace=cr-at-eol
+agents/orchestration_agent.py whitespace=cr-at-eol
