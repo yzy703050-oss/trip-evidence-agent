@@ -29,7 +29,7 @@ def guard_domain_result(domain: str, result: dict) -> dict:
     for item in value.get('items', []):
         try:
             if domain in {'train', 'hotel'}:
-                if domain == 'hotel' and any(key in value.get('query', {}) and item.get(key) != value['query'][key]
+                if domain == 'hotel' and item.get('kind') != 'hotel_place' and any(key in value.get('query', {}) and item.get(key) != value['query'][key]
                                            for key in ('check_in', 'check_out', 'guests')):
                     raise ValueError('hotel stay mismatch')
                 items.append(_offer(item, domain).to_dict())

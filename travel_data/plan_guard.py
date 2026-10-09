@@ -5,6 +5,7 @@ import re
 
 from .budget import build_budget
 from .contracts import Source, TrainOffer, HotelOffer, GuideFact
+from .hotel_places import HotelPlace
 
 DOMAIN_AGENTS = {"train_search", "hotel_search", "travel_guide"}
 
@@ -25,6 +26,8 @@ def _offer(item, kind):
     value["source"] = _source(value.get("source"))
     if value["source"] is None:
         return None
+    if kind == 'hotel' and value.get('kind') == 'hotel_place':
+        return HotelPlace.from_dict(value, value['source'])
     price_key = "price_cny" if kind == "train" else "stay_total_cny"
     if value.get(price_key) is not None:
         value[price_key] = Decimal(str(value[price_key]))
@@ -123,7 +126,8 @@ def guard_itinerary(plan: dict, results: list[dict]) -> dict:
                 activity["time"] = time
             day["activities"].append(activity)
         days.append(day)
-    budget = build_budget(selected["train"] if passengers else None, selected["hotel"], passengers or 1,
+    quoted_hotel = selected["hotel"] if isinstance(selected["hotel"], HotelOffer) else None
+    budget = build_budget(selected["train"] if passengers else None, quoted_hotel, passengers or 1,
                           {"train", "hotel", "other"}).to_dict()
     guarded = {
         "itinerary": {"title": "行程安排建议", "duration": f"{len(days)}天", "daily_plans": days},

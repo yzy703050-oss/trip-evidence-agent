@@ -27,7 +27,19 @@ missing_fields，行程请求还包含 itinerary。
 不会重放整轮请求。
 
 RAG 内部、模型与 embedding 配置及外部 RAG 项目保持不变。
-酒店和攻略 Provider 仍待接入，当前返回 unavailable。
+酒店地点搜索已接入高德 Web 服务 API，通过 `AMAP_API_KEY` 配置；未配置时返回 unavailable。
+地点候选不提供房型、入住日期对应房价或空房。攻略 Provider 的接入状态以实际配置为准。
+
+### 高德酒店搜索
+
+在本项目目录的 `.env` 中填写 `AMAP_API_KEY=你的高德Web服务Key`，然后重启 CLI。
+只需提供城市，例如“帮我找上海的汉庭酒店”，无需为地点搜索补入住日期或人数。
+工具取最多 25 个酒店地点，默认展示 5 个；其余候选使用本地窗口，无需重复请求。
+结果包含来源、查询时间、名称、地址、经纬度，以及接口提供的电话、评分和图片。
+`business.cost` 不作为房价；住宿费用和空房保持未知。预算或空房条件无法验证时，
+结果会说明缺口，候选仅供地点参考，不计入已知费用。
+
+离线验证：`python -m pytest tests/test_amap_hotel.py tests/test_amap_hotel_flow.py -q`。
 
 ## 会话与记忆
 

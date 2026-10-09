@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     juhe_train_api_key: str = Field(default="", repr=False)
+    amap_api_key: str = Field(default="", repr=False)
 
     llm_api_key: str = ""
     llm_model: str = "deepseek-flash"
