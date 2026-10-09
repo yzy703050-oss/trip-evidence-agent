@@ -1,7 +1,7 @@
 """Deterministic query extraction shared by sourced domain agents."""
 import asyncio
 import json
-from datetime import date
+from datetime import date, timedelta
 
 from agentscope.message import Msg
 from travel_data.contracts import AgentDataResult, TrainQuery, HotelQuery, GuideQuery
@@ -56,7 +56,8 @@ def make_query(domain, fields):
     if missing:
         return None, missing
     if domain == 'train':
-        passengers = fields.get('passengers', 1)
+        passengers = fields.get('passengers')
+        passengers = 1 if passengers is None else passengers
         if type(passengers) is not int or passengers < 1:
             return None, ['passengers']
         return TrainQuery(**values, passengers=passengers), []
@@ -64,7 +65,19 @@ def make_query(domain, fields):
         if values['check_out'] <= values['check_in']:
             return None, ['check_out']
         return HotelQuery(**values), []
-    dates = fields.get('visit_dates', [])
+    dates = fields.get('visit_dates')
+    if dates is None:
+        dates = []
+        if fields.get('start_date'):
+            try:
+                start = date.fromisoformat(fields['start_date']) if isinstance(fields['start_date'], str) else fields['start_date']
+                end_value = fields.get('end_date') or start
+                end = date.fromisoformat(end_value) if isinstance(end_value, str) else end_value
+                if type(start) is not date or type(end) is not date or end < start:
+                    raise ValueError()
+                dates = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+            except (ValueError, TypeError):
+                return None, ['visit_dates']
     try:
         if not isinstance(dates, list):
             raise ValueError()

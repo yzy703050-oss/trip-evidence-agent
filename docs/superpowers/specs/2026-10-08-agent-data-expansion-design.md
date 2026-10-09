@@ -71,3 +71,11 @@
 - 某个平台超时或返回空结果：其他 Agent 的成功结果仍展示，最终状态为部分完成，不把失败当作“无票”或“无房”。
 
 测试以 Provider 假实现覆盖调度、字段校验、价格计算、来源展示和失败降级；真实接口用单独的受凭据保护的联调检查，不在 CI 中调用。现有离线回归测试与 V0 记忆评测继续运行，并增加“无来源不得报实时价格”的 EDD 断言。
+
+## Confirmed field and completion semantics (final review, 2026-10-09)
+
+- `passengers` is the confirmed train passenger count; `guests` is the confirmed hotel occupant count. Collector emits both for an explicitly shared party size when both domains are requested. Explicit “two train passengers, one hotel guest” stays separate. Hotel-only guest counts never become train passengers. Unknown train passengers retain the existing TrainQuery default of one; unknown hotel guests remain missing. Budget uses the actual TrainQuery passenger count.
+- Guide `start_date..end_date` means calendar itinerary dates including both endpoints. A confirmed start_date alone means a single day; unknown dates yield an empty visit_dates list. Explicit visit_dates takes precedence. Hotel check_out remains exclusive and later than check_in; itinerary dates never silently become hotel dates.
+- Collector asks for hotel guests/check_in/check_out only when this request includes hotel search. Train-only and guide-only queries do not require hotel conditions.
+- Domain `ok` maps to execution `success`; `partial`, `needs_input`, `unavailable`, and `error` remain explicit execution states. Mixed successful and incomplete domain results aggregate as `partial_failure`, preserving every domain result. When all requested domains need input or are unavailable, the aggregate retains that uniform state. Errors aggregate as `partial_failure` for compatibility. EDD execution_success requires every requested domain to be `ok`, even for old records wrapped as success.
+- Dependency batches use compact integer ranks rather than arithmetic on model priorities. Nonfinite priorities use the default rank. Collector precedes a common domain batch, which precedes planner, including extreme finite model values.

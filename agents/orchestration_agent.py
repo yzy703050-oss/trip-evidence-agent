@@ -19,6 +19,7 @@ from typing import Optional, Union, List, Dict, Any
 import json
 import logging
 import asyncio
+import math
 from enum import StrEnum
 from context.telemetry import model_stage
 
@@ -46,7 +47,7 @@ def normalize_schedule(schedule: list[dict]) -> list[dict]:
         seen.add(name)
         row = dict(task)
         priority = row.get("priority", 999)
-        if not isinstance(priority, (int, float)) or isinstance(priority, bool):
+        if not isinstance(priority, (int, float)) or isinstance(priority, bool) or (isinstance(priority, float) and not math.isfinite(priority)):
             priority = 999
         row["priority"] = priority
         rows.append(row)
@@ -55,6 +56,9 @@ def normalize_schedule(schedule: list[dict]) -> list[dict]:
     if "event_collection" not in seen:
         rows.insert(0, {"agent_name": "event_collection", "priority": 1,
                         "reason": "Collect confirmed query conditions", "expected_output": "Travel conditions and missing fields"})
+    ranks = {value: rank for rank, value in enumerate(sorted({row["priority"] for row in rows}))}
+    for row in rows:
+        row["priority"] = ranks[row["priority"]]
     collection_priority = max(row["priority"] for row in rows if row["agent_name"] == "event_collection")
     domain_priority = collection_priority + 1
     for row in rows:
@@ -156,6 +160,7 @@ class OrchestrationAgent(AgentBase):
 
         # 准备上下文信息
         context = self._prepare_context(intention_data)
+        context["requested_domains"] = [row["agent_name"] for row in sorted_schedule if row["agent_name"] in {"train_search", "hotel_search", "travel_guide"}]
 
         # 并行执行智能体（按优先级分组）
         results = []
@@ -396,8 +401,10 @@ class OrchestrationAgent(AgentBase):
                     "message": error_msg
                 }
 
+            business_status = result.get("status") if isinstance(result, dict) else None
+            status = business_status if agent_name in {"train_search", "hotel_search", "travel_guide"} and business_status in {"partial", "error", "needs_input", "unavailable"} else "success"
             return {
-                "status": "success",
+                "status": status,
                 "agent_name": agent_name,
                 "data": result
             }
@@ -452,6 +459,10 @@ class OrchestrationAgent(AgentBase):
             aggregated["status"] = "partial_failure"
             aggregated["errors"] = len(errors)
 
+        incomplete = [r for r in results if r["result"].get("status") != "success"]
+        if incomplete and not errors:
+            statuses = {r["result"].get("status") for r in results if r["agent_name"] in {"train_search", "hotel_search", "travel_guide"}}
+            aggregated["status"] = next(iter(statuses)) if len(statuses) == 1 and statuses <= {"needs_input", "unavailable"} else "partial_failure"
         return aggregated
 
     def _update_memory(self, intention_data: Dict[str, Any], results: List[Dict]):
