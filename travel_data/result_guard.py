@@ -2,6 +2,7 @@
 from copy import deepcopy
 from datetime import date, datetime
 from urllib.parse import urlparse
+import math
 
 from travel_data.contracts import Source, GuideFact
 from travel_data.plan_guard import _offer
@@ -28,6 +29,9 @@ def guard_domain_result(domain: str, result: dict) -> dict:
     for item in value.get('items', []):
         try:
             if domain in {'train', 'hotel'}:
+                if domain == 'hotel' and any(key in value.get('query', {}) and item.get(key) != value['query'][key]
+                                           for key in ('check_in', 'check_out', 'guests')):
+                    raise ValueError('hotel stay mismatch')
                 items.append(_offer(item, domain).to_dict())
             elif domain == 'guide':
                 fact = GuideFact(item['kind'], item['content'], item['verification'], valid_source(item.get('source')))
@@ -43,6 +47,11 @@ def guard_domain_result(domain: str, result: dict) -> dict:
                     requested = value.get('query', {}).get('date')
                     if requested and item.get('date') != requested:
                         raise ValueError('weather date mismatch')
+                    temperatures = [item[k] for k in ('temp_c', 'min_temp_c', 'max_temp_c') if item.get(k) is not None]
+                    if not temperatures or any(isinstance(t, bool) or not math.isfinite(float(t)) for t in temperatures):
+                        raise ValueError('invalid temperature')
+                    if item.get('min_temp_c') is not None and item.get('max_temp_c') is not None and float(item['min_temp_c']) > float(item['max_temp_c']):
+                        raise ValueError('invalid temperature range')
                 if domain == 'web' and not valid_url(item.get('url')):
                     raise ValueError('invalid search source')
                 items.append({**item, 'source': source.to_dict()})
@@ -51,7 +60,7 @@ def guard_domain_result(domain: str, result: dict) -> dict:
     value['items'] = items
     if value.get('status') not in {'ok', 'partial', 'needs_input', 'unavailable', 'error'}:
         value['status'] = 'error'
-    if skipped and value['status'] == 'ok':
+    if (skipped or (domain == 'weather' and not items)) and value['status'] == 'ok':
         value['status'] = 'partial'
         value['message'] = '部分数据缺少有效来源或字段，已排除。'
     return value
@@ -90,7 +99,8 @@ def guard_information_result(value: dict, requested_domains: list[str]) -> dict:
 def grounded_answer(info: dict) -> str:
     """Financial and weather facts come from structured data, never model prose."""
     domains = info.get('domain_results', {})
-    if set(domains) <= {'weather'} and domains:
+    lines = []
+    if 'weather' in domains:
         lines = []
         data = domains['weather']
         city = data.get('query', {}).get('city', '')
@@ -100,11 +110,17 @@ def grounded_answer(info: dict) -> str:
                 lines.append(f"{city}{period}：{item.get('description', '')}，{item['min_temp_c']}～{item['max_temp_c']}℃。")
             elif item.get('temp_c') is not None:
                 lines.append(f"{city}{period}：{item.get('description', '')}，{item['temp_c']}℃。")
-        return '\n'.join(lines) or data.get('message') or '没有可核实的天气数据。'
-    if {'train', 'hotel'} & set(domains):
+        if not lines:
+            lines.append(data.get('message') or '没有可核实的天气数据。')
+    if {'train', 'hotel', 'guide'} & set(domains):
         # The CLI renders sourced offers in detail. Keep model-generated money
         # and inventory assertions out of the accompanying free-text response.
         labels = {'train': '火车', 'hotel': '酒店', 'guide': '攻略', 'weather': '天气', 'web': '网页'}
-        return '\n'.join(f"{labels[d]}查询：{len(data.get('items', []))} 个已取得结果；{data.get('message') or data.get('status', '')}。"
-                         for d, data in domains.items())
+        lines.extend(f"{labels[d]}查询：{len(data.get('items', []))} 个已取得结果；{data.get('message') or data.get('status', '')}。"
+                     for d, data in domains.items() if d in {'train', 'hotel', 'guide'})
+        lines.extend(f"{item['content']}（{item['verification']}）" for item in domains.get('guide', {}).get('items', []))
+    if lines:
+        if 'web' in domains:
+            lines.extend(f"{item.get('title', '')}：{item.get('snippet', '')}" for item in domains['web'].get('items', []))
+        return '\n'.join(lines)
     return info.get('summary', '')

@@ -53,9 +53,12 @@ def candidate_view(result, *, limit, offset, constraints, preferences):
         if constraints.get('available_only') and item.get('availability') != 'available':
             continue
         items.append(item)
+    brands = preferences.get('hotel_brands') or []
+    brands = [brands] if isinstance(brands, str) else brands if isinstance(brands, list) else []
+    brands = [brand for brand in brands if isinstance(brand, str) and brand]
     def rank(item):
         preferred = (item.get('seat_class') == preferences.get('seat_preference')) if kind == 'train' else any(
-            brand in item.get('hotel_name', '') for brand in preferences.get('hotel_brands', []) or [])
+            brand in item.get('hotel_name', '') for brand in brands)
         price = item.get('price_cny' if kind == 'train' else 'stay_total_cny')
         return (not preferred, price is None, Decimal(price) if price is not None else Decimal('0'))
     items.sort(key=rank)

@@ -182,7 +182,7 @@ class ExecutionHarness:
                 return self._feedback_stop('feedback_limit', final, run)
             try:
                 feedback = validate_feedback(final, run.travel_conditions)
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, ArithmeticError):
                 return self._feedback_stop('invalid_feedback', final, run)
             if info is None or run.info_executions >= 2:
                 return self._feedback_stop('information_limit', final, run)
@@ -235,8 +235,12 @@ class ExecutionHarness:
 
     def _feedback_stop(self, reason, final, run):
         result = self._error(reason, run)
+        explanations = {'feedback_limit': '已达到本轮补查上限。',
+                        'invalid_feedback': '缺少可执行补查条件，或需要改变已确认的要求。',
+                        'information_limit': '本轮信息获取已达到上限或未安排该任务。'}
         result.update(status='partial', stop_reason=reason,
-                      final_answer='补查已停止，现有结果未完全满足要求：' + str(final.get('reason', '')))
+                      final_answer='补查已停止，现有结果未完全满足要求。' + explanations[reason]
+                                   + '\n' + grounded_answer({'domain_results': run.domain_results}))
         return result
 
     def _record_finalize(self, result, run):

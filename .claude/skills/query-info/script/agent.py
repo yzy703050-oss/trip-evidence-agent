@@ -39,6 +39,7 @@ class InformationQueryAgent(AgentBase):
     async def run(self, context, run):
         run.info_executions += 1
         requested = context.get('requested_domains', [])
+        feedback = context.get('feedback') or {}
         messages = [{'role': 'system', 'content': self.skill_loader.get_skill_content('query-info') or '根据原文整理条件，使用工具查询并总结。'},
             {'role': 'user', 'content': json.dumps({**context, 'effective_preferences': run.effective_preferences,
                 'travel_conditions': run.travel_conditions, 'domain_results': run.domain_results}, ensure_ascii=False)}]
@@ -65,7 +66,18 @@ class InformationQueryAgent(AgentBase):
                 async def execute(call, allowed):
                     if not allowed:
                         return {'status': 'error', 'message': '工具调用达到上限或 ID 重复。', 'items': []}
-                    return await self.tool_executor.execute(call['name'], call['arguments'], run, call_id=call['id'])
+                    if feedback and TOOL_DOMAINS.get(call['name']) not in requested:
+                        return {'status': 'error', 'message': '补查只能查询受影响领域。', 'items': []}
+                    arguments = deepcopy(call['arguments'])
+                    if feedback:
+                        changes = feedback.get('constraints', {})
+                        local = {key: val for key, val in changes.items() if key not in {'candidate_offset', 'refresh'}}
+                        arguments['constraints'] = {**arguments.get('constraints', {}), **local}
+                        for key in ('candidate_offset', 'refresh'):
+                            if key in changes:
+                                arguments[key] = changes[key]
+                    execution_id = f"{run.turn_id}:info{run.info_executions}:{call['id']}"
+                    return await self.tool_executor.execute(call['name'], arguments, run, call_id=execution_id)
                 allowed = []
                 for call in turn.tool_calls:
                     valid = call['id'] not in seen_ids and tool_count < run.limits.info_tool_calls
@@ -92,7 +104,7 @@ class InformationQueryAgent(AgentBase):
                     continue
                 eligible = {}
                 for key, raw in run.candidates.cache.items():
-                    if key.startswith(domain + ':'):
+                    if key.startswith(domain + ':') and raw.query == run.domain_results.get(domain, {}).get('query'):
                         view = candidate_view(raw, limit=len(raw.items), offset=0,
                             constraints=run.travel_conditions.get('constraints', {}), preferences=run.effective_preferences)
                         eligible.update({item['id']: item for item in view['items']})
@@ -114,11 +126,14 @@ class InformationQueryAgent(AgentBase):
     def _record_tool(self, run, call, result):
         if self.memory_manager is None:
             return
-        record_id = f"{run.turn_id}:info{run.info_executions}:{len(run.tool_requests)}:{call['id']}"
+        run.tool_record_seq += 1
+        record_id = f"{run.turn_id}:info{run.info_executions}:record{run.tool_record_seq}:{call['id']}"
         scope = f'agent:information_query:{run.info_executions}'
+        execution_id = f"{run.turn_id}:info{run.info_executions}:{call['id']}"
+        metadata = next((row for row in reversed(run.tool_requests) if row['id'] == execution_id), {})
         try:
             self.memory_manager.record_tool_call([{'id': record_id, 'name': call['name'], 'arguments': call['arguments']}], run.turn_id, scope)
-            self.memory_manager.record_tool_result(record_id, result, run.turn_id, scope, status=result.get('status', 'error'))
+            self.memory_manager.record_tool_result(record_id, {**result, 'execution': deepcopy(metadata)}, run.turn_id, scope, status=result.get('status', 'error'))
         except Exception:
             # Requests and cache remain in RunState even when logging fails.
             pass

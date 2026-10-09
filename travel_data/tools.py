@@ -2,7 +2,6 @@
 import asyncio
 from copy import deepcopy
 from time import perf_counter
-from decimal import Decimal
 
 from travel_data.agent_support import make_query
 from travel_data.candidates import CandidateStore, query_cache_key, candidate_view
@@ -10,6 +9,7 @@ from travel_data.contracts import AgentDataResult
 from travel_data.providers import UnavailableProvider
 from travel_data.public_query import PublicQueryProvider
 from travel_data.result_guard import guard_domain_result
+from agents.contracts import validate_constraints
 
 TOOL_DOMAINS = {'train_search': 'train', 'hotel_search': 'hotel', 'travel_guide': 'guide',
                 'weather_query': 'weather', 'web_search': 'web'}
@@ -39,9 +39,8 @@ class ToolExecutor:
                 'required': REQUIRED[name], 'additionalProperties': False}}} for name, params in PARAMETERS.items()]
 
     async def execute(self, name, arguments, run, *, call_id):
-        before = len(run.tool_requests)
         result = await self._execute(name, arguments, run, call_id=call_id)
-        if len(run.tool_requests) == before:
+        if not any(row['id'] == call_id for row in run.tool_requests):
             run.tool_requests.append({'id': call_id, 'name': name, 'status': result['status'],
                 'cache_hit': False, 'elapsed_ms': 0, 'query': result.get('query', {})})
         return result
@@ -65,11 +64,9 @@ class ToolExecutor:
             return failure('error', message='不能修改已确认的硬约束。')
         constraints = {**previous, **constraints}
         try:
-            for field, value in constraints.items():
-                if field.endswith('_cny'):
-                    amount = Decimal(str(value))
-                    if not amount.is_finite() or amount < 0:
-                        raise ValueError('invalid budget')
+            validate_constraints(constraints)
+            if 'refresh' in arguments and type(arguments['refresh']) is not bool:
+                raise ValueError('invalid refresh')
             if domain in {'train', 'hotel', 'guide'}:
                 typed, missing = make_query(domain, arguments)
                 if missing:
@@ -90,6 +87,9 @@ class ToolExecutor:
                     from datetime import date
                     date.fromisoformat(query['date'])
                 fetch = (lambda: self.public_provider.weather(query['city'], query.get('date'))) if domain == 'weather' else (lambda: self.public_provider.web(query['query']))
+            if run.feedback_round and any(key in run.travel_conditions and run.travel_conditions[key] != val
+                    for key, val in query.items() if val is not None):
+                return failure('error', message='补查不能修改已确认的查询条件。')
             run.travel_conditions['constraints'] = constraints
             run.travel_conditions.update({key: value for key, value in query.items() if value is not None})
             if run.candidates is None:
@@ -103,6 +103,8 @@ class ToolExecutor:
                     data = await asyncio.wait_for(fetch(), run.limits.tool_timeout)
                     if not isinstance(data, AgentDataResult):
                         raise TypeError('provider result type')
+                    if data.query != query:
+                        raise ValueError('provider query mismatch')
                     checked = guard_domain_result(domain, data.to_dict())
                     return AgentDataResult(checked['status'], data.query, checked['items'],
                         data.missing_fields, data.source, data.fetched_at, checked.get('message'))

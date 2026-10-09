@@ -4,34 +4,30 @@
 
 本仓库只包含 **V0 命令行版本**。火车、酒店与攻略已建立来源契约和输出保护，火车查询可接入已授权的聚合数据接口；未查询到的数据保持未知。
 
-## Runtime architecture
+## 它怎样工作
 
-MainAgent plans each turn, and the deterministic harness executes dependencies.
-Only four child agents can be scheduled: preference, memory_query, rag_knowledge,
-and information_query. Preference/history/policy run in phase 1; information runs
-in phase 2 using the updated preferences and completed results. MainAgent handles
-itinerary generation and combined answers in phase 3 when required.
+MainAgent 做每轮决策，harness 按依赖执行任务。可调度子 Agent 只有
+preference、memory_query、rag_knowledge、information_query。
+阶段 1 提取偏好、查询记忆与制度；阶段 2 信息获取读取本轮新偏好和前序结果；
+需要综合或生成行程时，由主 Agent 在阶段 3 完成。行程规划不再独立调度。
 
-Information acquisition includes condition extraction, native tool calls, result
-checks and its own summary. Its private tools are train_search, hotel_search,
-travel_guide, weather_query and web_search. They make no LLM calls themselves.
-MainAgent receives only the four child capabilities, not the tool schemas.
+信息获取负责条件整理、模型原生工具调用、结果检查、补查和总结。
+它的内部工具是 train_search、hotel_search、travel_guide、weather_query、web_search，
+工具自身不调用 LLM。主 Agent 只看到四个子 Agent 的能力，查询工具 schema 只交给信息获取。
 
-A complete simple weather/train/hotel query follows decision → information →
-program forwarding, with zero final MainAgent model calls. Partial results,
-combined answers and itineraries use synthesis. The final envelope contains
-status, finalization_method, final_answer, results, domain_results,
-travel_conditions, missing_fields and optionally itinerary.
+完整简单查询走「决策 → 信息获取 → 程序直返」，主 Agent 最终阶段模型调用为 0。
+缺项、部分成功、跨 Agent 答案和行程请求进入综合。统一结果包含 status、
+finalization_method、final_answer、results、domain_results、travel_conditions、
+missing_fields，行程请求还包含 itinerary。
 
-The default train/hotel view has at most 5 candidates. Full pools and request
-cache live within one turn. Local windows do not send pagination to Juhe.
-Each information execution allows 6 model calls, 10 tools and a 30-second tool
-timeout. One main feedback round reuses the same cache, with at most 2 information
-executions and 2 final model calls. Confirmed constraints cannot be relaxed.
-Once actual queries start, later model/logging failures do not replay the turn.
+火车和酒店默认最多展示 5 个候选，本轮全量池与缓存继续保留。
+查看后续窗口不向聚合接口发送分页参数。每次信息获取最多 6 次模型调用、10 次工具调用，
+单工具超时 30 秒。主 Agent 最多反馈一次，复用同一缓存；信息获取最多执行两次，
+最终综合最多调用两次。不能静默修改已确认硬条件。实际查询发出后，后续模型或记录失败
+不会重放整轮请求。
 
-RAG internals, model/embedding configuration and external RAG project remain
-unchanged. Hotel and guide providers are still unconfigured and return unavailable.
+RAG 内部、模型与 embedding 配置及外部 RAG 项目保持不变。
+酒店和攻略 Provider 仍待接入，当前返回 unavailable。
 
 ## 会话与记忆
 

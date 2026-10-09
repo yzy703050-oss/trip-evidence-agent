@@ -107,3 +107,17 @@ async def test_pending_answer_requires_synthesis():
     await OrchestrationAgent(main_agent=main, agent_registry={'memory_query': Memory(), 'information_query': Info()}).run_turn(
         {'original_query': '我的历史和明天天气'}, RunState('a'))
     assert main.finalize_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_multiple_complete_tool_domains_can_forward():
+    value = weather_info()
+    source = value['domain_results']['weather']['source']
+    value['domain_results']['web'] = {'status': 'ok', 'query': {'query': '北京天气说明'},
+        'items': [{'title': '预报说明', 'snippet': '天气资料', 'url': 'https://example.com/forecast', 'source': source}],
+        'source': source, 'fetched_at': source['fetched_at'], 'missing_fields': [], 'message': None}
+    main = Main([{'agent_name': 'information_query', 'requested_domains': ['weather', 'web']}])
+    result = await OrchestrationAgent(main_agent=main, agent_registry={'information_query': Info(value)}).run_turn(
+        {'original_query': '北京天气及说明'}, RunState('a'))
+    assert result['finalization_method'] == 'forward'
+    assert main.finalize_calls == 0

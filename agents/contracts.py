@@ -2,9 +2,31 @@
 from copy import deepcopy
 from dataclasses import dataclass, field
 import math
+from decimal import Decimal
+import re
 
 AGENTS = {'preference', 'memory_query', 'rag_knowledge', 'information_query'}
 DOMAINS = {'train', 'hotel', 'guide', 'weather', 'web'}
+FILTER_KEYS = {'hotel_max_total_cny', 'hotel_max_nightly_cny', 'train_max_total_cny',
+               'seat_class', 'departure_time_after', 'departure_time_before', 'available_only'}
+
+
+def validate_constraints(value):
+    if not isinstance(value, dict) or set(value) - FILTER_KEYS:
+        raise ValueError('unsupported constraints')
+    for key, val in value.items():
+        if key.endswith('_cny'):
+            amount = Decimal(str(val))
+            if not amount.is_finite() or amount < 0:
+                raise ValueError('invalid budget')
+        elif key == 'available_only':
+            if type(val) is not bool:
+                raise ValueError('invalid inventory constraint')
+        elif not isinstance(val, str) or not val.strip():
+            raise ValueError('invalid constraint')
+        elif key.startswith('departure_time_') and not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', val):
+            raise ValueError('invalid time')
+    return value
 
 
 @dataclass(frozen=True)
@@ -38,6 +60,7 @@ class RunState:
     external_requests_started: bool = False
     candidates: object = None
     info_executions: int = 0
+    tool_record_seq: int = 0
 
 
 def validate_plan(value: dict) -> dict:
@@ -106,6 +129,11 @@ def validate_feedback(value: dict, conditions: dict) -> dict:
     constraints = feedback.get('constraints', {})
     if not constraints:
         raise ValueError('no new query basis')
+    validate_constraints({k: v for k, v in constraints.items() if k not in {'candidate_offset', 'refresh'}})
+    if 'candidate_offset' in constraints and (type(constraints['candidate_offset']) is not int or constraints['candidate_offset'] < 0):
+        raise ValueError('invalid window')
+    if 'refresh' in constraints and constraints['refresh'] is not True:
+        raise ValueError('no refresh basis')
     confirmed = {**conditions, **conditions.get('constraints', {})}
     if any(key in confirmed and confirmed[key] != val for key, val in constraints.items()):
         raise ValueError('cannot change confirmed conditions')
