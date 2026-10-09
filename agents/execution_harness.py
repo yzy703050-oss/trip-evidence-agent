@@ -4,7 +4,7 @@ from copy import deepcopy
 import json
 
 from agentscope.message import Msg
-from agents.contracts import validate_plan
+from agents.contracts import validate_plan, validate_feedback
 from agents.itinerary_module import guard_final_itinerary
 from context.telemetry import model_stage
 from travel_data.result_guard import guard_information_result, grounded_answer, valid_source
@@ -166,19 +166,49 @@ class ExecutionHarness:
             return {'status': 'error', 'data': {'status': 'error', 'message': '任务执行失败。'}}
 
     async def _finalize(self, context, run, info):
+        for attempt in range(run.limits.feedback_rounds + 1):
+            final = await self._final_model(context, run)
+            if final.get('action') != 'needs_requery':
+                return self._envelope(final, run, info)
+            if attempt >= run.limits.feedback_rounds:
+                return self._feedback_stop('feedback_limit', final, run)
+            try:
+                feedback = validate_feedback(final, run.travel_conditions)
+            except (ValueError, TypeError):
+                return self._feedback_stop('invalid_feedback', final, run)
+            if info is None or run.info_executions >= 2:
+                return self._feedback_stop('information_limit', final, run)
+            run.feedback_round += 1
+            task = {'agent_name': 'information_query', 'priority': 2,
+                    'requested_domains': feedback['domains'], 'expected_output': feedback['reason']}
+            result = await self._execute(task, {**context, 'feedback': feedback}, run)
+            run.results.append({'agent_name': 'information_query', 'priority': 2, 'result': result})
+            info = result['data']
+            run.domain_results.update(info.get('domain_results', {}))
+            if self.memory_manager:
+                self.memory_manager.record_agent_stage('information_query', 2, result, run.turn_id)
+
+    async def _final_model(self, context, run):
         final_context = {**context, 'effective_preferences': deepcopy(run.effective_preferences),
             'travel_conditions': deepcopy(run.travel_conditions), 'domain_results': deepcopy(run.domain_results),
-            'results': public_results(run.results)}
+            'results': public_results(run.results), 'feedback_round': run.feedback_round}
         try:
-            final = await self.main_agent.finalize(final_context)
+            return await self.main_agent.finalize(final_context)
         except Exception:
-            return self._error('final_model_error', run)
+            return {'action': 'error', 'error_code': 'final_model_error'}
+
+    def _envelope(self, final, run, info):
+        if final.get('action') == 'error':
+            return self._error(final['error_code'], run)
         envelope = {'status': 'ok', 'finalization_method': 'synthesize',
             'final_answer': final.get('final_answer', ''), 'results': public_results(run.results),
             'domain_results': deepcopy(run.domain_results), 'travel_conditions': deepcopy(run.travel_conditions),
             'missing_fields': final.get('missing_fields', [])}
         if final.get('action') == 'itinerary':
-            envelope['itinerary'] = guard_final_itinerary(final, run.domain_results)
+            envelope['itinerary'] = guard_final_itinerary(final, run.domain_results, run.travel_conditions)
+            if envelope['itinerary'].get('missing_fields'):
+                envelope['status'] = 'needs_input'
+                envelope['missing_fields'] = envelope['itinerary']['missing_fields']
         elif final.get('action') in {'needs_input', 'needs_requery'}:
             envelope['status'] = final['action']
             envelope['feedback'] = final
@@ -187,6 +217,12 @@ class ExecutionHarness:
         if {'train', 'hotel'} & set(run.domain_results):
             envelope['final_answer'] = grounded_answer(info or {'domain_results': run.domain_results})
         return envelope
+
+    def _feedback_stop(self, reason, final, run):
+        result = self._error(reason, run)
+        result.update(status='partial', stop_reason=reason,
+                      final_answer='补查已停止，现有结果未完全满足要求：' + str(final.get('reason', '')))
+        return result
 
     @staticmethod
     def _error(code, run):

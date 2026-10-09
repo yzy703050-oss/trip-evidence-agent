@@ -97,3 +97,20 @@ def validate_final(value: dict) -> dict:
         if not isinstance(value.get('constraints', {}), dict):
             raise ValueError('invalid constraints')
     return deepcopy(value)
+
+
+def validate_feedback(value: dict, conditions: dict) -> dict:
+    feedback = validate_final(value)
+    if feedback['action'] != 'needs_requery':
+        raise ValueError('not feedback')
+    constraints = feedback.get('constraints', {})
+    if not constraints:
+        raise ValueError('no new query basis')
+    confirmed = {**conditions, **conditions.get('constraints', {})}
+    if any(key in confirmed and confirmed[key] != val for key, val in constraints.items()):
+        raise ValueError('cannot change confirmed conditions')
+    if all(key in confirmed for key in constraints):
+        raise ValueError('no new query basis')
+    if conditions.get('missing_fields'):
+        raise ValueError('missing user conditions')
+    return feedback
