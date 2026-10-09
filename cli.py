@@ -30,7 +30,8 @@ from travel_data.plan_guard import guard_itinerary, result_data as sourced_data,
 # 导入系统组件
 from agentscope.model import OpenAIChatModel
 from config_agentscope import init_agentscope
-from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG
+from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, get_settings
+from travel_data.juhe_train import JuheTrainProvider
 from context.memory_manager import MemoryManager
 from context.session_store import storage_component
 from context.telemetry import MeteredModel, model_stage
@@ -135,10 +136,13 @@ class AligoCLI:
             # 使用懒加载注册器（智能体在首次使用时才加载）
             from agents.lazy_agent_registry import LazyAgentRegistry
             self._agent_cache = {}
+            train_key = get_settings().juhe_train_api_key
+            providers = {"train_search": JuheTrainProvider(train_key)} if train_key.strip() else {}
             lazy_registry = LazyAgentRegistry(
                 model=self.model, 
                 cache=self._agent_cache,
-                memory_manager=self.memory_manager
+                memory_manager=self.memory_manager,
+                providers=providers,
             )
 
             # 预先加载关键智能体（可选，利用 preload）

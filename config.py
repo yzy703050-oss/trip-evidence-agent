@@ -13,6 +13,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    juhe_train_api_key: str = Field(default="", repr=False)
+
     llm_api_key: str = ""
     llm_model: str = "deepseek-flash"
     llm_base_url: str = "https://api.deepseek.com"
