@@ -76,3 +76,6 @@ test-results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local live evaluation reports and isolated test memory
+data/evals/

@@ -112,7 +112,14 @@ class InformationQueryAgent(AgentBase):
                     limited = True
                     continue
                 if domain in run.domain_results:
-                    run.domain_results[domain]['items'] = [eligible[item_id] for item_id in dict.fromkeys(ids)][:run.limits.candidate_limit]
+                    data = run.domain_results[domain]
+                    data['items'] = [eligible[item_id] for item_id in dict.fromkeys(ids)][:run.limits.candidate_limit]
+                    if data['items'] and data['status'] not in {'ok', 'partial'}:
+                        # A failed refresh must not label previously sourced facts as a fresh success.
+                        data['status'] = 'partial'
+                        data['source'] = deepcopy(data['items'][0]['source'])
+                        data['fetched_at'] = data['source'].get('fetched_at') if isinstance(data['source'], dict) else None
+                        data['message'] = (data.get('message') or '刷新未完成。') + '保留此前取得的候选，需重新确认报价和库存。'
         result = guard_information_result({'status': 'error' if limited else 'ok', 'summary': summary,
             'travel_conditions': deepcopy(run.travel_conditions), 'domain_results': deepcopy(run.domain_results),
             'missing_fields': []}, requested or list(run.domain_results))

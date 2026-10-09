@@ -26,6 +26,9 @@ class MainAgent:
 finalization_mode(forward/synthesize)、agent_schedule。
 简单查询由信息获取独立完成时选 answer+forward；行程和跨角色综合选 synthesize。
 direct 仅用于无需外部资料的直接回答，提供 final_answer，agent_schedule=[]。
+合法组合只有 direct+synthesize、answer+forward、answer+synthesize、itinerary+synthesize。
+direct 的 finalization_mode 必须是 synthesize；forward 仅代表转交信息获取结果，不代表直接回答。
+查询缺日期或人数也交 information_query 整理缺项，选择 answer+synthesize，不猜测用户条件。
 任务字段 agent_name、priority、depends_on、reason、expected_output、answer_role(answer/context)。
 偏好/记忆/制度阶段1，信息获取阶段2。信息获取 requested_domains 仅 train/hotel/guide/weather/web。
 本轮新偏好、所需历史与制度必须先完成；只查天气不生成行程，不查用户没要求的领域。
@@ -42,6 +45,9 @@ direct 仅用于无需外部资料的直接回答，提供 final_answer，agent_
 仅输出 JSON，action 为 answer/itinerary/needs_input/needs_requery。
 answer 提供 final_answer；缺条件提供 missing_fields 和 final_answer。
 需定向补查时提供 reason、domains、constraints，不改变用户硬条件。
+constraints 只允许 hotel_max_total_cny/hotel_max_nightly_cny/train_max_total_cny/seat_class/
+departure_time_after/departure_time_before/available_only/candidate_offset/refresh，且必须提供新依据。
+缺用户条件用 needs_input；接口未接入或没有可执行补查依据时，返回带缺口说明的 answer 或部分 itinerary。
 行程只能引用已有 selected_train_id/selected_hotel_id，日期及每日安排用 city_ref=guide_destination，
 location_ref=guide:<事实下标> 或 suggestion:city_walk/museum/meal/rest，不自行编造报价、库存和地点。
 结果不足要说明，RAG 无知识/错误不代表制度允许。已有来源不能凭空补造。

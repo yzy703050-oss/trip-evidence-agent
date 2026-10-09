@@ -76,3 +76,39 @@ async def test_ten_tool_limit_returns_paired_overflow_result():
     messages = [m for m in seen[1] if m['role'] == 'tool']
     assert len(messages) == 11
     assert json.loads(messages[-1]['content'])['status'] == 'error'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('refresh_fails', [False, True])
+async def test_selected_refresh_candidates_keep_latest_price_or_sourced_partial(refresh_fails):
+    from decimal import Decimal
+    from travel_data.contracts import HotelOffer
+    class HotelProvider:
+        calls = 0
+        async def search(self, query):
+            self.calls += 1
+            if refresh_fails and self.calls == 2:
+                raise TimeoutError('refresh failed')
+            source = Source('hotel-api', datetime(2026, 10, 9, 0, self.calls, tzinfo=timezone.utc), 'https://example.com/hotel')
+            item = HotelOffer('h1', '真实酒店', '大床房', query.check_in, query.check_out,
+                query.guests, Decimal(100 if self.calls == 1 else 120), True,
+                'available', None, source, None).to_dict()
+            return AgentDataResult('ok', query.to_dict(), [item], [], source, source.fetched_at, None)
+    calls = 0
+    async def model(messages, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            args = {'city': '北京', 'check_in': '2026-10-10', 'check_out': '2026-10-11', 'guests': 1}
+            if calls == 2:
+                args['refresh'] = True
+            return SimpleNamespace(content=[{'type': 'tool_use', 'id': str(calls), 'name': 'hotel_search', 'input': args}])
+        return SimpleNamespace(text=json.dumps({'summary': '已有酒店候选', 'selected_ids': {'hotel': ['h1']}}))
+    info = await info_class()(model=model, tool_executor=ToolExecutor({'hotel_search': HotelProvider()})).run(
+        {'requested_domains': ['hotel']}, RunState('refresh-selection'))
+    data = info['domain_results']['hotel']
+    assert data['items'][0]['stay_total_cny'] == ('100' if refresh_fails else '120')
+    assert data['status'] == ('partial' if refresh_fails else 'ok')
+    assert info['status'] == ('partial' if refresh_fails else 'ok')
+    assert data['source'] == data['items'][0]['source']
+    assert data['fetched_at'] == data['source']['fetched_at']

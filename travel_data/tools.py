@@ -95,8 +95,6 @@ class ToolExecutor:
             if run.candidates is None:
                 run.candidates = CandidateStore()
             key = query_cache_key(domain, query)
-            if arguments.get('refresh') is True:
-                key += f':refresh:{len(run.tool_requests)}'
             async def request():
                 run.external_requests_started = True
                 try:
@@ -110,7 +108,7 @@ class ToolExecutor:
                         data.missing_fields, data.source, data.fetched_at, checked.get('message'))
                 except Exception:
                     return AgentDataResult('error', query, [], [], None, None, '数据查询失败或超时。')
-            raw, cached = await run.candidates.get_or_fetch(key, request)
+            raw, cached = await run.candidates.get_or_fetch(key, request, refresh=arguments.get('refresh') is True)
             result = guard_domain_result(domain, candidate_view(raw, limit=run.limits.candidate_limit,
                 offset=offset, constraints=constraints, preferences=run.effective_preferences))
         except (ValueError, TypeError, ArithmeticError):

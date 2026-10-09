@@ -1,0 +1,197 @@
+{
+  "model": "deepseek-flash",
+  "cohort": "latest per scenario after targeted fixes; not a single homogeneous run",
+  "cases": [
+    {
+      "run_id": "live-20261009-202313-r5",
+      "case": "weather",
+      "query": "北京现在天气怎么样？只查天气，不用规划行程。",
+      "status": "ok",
+      "model_calls": 3,
+      "model_stages": {
+        "main:plan": 1,
+        "agent:information_query": 2
+      },
+      "latency_ms": 9192.18,
+      "input_tokens": 3849,
+      "output_tokens": 1212,
+      "assessment": {
+        "checks": {
+          "completed": true,
+          "single_final_message": true,
+          "expected_route": true,
+          "no_model_error": true,
+          "weather_sourced": true,
+          "current_weather_not_daily_forecast": true,
+          "no_unrelated_domain": true,
+          "no_trip_saved": true,
+          "forward_without_main_finalize": true
+        },
+        "verdict": "pass"
+      }
+    },
+    {
+      "run_id": "live-20261009-201835",
+      "case": "train",
+      "query": "查2026年10月10日北京南到苏州北的火车票，1人，二等座，预算每人700元以内。只查票，不规划行程。",
+      "status": "ok",
+      "model_calls": 4,
+      "model_stages": {
+        "main:plan": 1,
+        "agent:information_query": 3
+      },
+      "latency_ms": 17450.81,
+      "input_tokens": 10110,
+      "output_tokens": 3626,
+      "assessment": {
+        "checks": {
+          "completed": true,
+          "single_final_message": true,
+          "expected_route": true,
+          "no_model_error": true,
+          "train_candidates": true,
+          "hard_constraints": true,
+          "only_train": true
+        },
+        "verdict": "pass"
+      }
+    },
+    {
+      "run_id": "live-20261009-201835",
+      "case": "hotel_missing",
+      "query": "找几家北京的酒店，我还没确定入住离店日期和入住人数，请先告诉我还缺哪些条件，不要替我假定。",
+      "status": "needs_input",
+      "model_calls": 3,
+      "model_stages": {
+        "main:plan": 1,
+        "agent:information_query": 1,
+        "main:finalize": 1
+      },
+      "latency_ms": 21415.42,
+      "input_tokens": 4652,
+      "output_tokens": 4183,
+      "assessment": {
+        "checks": {
+          "completed": true,
+          "single_final_message": true,
+          "expected_route": true,
+          "no_model_error": true,
+          "asks_missing_conditions": true,
+          "no_external_query": true
+        },
+        "verdict": "pass"
+      }
+    },
+    {
+      "run_id": "live-20261009-201835",
+      "case": "hotel_unavailable",
+      "query": "查北京2026年10月10日入住、10月12日离店的酒店，1位成人，每晚不超过500元。只查酒店。",
+      "status": "unavailable",
+      "model_calls": 4,
+      "model_stages": {
+        "main:plan": 1,
+        "agent:information_query": 2,
+        "main:finalize": 1
+      },
+      "latency_ms": 11457.39,
+      "input_tokens": 8824,
+      "output_tokens": 2210,
+      "assessment": {
+        "checks": {
+          "completed": true,
+          "single_final_message": true,
+          "expected_route": true,
+          "no_model_error": true,
+          "honest_unavailable": true
+        },
+        "verdict": "pass"
+      }
+    },
+    {
+      "run_id": "live-20261009-202533",
+      "case": "preference_weather",
+      "query": "以后我的酒店品牌偏好改成汉庭。顺便查北京现在的天气，不用安排行程。",
+      "status": "ok",
+      "model_calls": 5,
+      "model_stages": {
+        "main:plan": 1,
+        "agent:preference": 1,
+        "agent:information_query": 2,
+        "main:finalize": 1
+      },
+      "latency_ms": 18067.25,
+      "input_tokens": 6402,
+      "output_tokens": 3122,
+      "assessment": {
+        "checks": {
+          "completed": true,
+          "single_final_message": true,
+          "expected_route": true,
+          "no_model_error": true,
+          "weather_sourced": true,
+          "current_weather_not_daily_forecast": true,
+          "no_unrelated_domain": true,
+          "no_trip_saved": true,
+          "preference_saved": true,
+          "preference_confirmed": true
+        },
+        "verdict": "pass"
+      }
+    },
+    {
+      "run_id": "live-20261009-201835",
+      "case": "memory",
+      "query": "查询我已经保存的酒店品牌偏好是什么，只读我的历史记录，不要搜索网页。",
+      "status": "ok",
+      "model_calls": 3,
+      "model_stages": {
+        "main:plan": 1,
+        "agent:memory_query": 1,
+        "main:finalize": 1
+      },
+      "latency_ms": 12849.86,
+      "input_tokens": 3976,
+      "output_tokens": 2462,
+      "assessment": {
+        "checks": {
+          "completed": true,
+          "single_final_message": true,
+          "expected_route": true,
+          "no_model_error": true,
+          "saved_brand_retrieved": true,
+          "no_external_tools": true
+        },
+        "verdict": "pass"
+      }
+    },
+    {
+      "run_id": "live-20261009-201835",
+      "case": "itinerary",
+      "query": "帮我规划2026年10月10日从上海出发到北京，10月12日返程的三日行程。火车1人，酒店1人，10月10日入住、12日离店，火车预算单程不超过700元，酒店每晚500元内。不要查询企业制度。查不到的报价和景点信息要明确待核实，不要编造。",
+      "status": "needs_input",
+      "model_calls": 6,
+      "model_stages": {
+        "main:plan": 1,
+        "agent:memory_query": 1,
+        "agent:information_query": 3,
+        "main:itinerary": 1
+      },
+      "latency_ms": 77945.1,
+      "input_tokens": 25195,
+      "output_tokens": 15506,
+      "assessment": {
+        "checks": {
+          "completed": true,
+          "single_final_message": true,
+          "expected_route": false,
+          "no_model_error": true,
+          "three_day_framework": false,
+          "honest_incomplete": true,
+          "train_all_queries_retained": false,
+          "weather_all_queries_retained": true
+        },
+        "verdict": "fail"
+      }
+    }
+  ]
+}

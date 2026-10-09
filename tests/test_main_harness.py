@@ -82,6 +82,24 @@ async def test_effective_preferences_precede_info():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['forward', 'synthesize'])
+@pytest.mark.parametrize('succeeds', [True, False])
+async def test_weather_answer_confirms_only_successful_preference_changes(mode, succeeds):
+    class Preference:
+        async def reply(self, msg):
+            value = {'preferences': [{'type': 'hotel_brands', 'value': '汉庭', 'action': 'replace'}]} if succeeds else {'status': 'error', 'error': 'failed'}
+            return Msg('pref', json.dumps(value), 'assistant')
+    main = Main([{'agent_name': 'preference', 'answer_role': 'context'},
+                 {'agent_name': 'information_query', 'requested_domains': ['weather']}], mode=mode)
+    result = await OrchestrationAgent(main_agent=main, agent_registry={'information_query': Info(), 'preference': Preference()}).run_turn(
+        {'original_query': '以后酒店偏好汉庭，查北京天气'}, RunState('preference-confirm'))
+    assert '18' in result['final_answer']
+    assert ('汉庭' in result['final_answer']) is succeeds
+    if succeeds:
+        assert '偏好' in result['final_answer']
+
+
+@pytest.mark.asyncio
 async def test_rag_legacy_status_is_preserved():
     inputs = []
     class RAG:

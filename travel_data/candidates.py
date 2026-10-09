@@ -10,11 +10,14 @@ class CandidateStore:
         self.cache = {}
         self.locks = {}
 
-    async def get_or_fetch(self, key, fetch):
+    async def get_or_fetch(self, key, fetch, *, refresh=False):
         async with self.locks.setdefault(key, asyncio.Lock()):
-            if key in self.cache:
+            if key in self.cache and not refresh:
                 return self.cache[key], True
             result = await fetch()
+            if refresh and key in self.cache:
+                previous = self.cache.pop(key)
+                self.cache[f'{key}:previous:{len(self.cache)}'] = previous
             self.cache[key] = result
             return result, False
 

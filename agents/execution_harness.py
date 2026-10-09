@@ -141,6 +141,19 @@ class ExecutionHarness:
         else:
             result = await self._finalize(context, run, info)
         self._persist(result, run)
+        if {'train', 'hotel', 'weather', 'guide'} & set(run.domain_results):
+            confirmations = []
+            for row in run.results:
+                if row['agent_name'] != 'preference' or row['result']['status'] != 'success':
+                    continue
+                updates = merge_preference_updates({}, row['result']['data'].get('preferences', {}))
+                for key in updates:
+                    value = run.effective_preferences.get(key)
+                    label = {'hotel_brands': '酒店品牌偏好', 'seat_preference': '席别偏好'}.get(key, '出行偏好')
+                    rendered = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+                    confirmations.append(f'{label}已设置为：{rendered}。')
+            if confirmations:
+                result['final_answer'] = '\n'.join(confirmations + [result['final_answer']])
         return result
 
     async def _execute(self, task, context, run):

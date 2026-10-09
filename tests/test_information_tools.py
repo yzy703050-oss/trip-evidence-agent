@@ -49,6 +49,30 @@ async def test_candidate_window_does_not_refetch():
 
 
 @pytest.mark.asyncio
+async def test_successful_refresh_replaces_failed_cache_for_later_windows():
+    from travel_data.tools import ToolExecutor
+    class RecoveringProvider(Provider):
+        async def search(self, query):
+            if not self.queries:
+                self.queries.append(query)
+                raise TimeoutError('first request failed')
+            return await super().search(query)
+    provider, run = RecoveringProvider(), RunState('refresh')
+    executor = ToolExecutor({'hotel_search': provider})
+    query = {'city': '北京', 'check_in': '2026-10-10', 'check_out': '2026-10-11', 'guests': 1}
+    failed = await executor.execute('hotel_search', query, run, call_id='first')
+    refreshed = await executor.execute('hotel_search', {**query, 'refresh': True}, run, call_id='retry')
+    window = await executor.execute('hotel_search', {**query, 'candidate_offset': 5}, run, call_id='window')
+    assert failed['status'] == 'error'
+    assert refreshed['status'] == 'ok'
+    assert window['status'] == 'ok'
+    assert [item['id'] for item in window['items']] == ['5', '6']
+    assert window['source']['provider'] == 'test'
+    assert len(provider.queries) == 2
+    assert [r['cache_hit'] for r in run.tool_requests] == [False, False, True]
+
+
+@pytest.mark.asyncio
 async def test_concurrent_same_query_fetches_once():
     from travel_data.tools import ToolExecutor
     provider, run = Provider(), RunState('a')
