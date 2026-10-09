@@ -93,6 +93,11 @@ class OrchestrationAgent(AgentBase):
         self.agent_registry = agent_registry or {}
         self.memory_manager = memory_manager
         self.emit = emit
+        self.main_agent = kwargs.get('main_agent')
+
+    async def run_turn(self, context, run):
+        from agents.execution_harness import ExecutionHarness
+        return await ExecutionHarness(self.main_agent, self.agent_registry, self.memory_manager, self.emit).run_turn(context, run)
 
     def register_agent(self, agent_name: str, agent: AgentBase):
         """注册子智能体"""
