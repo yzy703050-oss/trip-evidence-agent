@@ -1,10 +1,10 @@
 import io
 from rich.console import Console
-from cli import AligoCLI
+from cli import TripEvidenceCLI
 
 
 def test_domain_statuses_and_sources_are_visible():
-    cli = AligoCLI()
+    cli = TripEvidenceCLI()
     output = io.StringIO()
     cli.console = Console(file=output, width=160, color_system=None)
     results = [{"agent_name": name, "result": {"status": "success", "data": {"status": status, "items": [], "missing_fields": ["check_in"], "source": {"provider": "authorized", "url": "https://example.com"}, "fetched_at": "2026-10-08T10:00:00+08:00"}}} for name, status in [("train_search", "unavailable"), ("hotel_search", "needs_input"), ("travel_guide", "error")]]
@@ -16,7 +16,7 @@ def test_domain_statuses_and_sources_are_visible():
 
 
 def test_cli_guards_legacy_itinerary_before_any_display():
-    cli = AligoCLI()
+    cli = TripEvidenceCLI()
     output = io.StringIO()
     cli.console = Console(file=output, width=160, color_system=None)
     cli._display_results({"results": [{"agent_name": "itinerary_planning", "status": "success", "data": {"summary": "车票299元", "itinerary": {"title": "今日开放", "notes": ["车票299元"], "estimated_budget": "299元", "daily_plans": [{"day": 1, "activities": [{"location_ref": "suggestion:city_walk", "location": "故宫", "description": "今日开放"}]}]}}}]})
@@ -27,7 +27,7 @@ def test_cli_guards_legacy_itinerary_before_any_display():
 
 def test_cli_rejects_price_inventory_prose_in_location():
     injected = "故宫门票两百块，现有库存充足"
-    cli = AligoCLI()
+    cli = TripEvidenceCLI()
     output = io.StringIO()
     cli.console = Console(file=output, width=160, color_system=None)
     cli._display_results({"results": [{"agent_name": "itinerary_planning", "status": "success", "data": {"itinerary": {"daily_plans": [{"city": injected, "activities": [{"location": injected}]}]}}}]})

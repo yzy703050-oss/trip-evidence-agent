@@ -8,7 +8,7 @@ from agentscope.message import Msg
 from rich.console import Console
 
 from agents.orchestration_agent import OrchestrationAgent
-from cli import AligoCLI
+from cli import TripEvidenceCLI
 from context.long_term_memory import LongTermMemory
 from context.memory_manager import MemoryManager
 from context.session_store import SessionStore
@@ -72,7 +72,7 @@ def test_clear_history_removes_sessions_but_keeps_profile_after_restart(tmp_path
 @pytest.mark.asyncio
 async def test_cli_records_user_before_intent_and_final_only_after_dispatch(tmp_path):
     memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
-    cli = AligoCLI()
+    cli = TripEvidenceCLI()
     cli.memory_manager = memory
     cli.console = Console(file=io.StringIO(), force_terminal=False)
 
@@ -116,7 +116,7 @@ async def test_cli_records_user_before_intent_and_final_only_after_dispatch(tmp_
 @pytest.mark.asyncio
 async def test_bad_intent_keeps_user_record_without_fabricating_answer(tmp_path):
     memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
-    cli = AligoCLI()
+    cli = TripEvidenceCLI()
     cli.memory_manager = memory
     cli.console = Console(file=io.StringIO(), force_terminal=False)
 
@@ -139,7 +139,7 @@ async def test_bad_intent_keeps_user_record_without_fabricating_answer(tmp_path)
 @pytest.mark.asyncio
 async def test_bad_orchestration_result_does_not_record_fabricated_final_answer(tmp_path):
     memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
-    cli = AligoCLI()
+    cli = TripEvidenceCLI()
     cli.memory_manager = memory
     cli.console = Console(file=io.StringIO(), force_terminal=False)
 
@@ -256,7 +256,7 @@ def test_cli_can_select_existing_session_and_edit_profile(tmp_path, monkeypatch)
             "content": "旧问题",
         }
     )
-    cli = AligoCLI()
+    cli = TripEvidenceCLI()
     cli.user_id = "alice"
     cli.console = Console(file=io.StringIO(), force_terminal=False)
     monkeypatch.setattr("cli.Prompt.ask", lambda *_args, **_kwargs: "s1")

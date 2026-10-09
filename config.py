@@ -1,5 +1,5 @@
 """
-Configuration for the Aligo Multi-Agent System
+Configuration for the Trip Evidence Multi-Agent System
 """
 import os
 from functools import lru_cache

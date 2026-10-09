@@ -1,6 +1,6 @@
-# Aligo 差旅出行助手（V0）
+# 行程有据
 
-Aligo 的 V0 是一个基于 AgentScope 的命令行多 Agent 差旅助手。用户用自然语言提出行程、政策或历史偏好问题；意图识别 Agent 生成任务计划，调度器按优先级执行所需子 Agent，再汇总回复。本分支还加入了可恢复的会话记忆和 EDD（评测驱动开发）基线。
+行程有据是一个基于 AgentScope 的命令行多 Agent 差旅助手。用户用自然语言提出行程、政策或历史偏好问题；意图识别 Agent 生成任务计划，调度器按优先级执行所需子 Agent，再汇总回复。当前 V0 包含可恢复的会话记忆和 EDD（评测驱动开发）基线。
 
 本仓库只包含 **V0 命令行版本**。火车、酒店与攻略已建立来源契约和输出保护，火车查询可接入已授权的聚合数据接口；未查询到的数据保持未知。
 
@@ -70,7 +70,7 @@ python cli.py
 python .claude/skills/ask-question/script/init_knowledge_base.py
 ```
 
-初始化脚本会重建目标 collection，请勿将它用于需要保留原有内容的知识库。Windows 上若项目路径含中文，Faiss 可能无法在该路径写索引；可在初始化和运行 CLI **之前**设置纯英文目录，例如 `$env:V0_RAG_DB_DIR = 'C:\aligo-rag'`。该变量只改变向量数据库位置。
+初始化脚本会重建目标 collection，请勿将它用于需要保留原有内容的知识库。Windows 上若项目路径含中文，Faiss 可能无法在该路径写索引；可在初始化和运行 CLI **之前**设置纯英文目录，例如 `$env:V0_RAG_DB_DIR = 'C:\trip-evidence-rag'`。该变量只改变向量数据库位置。
 
 ## 测试与真实测评
 

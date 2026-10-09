@@ -77,7 +77,7 @@ async def test_planner_failure_survives_orchestration_cli_and_edd(failure, monke
     import io
     from pathlib import Path
     from rich.console import Console
-    from cli import AligoCLI
+    from cli import TripEvidenceCLI
     from agents.orchestration_agent import OrchestrationAgent
     from context.session_store import SessionStore
     from evals.v0_memory.runner import evaluate_case, sourced_output_valid
@@ -99,7 +99,7 @@ async def test_planner_failure_survives_orchestration_cli_and_edd(failure, monke
     assert executed["status"] == "error"
     assert executed["data"]["error_code"] == {"timeout": "timeout", "parse": "invalid_response", "exception": "model_error"}[failure]
     assert "arbitrary" not in json.dumps(executed)
-    cli = AligoCLI()
+    cli = TripEvidenceCLI()
     output = io.StringIO()
     cli.console = Console(file=output, width=160, color_system=None)
     cli._display_results({"results": [{"agent_name": "itinerary_planning", **executed}]})
