@@ -19,7 +19,7 @@ BUSINESS_SKILLS = {'rag_knowledge': 'ask-question', 'memory_query': 'memory-quer
 class LazyAgentRegistry:
     """
     懒加载智能体注册器 - 插件化版本
-    
+
     自动扫描 .claude/skills 下的技能目录，动态加载 script/agent.py
     """
 
@@ -37,16 +37,16 @@ class LazyAgentRegistry:
         self.memory_manager = memory_manager
         self.providers = dict(providers or {})
         self.console = Console()
-        
+
         # 技能目录路径
         self.skills_root = Path(".claude/skills")
-        
+
         # 技能映射表: skill_name -> agent_script_path
         self._skill_map: Dict[str, Path] = {}
-        
+
         # 发现技能
         self._discover_skills()
-        
+
         self._legacy_mapping = BUSINESS_SKILLS
 
     def _discover_skills(self):
@@ -59,14 +59,14 @@ class LazyAgentRegistry:
         for skill_dir in self.skills_root.iterdir():
             if not skill_dir.is_dir():
                 continue
-            
+
             # 查找 script/agent.py
             agent_script = skill_dir / "script" / "agent.py"
             if agent_script.exists():
                 skill_name = skill_dir.name
                 self._skill_map[skill_name] = agent_script
                 count += 1
-                
+
         # self.console.print(f"[dim]已发现 {count} 个技能插件[/dim]")
 
     def _resolve_agent_name(self, agent_name: str) -> Optional[str]:
@@ -86,43 +86,43 @@ class LazyAgentRegistry:
              raise KeyError(f"Agent '{agent_name}' not found in skills directory")
 
         script_path = self._skill_map[skill_name]
-        
+
         self.console.print(f"[dim]🔄 正在加载 {agent_name} (from {skill_name})...[/dim]")
-        
+
         try:
             # 1. 动态加载模块
             module_name = f"skills.{skill_name}.agent"
             spec = importlib.util.spec_from_file_location(module_name, script_path)
             if spec is None or spec.loader is None:
                 raise ImportError(f"Cannot load spec from {script_path}")
-                
+
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = module
-            
+
             # 关键：确保模块能找到项目根目录的包 (utils, config 等)
             project_root = str(Path(__file__).parent.parent.absolute())
             if project_root not in sys.path:
                 sys.path.insert(0, project_root)
-                
+
             spec.loader.exec_module(module)
-            
+
             # 2. 查找 Agent 类
             agent_class = None
             for name, obj in inspect.getmembers(module):
                 if inspect.isclass(obj) and issubclass(obj, AgentBase) and obj is not AgentBase:
                     agent_class = obj
                     break
-            
+
             if not agent_class:
                 raise ValueError(f"No AgentBase subclass found in {script_path}")
-                
+
             # 3. 实例化
             # 构造参数：name, model, memory_manager (如果需要), **kwargs
             init_params = {
                 "name": agent_name, # 使用请求的名字，或者可以用 skill_name
                 "model": self.model,
             }
-            
+
             # 检查是否需要 memory_manager
             sig = inspect.signature(agent_class.__init__)
             if "memory_manager" in sig.parameters:
@@ -132,13 +132,13 @@ class LazyAgentRegistry:
                 init_params['tool_executor'] = ToolExecutor(self.providers)
 
             agent_instance = agent_class(**init_params)
-            
+
             # 4. 缓存
             self.cache[agent_name] = agent_instance
             self.console.print(f"[dim]✓ {agent_name} 加载完成[/dim]")
-            
+
             return agent_instance
-            
+
         except Exception as e:
             self.console.print(f"[red]✗ 加载 {agent_name} 失败: {e}[/red]")
             import traceback
@@ -162,6 +162,6 @@ class LazyAgentRegistry:
 
     def items(self):
         return self.cache.items()
-        
+
     def get_loaded_agents(self) -> list:
         return list(self.cache.keys())

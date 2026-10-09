@@ -1,33 +1,6 @@
-"""Deterministic query extraction shared by sourced domain agents."""
-import asyncio
-import json
+"""Validated query construction for internal information tools."""
 from datetime import date, timedelta
-
-from agentscope.message import Msg
-from travel_data.contracts import AgentDataResult, TrainQuery, HotelQuery, GuideQuery
-
-
-def _object(value):
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except (TypeError, ValueError):
-            return {}
-    return value if isinstance(value, dict) else {}
-
-
-def confirmed_fields(msg):
-    payload = _object(msg.content if msg is not None else None)
-    fields = dict(_object(payload.get('context')))
-    # Explicit collector data takes precedence. Never search nested profile/memory.
-    previous = payload.get('previous_results', [])
-    if isinstance(previous, list):
-        for result in previous:
-            result = _object(result)
-            collected = _object(result.get('result')) if 'result' in result else result
-            if result.get('agent_name') == 'event_collection' and collected.get('status') == 'success':
-                fields.update(_object(collected.get('data')))
-    return fields
+from travel_data.contracts import TrainQuery, HotelQuery, GuideQuery
 
 
 def make_query(domain, fields):
@@ -87,24 +60,3 @@ def make_query(domain, fields):
     except (ValueError, TypeError):
         return None, ['visit_dates']
     return GuideQuery(**values, visit_dates=dates), []
-
-
-async def sourced_reply(agent, msg, domain):
-    query, missing = make_query(domain, confirmed_fields(msg))
-    if missing:
-        result = AgentDataResult('needs_input', {}, [], missing, None, None,
-                                 '请补充或修正查询条件。')
-    else:
-        try:
-            # Bound a hung provider as well as handling explicit timeout failures.
-            result = await asyncio.wait_for(agent.provider.search(query), timeout=30)
-            if not isinstance(result, AgentDataResult):
-                raise TypeError('provider result must be AgentDataResult')
-        except TimeoutError:
-            result = AgentDataResult('error', query.to_dict(), [], [], None, None,
-                                     '数据接口查询超时；无法确认价格或库存。')
-        except Exception:
-            # Provider exception text can contain credentials; do not echo it.
-            result = AgentDataResult('error', query.to_dict(), [], [], None, None,
-                                     '数据接口查询失败；无法确认报价或事实。')
-    return Msg(agent.name, json.dumps(result.to_dict(), ensure_ascii=False), 'assistant')

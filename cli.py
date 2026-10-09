@@ -25,7 +25,7 @@ from rich.layout import Layout
 from rich.live import Live
 from rich.text import Text
 import json
-from travel_data.plan_guard import guard_itinerary, result_data as sourced_data, DOMAIN_AGENTS
+from travel_data.plan_guard import guard_itinerary
 
 # 导入系统组件
 from agentscope.model import OpenAIChatModel
@@ -34,9 +34,9 @@ from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, get_settings
 from travel_data.juhe_train import JuheTrainProvider
 from context.memory_manager import MemoryManager
 from context.session_store import storage_component
-from context.telemetry import MeteredModel, model_stage
+from context.telemetry import MeteredModel
 from utils.circuit_breaker import CircuitBreaker, CircuitOpenError
-from utils.llm_resilience import retry_with_backoff, run_health_check as check_llm_health
+from utils.llm_resilience import run_health_check as check_llm_health
 from agents.main_agent import MainAgent
 from agents.contracts import RunState, RunLimits
 from agents.orchestration_agent import OrchestrationAgent
@@ -137,7 +137,7 @@ class TripEvidenceCLI:
             train_key = get_settings().juhe_train_api_key
             providers = {"train_search": JuheTrainProvider(train_key)} if train_key.strip() else {}
             lazy_registry = LazyAgentRegistry(
-                model=self.model, 
+                model=self.model,
                 cache=self._agent_cache,
                 memory_manager=self.memory_manager,
                 providers=providers,
@@ -321,7 +321,7 @@ class TripEvidenceCLI:
 
     async def _get_long_term_summary(self, user_input: str = "") -> str:
         """
-        生成长期记忆摘要，用于传递给IntentionAgent
+        生成长期记忆摘要，用于传递给 MainAgent
         使用LLM总结历史聊天记录 + 结构化偏好
 
         Args:
@@ -431,7 +431,7 @@ class TripEvidenceCLI:
 
     def _get_agent_display_name(self, agent_name: str) -> str:
         """获取智能体的显示名称"""
-        # 与 README / LazyAgentRegistry 保持一致，仅保留已存在的 6 个子智能体
+        # 与 README / LazyAgentRegistry 保持一致，显示业务角色和内部工具
         agent_display_names = {
             "preference": "偏好管理",
             "information_query": "信息查询",

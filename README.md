@@ -1,29 +1,37 @@
 # 行程有据
 
-行程有据是一个基于 AgentScope 的命令行多 Agent 差旅助手。用户用自然语言提出行程、政策或历史偏好问题；意图识别 Agent 生成任务计划，调度器按优先级执行所需子 Agent，再汇总回复。当前 V0 包含可恢复的会话记忆和 EDD（评测驱动开发）基线。
+行程有据是一个基于 AgentScope 的命令行多 Agent 差旅助手。用户用自然语言提出行程、政策或历史偏好问题；主 Agent 分派任务，harness 按依赖执行所需子 Agent，再按完整性选择直返或综合。当前 V0 包含可恢复的会话记忆和 EDD（评测驱动开发）基线。
 
 本仓库只包含 **V0 命令行版本**。火车、酒店与攻略已建立来源契约和输出保护，火车查询可接入已授权的聚合数据接口；未查询到的数据保持未知。
 
-## 它怎样工作
+## Runtime architecture
 
-```text
-用户输入
-  ↓
-IntentionAgent → agent_schedule（Agent 名称、优先级、任务原因）
-  ↓
-OrchestrationAgent → 按优先级分批调度
-  ├─ 同一批：并发调用所需子 Agent
-  └─ 下一批：接收前面批次的结果
-  ↓
-汇总结果 → CLI 展示
-```
+MainAgent plans each turn, and the deterministic harness executes dependencies.
+Only four child agents can be scheduled: preference, memory_query, rag_knowledge,
+and information_query. Preference/history/policy run in phase 1; information runs
+in phase 2 using the updated preferences and completed results. MainAgent handles
+itinerary generation and combined answers in phase 3 when required.
 
-- **意图识别**：模型判断本轮需要哪些能力，产出 `agent_schedule`；它不直接执行子 Agent。
-- **调度**：`agents/orchestration_agent.py` 用程序逻辑排序、并发执行同优先级任务，并为每个子 Agent 构造输入 `Msg`。调度决策依赖模型生成的计划，执行顺序由代码控制。
-- **子 Agent**：`agents/lazy_agent_registry.py` 扫描 `.claude/skills/*/script/agent.py`，首次用到时创建实例，之后在当前 CLI 进程内缓存。Skill 目录同时包含说明和可运行脚本；运行脚本的是 Python，模型不会自行读取并执行其中的代码。
-- **结果传递**：同一优先级的 Agent 完成后，结果进入后续批次的 `previous_results`。当前实现会传递此前批次的结果；业务变复杂时可按依赖关系收窄输入。
+Information acquisition includes condition extraction, native tool calls, result
+checks and its own summary. Its private tools are train_search, hotel_search,
+travel_guide, weather_query and web_search. They make no LLM calls themselves.
+MainAgent receives only the four child capabilities, not the tool schemas.
 
-现有能力包括行程规划、偏好提取、事件收集、知识库问答、信息查询、历史记忆查询，以及火车、酒店与攻略查询。具体会调用哪几个，由当轮 `agent_schedule` 决定。AgentScope 在这里提供 `AgentBase`、`Msg` 和模型封装；计划解释、Skill 加载、调度和记忆由项目代码实现。
+A complete simple weather/train/hotel query follows decision → information →
+program forwarding, with zero final MainAgent model calls. Partial results,
+combined answers and itineraries use synthesis. The final envelope contains
+status, finalization_method, final_answer, results, domain_results,
+travel_conditions, missing_fields and optionally itinerary.
+
+The default train/hotel view has at most 5 candidates. Full pools and request
+cache live within one turn. Local windows do not send pagination to Juhe.
+Each information execution allows 6 model calls, 10 tools and a 30-second tool
+timeout. One main feedback round reuses the same cache, with at most 2 information
+executions and 2 final model calls. Confirmed constraints cannot be relaxed.
+Once actual queries start, later model/logging failures do not replay the turn.
+
+RAG internals, model/embedding configuration and external RAG project remain
+unchanged. Hotel and guide providers are still unconfigured and return unavailable.
 
 ## 会话与记忆
 
@@ -39,7 +47,7 @@ data/memory/{user_id}/
    └─ runs.jsonl               # 调度、耗时、调用量和 token 记录
 ```
 
-`events.jsonl` 可记录用户消息、助手回复，以及以后模型直接调用工具时的调用和结果。当前 V0 的子 Agent 调用属于**调度执行阶段**，不会伪装成模型工具调用。会话变长时，程序只在已完成轮次或阶段的安全边界选择压缩范围；不会切在工具调用与结果之间。摘要供模型读取，原始事件仍保留。跨会话查询使用用户画像及相关历史摘要。
+`events.jsonl` 可记录用户消息、助手回复，以及信息获取模型调用工具时的调用和结果。当前 V0 的子 Agent 调用属于**调度执行阶段**，不会伪装成模型工具调用。会话变长时，程序只在已完成轮次或阶段的安全边界选择压缩范围；不会切在工具调用与结果之间。摘要供模型读取，原始事件仍保留。跨会话查询使用用户画像及相关历史摘要。
 
 用户可在 CLI 中执行 `preferences` 查看画像，执行 `preferences set hotel_brands '["全季"]'` 修改偏好，或用 `preferences delete hotel_brands` 删除。手动设置优先于 Agent 自动提取。
 
@@ -77,10 +85,10 @@ python .claude/skills/ask-question/script/init_knowledge_base.py
 不调用模型的回归测试：
 
 ```powershell
-python -m pytest -q tests --ignore=tests/test_intention_agent.py
+python -m pytest -q tests
 ```
 
-旧的 `test_intention_agent.py` 会直接请求模型，所以离线运行时排除。离线测试结果以本仓库当前测试运行输出为准。
+退休角色的旧在线演示已由主 Agent 和内部工具离线回归替代。离线测试结果以本仓库当前测试运行输出为准。
 
 真实 EDD 会检查计划与实际 Agent 调用是否一致、执行是否成功、答案关键事实、RAG 来源与依据、跨会话回忆、行程约束，并记录延迟、模型调用量及 token。先用 CLI 完成相应会话，再用对应 case 对已保存的日志评分：
 
@@ -105,8 +113,8 @@ python -m evals.v0_memory.runner --cases evals/v0_memory/cases.json --user-id US
 | 位置 | 职责 |
 | --- | --- |
 | `cli.py` | 命令行入口、用户交互与一轮请求 |
-| `agents/intention_agent.py` | 意图识别与 `agent_schedule` |
-| `agents/orchestration_agent.py` | 分批执行、结果传递与聚合 |
+| `agents/main_agent.py` | 任务决策与按需综合/行程生成 |
+| `agents/execution_harness.py` | 依赖执行、缓存、直返、反馈与保存 |
 | `agents/lazy_agent_registry.py` | 发现、实例化和缓存 Skill 子 Agent |
 | `.claude/skills/*/script/agent.py` | 各专业子 Agent 的 Python 实现 |
 | `context/` | 会话事件、用户画像、压缩与遥测 |

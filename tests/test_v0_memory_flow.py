@@ -70,180 +70,64 @@ def test_clear_history_removes_sessions_but_keeps_profile_after_restart(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_cli_records_user_before_intent_and_final_only_after_dispatch(tmp_path):
-    memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
-    cli = TripEvidenceCLI()
-    cli.memory_manager = memory
-    cli.console = Console(file=io.StringIO(), force_terminal=False)
-
-    async def no_history(_query):
-        return ""
-
-    cli._get_long_term_summary = no_history
-
-    class Intent:
-        async def reply(self, incoming):
-            assert [event["role"] for event in memory.session_store.read_events()] == ["user"]
-            assert [msg.content for msg in incoming if msg.role == "user"] == ["去北京"]
-            return Msg(name="intent", role="assistant", content=json.dumps({"agent_schedule": []}))
-
-    class Dispatch:
-        async def reply(self, _incoming):
-            assert [event["role"] for event in memory.session_store.read_events()] == ["user"]
-            return Msg(
-                name="dispatch",
-                role="assistant",
-                content=json.dumps({"status": "completed", "results": []}),
-            )
-
-    cli.intention_agent = Intent()
-    cli.orchestrator = Dispatch()
-    await cli.process_query("去北京")
-
+async def test_cli_records_user_before_main_and_one_final(tmp_path):
+    memory = MemoryManager('alice', 's1', storage_path=str(tmp_path))
+    app = TripEvidenceCLI()
+    app.memory_manager = memory
+    class Main:
+        async def plan(self, context):
+            assert [e['role'] for e in memory.session_store.read_events()] == ['user']
+            assert context['original_query'] == 'hello'
+            return {'response_mode': 'direct', 'agent_schedule': [], 'final_answer': 'hello'}
+    app.orchestrator = OrchestrationAgent(main_agent=Main(), memory_manager=memory)
+    assert await app.process_query('hello')
     events = memory.session_store.read_events()
-    assert [event["role"] for event in events] == ["user", "assistant"]
-    assert events[0]["turn_id"] == events[1]["turn_id"]
-    assert events[1]["final"] is True
-    assert all(event["type"] == "message" for event in events)
-    assert memory.session_store.read_runs()[-1]["type"] == "query_run"
-    assert memory.session_store.read_runs()[-1]["status"] == "completed"
-    assert any(
-        run["type"] == "agent_plan" and run["agents"] == []
-        for run in memory.session_store.read_runs()
-    )
+    assert [e['role'] for e in events] == ['user', 'assistant']
+    assert events[1]['final'] is True
+    assert events[0]['turn_id'] == events[1]['turn_id']
+    assert memory.session_store.read_runs()[-1]['status'] == 'completed'
 
 
 @pytest.mark.asyncio
-async def test_bad_intent_keeps_user_record_without_fabricating_answer(tmp_path):
-    memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
-    cli = TripEvidenceCLI()
-    cli.memory_manager = memory
-    cli.console = Console(file=io.StringIO(), force_terminal=False)
-
-    async def no_history(_query):
-        return ""
-
-    cli._get_long_term_summary = no_history
-
-    class Intent:
-        async def reply(self, _incoming):
-            return Msg(name="intent", role="assistant", content="not json")
-
-    cli.intention_agent = Intent()
-    await cli.process_query("去北京")
-
-    assert [event["role"] for event in memory.session_store.read_events()] == ["user"]
-    assert memory.session_store.read_runs()[-1]["status"] == "incomplete"
-
-
-@pytest.mark.asyncio
-async def test_bad_orchestration_result_does_not_record_fabricated_final_answer(tmp_path):
-    memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
-    cli = TripEvidenceCLI()
-    cli.memory_manager = memory
-    cli.console = Console(file=io.StringIO(), force_terminal=False)
-
-    async def no_history(_query):
-        return ""
-
-    cli._get_long_term_summary = no_history
-
-    class Intent:
-        async def reply(self, _incoming):
-            return Msg(name="intent", role="assistant", content=json.dumps({"agent_schedule": []}))
-
-    class Dispatch:
-        async def reply(self, _incoming):
-            return Msg(name="dispatch", role="assistant", content="not json")
-
-    cli.intention_agent = Intent()
-    cli.orchestrator = Dispatch()
-    assert await cli.process_query("去北京") is False
-    assert [event["role"] for event in memory.session_store.read_events()] == ["user"]
-    assert memory.session_store.read_runs()[-1]["status"] == "incomplete"
-
-
-@pytest.mark.asyncio
-async def test_direct_child_agent_call_is_stage_event_not_tool_call(tmp_path):
-    memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
-    memory.start_turn("查询酒店")
-
-    class RawModel:
-        async def __call__(self, _messages):
-            from types import SimpleNamespace
-
-            return SimpleNamespace(content="ok", usage=None)
-
-    metered = MeteredModel(RawModel(), memory.session_store.append_run)
-
-    class Child:
-        async def reply(self, _message):
-            await metered([{"role": "user", "content": "查酒店"}])
-            return Msg(name="child", role="assistant", content=json.dumps({"answer": "找到酒店"}))
-
-    orchestrator = OrchestrationAgent(
-        agent_registry={"information_query": Child()}, memory_manager=memory
-    )
-    intent = Msg(
-        name="intent",
-        role="assistant",
-        content=json.dumps(
-            {
-                "agent_schedule": [
-                    {
-                        "agent_name": "information_query",
-                        "priority": 1,
-                        "reason": "查询",
-                        "expected_output": "酒店",
-                    }
-                ]
-            }
-        ),
-    )
-    await orchestrator.reply(intent)
-
+async def test_bad_main_returns_safe_error_and_records_real_user(tmp_path):
+    memory = MemoryManager('alice', 's1', storage_path=str(tmp_path))
+    app = TripEvidenceCLI()
+    app.memory_manager = memory
+    class Main:
+        async def plan(self, context): return 'not json'
+    app.orchestrator = OrchestrationAgent(main_agent=Main(), memory_manager=memory)
+    assert await app.process_query('hello') is False
     events = memory.session_store.read_events()
-    assert any(
-        event["type"] == "stage_complete" and event["agent_name"] == "information_query"
-        for event in events
-    )
-    assert not any(event["type"] == "tool_call" for event in events)
-    assert memory.session_store.read_runs()[0]["stage"] == "agent:information_query"
+    assert events[0]['role'] == 'user'
+    assert json.loads(events[-1]['content'])['error_code'] == 'invalid_plan'
 
 
 @pytest.mark.asyncio
-async def test_child_receives_compacted_summary_without_replaying_covered_dialogue(tmp_path):
-    memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
-    for index in range(2):
-        turn = memory.start_turn(f"旧问题{index}" + "很长" * 12)
-        memory.record_message("assistant", "旧回答" + "很长" * 12, turn, final=True)
-    memory.start_turn("新问题")
-    memory.compact_if_needed(
-        10,
-        summarizer=lambda _old, _selected: "旧需求摘要",
-        keep_recent_turns=1,
-        token_counter=lambda event: len(str(event.get("content", ""))),
-    )
+async def test_direct_child_is_stage_not_tool_and_receives_summary(tmp_path):
+    from agents.contracts import RunState
+    from test_main_harness import Main
+    memory = MemoryManager('alice', 's1', storage_path=str(tmp_path))
+    turn_id = memory.start_turn('query')
     observed = []
-
+    class RawModel:
+        async def __call__(self, messages):
+            from types import SimpleNamespace
+            return SimpleNamespace(content='ok', usage=None)
+    metered = MeteredModel(RawModel(), memory.session_store.append_run)
     class Child:
-        async def reply(self, incoming):
-            observed.append(json.loads(incoming.content)["context"])
-            return Msg(name="child", role="assistant", content=json.dumps({"answer": "好的"}))
-
-    orchestrator = OrchestrationAgent(
-        agent_registry={"information_query": Child()}, memory_manager=memory
-    )
-    intent = Msg(
-        name="intent",
-        role="assistant",
-        content=json.dumps(
-            {"agent_schedule": [{"agent_name": "information_query", "priority": 1}]}
-        ),
-    )
-    await orchestrator.reply(intent)
-    assert observed[0]["session_summary"] == "旧需求摘要"
-    assert [item["content"] for item in observed[0]["recent_dialogue"]] == ["新问题"]
+        async def reply(self, msg):
+            observed.append(json.loads(msg.content)['context'])
+            await metered([{'role': 'user', 'content': 'history'}])
+            return Msg('child', '{"answer":"history"}', 'assistant')
+    harness = OrchestrationAgent(main_agent=Main([{'agent_name': 'memory_query'}], mode='synthesize'),
+        agent_registry={'memory_query': Child()}, memory_manager=memory)
+    await harness.run_turn({'original_query': 'query', 'session_summary': 'older summary', 'recent_messages': []}, RunState(turn_id))
+    events = memory.session_store.read_events()
+    assert any(e.get('agent_name') == 'memory_query' for e in events)
+    assert not any(e['type'] == 'tool_call' for e in events)
+    assert any(r.get('stage') == 'agent:memory_query' for r in memory.session_store.read_runs())
+    assert observed[0]['session_summary'] == 'older summary'
+    assert observed[0]['recent_messages'] == []
 
 
 def test_cli_can_select_existing_session_and_edit_profile(tmp_path, monkeypatch):

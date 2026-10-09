@@ -85,5 +85,3 @@ def test_provider_failure_does_not_expose_exception_details():
     result = invoke('travel_guide', {'destination': '北京'}, FailingProvider())
     assert result['status'] == 'error'
     assert 'secret-token' not in json.dumps(result)
-
-

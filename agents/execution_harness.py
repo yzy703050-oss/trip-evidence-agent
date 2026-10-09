@@ -124,7 +124,8 @@ class ExecutionHarness:
             batch = [row for row in ready if row['priority'] == priority]
             results = await asyncio.gather(*(self._execute(row, context, run) for row in batch))
             for task, result in zip(batch, results):
-                run.results.append({'agent_name': task['agent_name'], 'priority': task['priority'], 'result': result})
+                run.results.append({'agent_name': task['agent_name'], 'priority': task['priority'],
+                                    'answer_role': task.get('answer_role', 'answer'), 'result': result})
                 if task['agent_name'] == 'preference' and result['status'] == 'success':
                     run.effective_preferences = merge_preference_updates(run.effective_preferences, result['data'].get('preferences', {}))
                 if task['agent_name'] == 'information_query':
@@ -136,8 +137,11 @@ class ExecutionHarness:
                 done.add(task['agent_name'])
                 remaining.remove(task)
         if can_forward_answer(decision, info, run):
-            return build_forward_result(info, run)
-        return await self._finalize(context, run, info)
+            result = build_forward_result(info, run)
+        else:
+            result = await self._finalize(context, run, info)
+        self._persist(result, run)
+        return result
 
     async def _execute(self, task, context, run):
         name = task['agent_name']
@@ -145,6 +149,7 @@ class ExecutionHarness:
             agent = self.agent_registry[name]
             child_context = {**deepcopy(context), 'effective_preferences': deepcopy(run.effective_preferences),
                 'user_preferences': deepcopy(run.effective_preferences), 'travel_conditions': deepcopy(run.travel_conditions),
+                'previous_results': deepcopy(run.results),
                 'requested_domains': task.get('requested_domains', []), 'task_goal': task.get('expected_output', '')}
             with model_stage(f'agent:{name}'):
                 if name == 'information_query' and hasattr(agent, 'run'):
@@ -169,7 +174,10 @@ class ExecutionHarness:
         for attempt in range(run.limits.feedback_rounds + 1):
             final = await self._final_model(context, run)
             if final.get('action') != 'needs_requery':
-                return self._envelope(final, run, info)
+                result = self._envelope(final, run, info)
+                self._record_finalize(result, run)
+                return result
+            self._record_finalize({'status': 'needs_requery', 'feedback': final}, run)
             if attempt >= run.limits.feedback_rounds:
                 return self._feedback_stop('feedback_limit', final, run)
             try:
@@ -205,6 +213,7 @@ class ExecutionHarness:
             'domain_results': deepcopy(run.domain_results), 'travel_conditions': deepcopy(run.travel_conditions),
             'missing_fields': final.get('missing_fields', [])}
         if final.get('action') == 'itinerary':
+            envelope['final_answer'] = '行程安排建议如下，未知费用和未核实事项见说明。'
             envelope['itinerary'] = guard_final_itinerary(final, run.domain_results, run.travel_conditions)
             if envelope['itinerary'].get('missing_fields'):
                 envelope['status'] = 'needs_input'
@@ -214,8 +223,14 @@ class ExecutionHarness:
             envelope['feedback'] = final
         if info and info.get('status') != 'ok' and envelope['status'] == 'ok':
             envelope['status'] = info.get('status', 'partial')
-        if {'train', 'hotel'} & set(run.domain_results):
-            envelope['final_answer'] = grounded_answer(info or {'domain_results': run.domain_results})
+        if final.get('action') != 'itinerary' and {'train', 'hotel', 'weather', 'guide'} & set(run.domain_results):
+            answers = [grounded_answer({'domain_results': run.domain_results})]
+            for row in run.results:
+                if row['agent_name'] in {'rag_knowledge', 'memory_query'} and row.get('answer_role') != 'context':
+                    data = row['result']['data']
+                    if isinstance(data.get('answer'), str) and not data.get('error'):
+                        answers.append(data['answer'])
+            envelope['final_answer'] = '\n'.join(answers)
         return envelope
 
     def _feedback_stop(self, reason, final, run):
@@ -223,6 +238,29 @@ class ExecutionHarness:
         result.update(status='partial', stop_reason=reason,
                       final_answer='补查已停止，现有结果未完全满足要求：' + str(final.get('reason', '')))
         return result
+
+    def _record_finalize(self, result, run):
+        if self.memory_manager:
+            self.memory_manager.record_agent_stage('main_finalize', 3,
+                {'status': 'success' if result['status'] == 'ok' else result['status'], 'data': result}, run.turn_id)
+
+    def _persist(self, result, run):
+        if self.memory_manager is None:
+            return
+        memory = self.memory_manager.long_term
+        old = memory.get_preference()
+        for key, value in run.effective_preferences.items():
+            if value != old.get(key):
+                memory.save_preference(key, value)
+        plan = result.get('itinerary', {})
+        if plan.get('planning_complete') is True and result['status'] in {'ok', 'partial'}:
+            conditions = run.travel_conditions
+            memory.save_trip_history({
+                'origin': conditions.get('origin'), 'destination': conditions.get('destination', conditions.get('city')),
+                'start_date': conditions.get('start_date', conditions.get('departure_date', conditions.get('check_in'))),
+                'end_date': conditions.get('end_date', conditions.get('check_out')),
+                'purpose': conditions.get('purpose'), 'travel_conditions': deepcopy(conditions),
+                'itinerary': deepcopy(plan), 'turn_id': run.turn_id})
 
     @staticmethod
     def _error(code, run):
