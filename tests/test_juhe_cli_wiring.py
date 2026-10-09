@@ -46,6 +46,14 @@ def test_local_env_key_is_loaded_and_hidden_in_repr(tmp_path, monkeypatch):
     assert Settings(_env_file=None).juhe_train_api_key == ''
 
 
+def test_example_env_loads_with_optional_pricing_unset(monkeypatch):
+    monkeypatch.delenv('LLM_INPUT_USD_PER_1M_TOKENS', raising=False)
+    monkeypatch.delenv('LLM_OUTPUT_USD_PER_1M_TOKENS', raising=False)
+    settings = Settings(_env_file='.env.example')
+    assert settings.llm_input_usd_per_1m_tokens is None
+    assert settings.llm_output_usd_per_1m_tokens is None
+
+
 @pytest.mark.parametrize('key', ['', '   '])
 def test_empty_key_keeps_train_unavailable(monkeypatch, key):
     app, output = initialize(monkeypatch, key)
