@@ -62,3 +62,5 @@ RESILIENCE_CONFIG = {
     "circuit_half_open_successes": 2,      # 半开状态下连续成功多少次后关闭
     "health_check_timeout_sec": 10.0,      # 健康检查请求超时（秒）
 }
+
+RUN_LIMITS = dict(info_model_calls=6, info_tool_calls=10, feedback_rounds=1, tool_timeout=30.0, candidate_limit=5)

@@ -13,6 +13,9 @@ from typing import Dict, Any, Optional, Mapping
 from rich.console import Console
 from agentscope.agent import AgentBase
 
+BUSINESS_SKILLS = {'rag_knowledge': 'ask-question', 'memory_query': 'memory-query',
+                   'preference': 'preference', 'information_query': 'query-info'}
+
 class LazyAgentRegistry:
     """
     懒加载智能体注册器 - 插件化版本
@@ -44,18 +47,7 @@ class LazyAgentRegistry:
         # 发现技能
         self._discover_skills()
         
-        # 旧版兼容映射 (name -> skill_folder_name)
-        self._legacy_mapping = {
-            "rag_knowledge": "ask-question",
-            "memory_query": "memory-query",
-            "preference": "preference",
-            "information_query": "query-info",
-            "itinerary_planning": "plan-trip",
-            "event_collection": "event-collection",
-            "train_search": "train-search",
-            "hotel_search": "hotel-search",
-            "travel_guide": "travel-guide",
-        }
+        self._legacy_mapping = BUSINESS_SKILLS
 
     def _discover_skills(self):
         """扫描 .claude/skills 目录寻找可用的 Agent"""
@@ -79,20 +71,13 @@ class LazyAgentRegistry:
 
     def _resolve_agent_name(self, agent_name: str) -> Optional[str]:
         """解析智能体名称到技能目录名"""
-        # 1. 直接匹配技能名
-        if agent_name in self._skill_map:
-            return agent_name
-            
-        # 2. 尝试遗留映射
-        if agent_name in self._legacy_mapping:
-            skill_name = self._legacy_mapping[agent_name]
-            if skill_name in self._skill_map:
-                return skill_name
-                
-        return None
+        skill_name = BUSINESS_SKILLS.get(agent_name)
+        return skill_name if skill_name in self._skill_map else None
 
     def __getitem__(self, agent_name: str):
         """获取智能体 (懒加载)"""
+        if agent_name not in BUSINESS_SKILLS:
+            raise KeyError(f"Unknown business agent: {agent_name}")
         if agent_name in self.cache:
             return self.cache[agent_name]
 
@@ -142,10 +127,10 @@ class LazyAgentRegistry:
             sig = inspect.signature(agent_class.__init__)
             if "memory_manager" in sig.parameters:
                 init_params["memory_manager"] = self.memory_manager
-            if "provider" in sig.parameters:
-                dispatch_name = next((key for key, value in self._legacy_mapping.items() if value == skill_name), agent_name)
-                init_params["provider"] = self.providers.get(dispatch_name)
-                
+            if agent_name == 'information_query':
+                from travel_data.tools import ToolExecutor
+                init_params['tool_executor'] = ToolExecutor(self.providers)
+
             agent_instance = agent_class(**init_params)
             
             # 4. 缓存
@@ -161,7 +146,7 @@ class LazyAgentRegistry:
             raise
 
     def __contains__(self, agent_name: str) -> bool:
-        return self._resolve_agent_name(agent_name) is not None or agent_name in self.cache
+        return self._resolve_agent_name(agent_name) is not None
 
     def get(self, agent_name: str, default=None):
         try:
@@ -170,12 +155,7 @@ class LazyAgentRegistry:
             return default
 
     def keys(self):
-        # 返回所有可能的 key（包括 legacy mapping 的 key，为了兼容 orchestrator）
-        keys = set(self._skill_map.keys())
-        for legacy_key, skill_val in self._legacy_mapping.items():
-            if skill_val in self._skill_map:
-                keys.add(legacy_key)
-        return list(keys)
+        return [name for name in BUSINESS_SKILLS if self._resolve_agent_name(name)]
 
     def values(self):
         return self.cache.values()

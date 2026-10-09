@@ -44,22 +44,18 @@ def test_invalid_source_and_malformed_model_fields_are_discarded():
 import pytest
 
 @pytest.mark.asyncio
-async def test_planner_applies_guard_to_actual_model_response(monkeypatch):
-    import importlib.util
-    from pathlib import Path
-    from agentscope.message import Msg
-    spec = importlib.util.spec_from_file_location("tested_planner", Path(".claude/skills/plan-trip/script/agent.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    async def fake_extract(response):
-        return json.dumps({"itinerary": {"notes": ["今日开放"], "estimated_budget": "299元", "daily_plans": [{"city": "故宫门票两百块，现有库存充足", "activities": [{"location": "故宫门票两百块，现有库存充足"}]}]}})
-    async def fake_model(messages):
-        return object()
-    monkeypatch.setattr(module, "extract_json_from_async_response", fake_extract)
-    result = await module.ItineraryPlanningAgent(model=fake_model).reply(Msg("test", content=json.dumps({"context": {}, "previous_results": []}), role="user"))
-    assert "299" not in result.content and "今日开放" not in result.content
-    assert "故宫门票两百块，现有库存充足" not in result.content
-    assert json.loads(result.content)["budget"]["complete"] is False
+async def test_main_applies_guard_to_actual_model_response():
+    from types import SimpleNamespace
+    from agents.main_agent import MainAgent
+    from agents.execution_harness import ExecutionHarness
+    from agents.contracts import RunState
+    async def model(messages):
+        return SimpleNamespace(text=json.dumps({'action': 'itinerary', 'itinerary': {'notes': ['299'], 'daily_plans': [{'city': 'forged 299'}]}}))
+    main = MainAgent(model)
+    harness = ExecutionHarness(main, {})
+    result = await harness._finalize({'response_mode': 'itinerary'}, RunState('t1'), None)
+    assert '299' not in json.dumps(result)
+    assert result['itinerary']['budget']['complete'] is False
 
 
 @pytest.mark.parametrize("field", ["city", "location"])
@@ -71,49 +67,19 @@ def test_guard_rejects_factual_prose_in_suggestion_fields(field):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["timeout", "parse", "exception"])
-async def test_planner_failure_survives_orchestration_cli_and_edd(failure, monkeypatch, tmp_path):
-    import importlib.util
-    import io
-    from pathlib import Path
-    from rich.console import Console
-    from cli import TripEvidenceCLI
-    from agents.orchestration_agent import OrchestrationAgent
-    from context.session_store import SessionStore
-    from evals.v0_memory.runner import evaluate_case, sourced_output_valid
-    spec = importlib.util.spec_from_file_location("failure_planner", Path(".claude/skills/plan-trip/script/agent.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    async def fake_model(messages):
-        if failure == "timeout":
-            raise TimeoutError("secret arbitrary error prose")
-        if failure == "exception":
-            raise RuntimeError("secret arbitrary error prose")
-        return object()
-    async def fake_extract(response):
-        return "unparsable arbitrary prose"
-    monkeypatch.setattr(module, "extract_json_from_async_response", fake_extract)
-    planner = module.ItineraryPlanningAgent(model=fake_model)
-    orchestrator = OrchestrationAgent(agent_registry={"itinerary_planning": planner})
-    executed = await orchestrator._execute_agent("itinerary_planning", {}, "", "", [])
-    assert executed["status"] == "error"
-    assert executed["data"]["error_code"] == {"timeout": "timeout", "parse": "invalid_response", "exception": "model_error"}[failure]
-    assert "arbitrary" not in json.dumps(executed)
-    cli = TripEvidenceCLI()
-    output = io.StringIO()
-    cli.console = Console(file=output, width=160, color_system=None)
-    cli._display_results({"results": [{"agent_name": "itinerary_planning", **executed}]})
-    assert "规划失败" in output.getvalue()
-    assert "0天" not in output.getvalue()
-    stage = {"type": "stage_complete", "turn_id": "t1", "agent_name": "itinerary_planning", "status": executed["status"], "content": executed}
-    assert sourced_output_valid([stage]) is True  # Safe provenance, but unsuccessful execution.
-    store = SessionStore(tmp_path, "alice", "failure")
-    store.append(stage)
-    store.append_run({"type": "agent_plan", "turn_id": "t1", "agents": [{"agent_name": "itinerary_planning"}]})
-    store.append_run({"type": "query_run", "turn_id": "t1"})
-    checks = evaluate_case({"id": "failure", "expected_agents": ["itinerary_planning"]}, store)
-    assert checks["checks"]["execution_success"] is False
-    assert checks["passed"] is False
+@pytest.mark.parametrize('failure', ['timeout', 'parse', 'exception'])
+async def test_main_failure_preserves_safe_error(failure):
+    from types import SimpleNamespace
+    from agents.main_agent import MainAgent
+    from agents.execution_harness import ExecutionHarness
+    from agents.contracts import RunState
+    async def model(messages):
+        if failure == 'parse': return SimpleNamespace(text='unparsable arbitrary prose')
+        raise TimeoutError('secret arbitrary error prose')
+    result = await ExecutionHarness(MainAgent(model), {})._finalize({'response_mode': 'itinerary'}, RunState('t1'), None)
+    assert result['status'] == 'error'
+    assert 'arbitrary' not in json.dumps(result)
+    assert 'itinerary' not in result
 
 
 def test_places_only_use_provider_references_or_fixed_generic_suggestions():

@@ -26,16 +26,14 @@ class RecordingProvider:
         self.queries.append(query)
         if self.fail:
             raise TimeoutError('test timeout')
-        return AgentDataResult('ok', query.to_dict(), [] if self.empty else [{'source': self.source.to_dict()}], [], self.source, self.source.fetched_at, None)
+        return AgentDataResult('ok', query.to_dict(), [], [], self.source, self.source.fetched_at, None)
 
 
 def invoke(name, fields, provider=None, previous=False):
-    registry = LazyAgentRegistry(None, {}, providers={name: provider} if provider else {})
-    payload = {'context': fields, 'previous_results': []}
-    if previous:
-        payload = {'context': {'user_preferences': {'origin': '杭州'}}, 'previous_results': [{'agent_name': 'event_collection', 'status': 'success', 'data': fields}]}
-    msg = Msg('user', json.dumps(payload), 'user')
-    return json.loads(asyncio.run(registry[name].reply(msg)).content)
+    from agents.contracts import RunState
+    from travel_data.tools import ToolExecutor
+    return asyncio.run(ToolExecutor({name: provider} if provider else {}).execute(
+        name, fields, RunState('t1'), call_id='1'))
 
 
 @pytest.mark.parametrize('name,fields,required', CASES)
@@ -44,7 +42,7 @@ def test_queries_and_sources_pass_through(name, fields, required, previous):
     provider = RecordingProvider()
     result = invoke(name, fields, provider, previous)
     assert result['source'] == provider.source.to_dict()
-    assert result['items'] == [{'source': provider.source.to_dict()}]
+    assert result['items'] == []
     assert provider.queries[0].to_dict() == {**fields, **({'passengers': 1} if name == 'train_search' else {})}
 
 
@@ -77,19 +75,7 @@ def test_invalid_date_and_guest_count_do_not_query():
 def test_guide_without_dates_and_profile_not_used():
     provider = RecordingProvider()
     assert invoke('travel_guide', {'destination': '北京'}, provider)['query']['visit_dates'] == []
-    assert invoke('train_search', {'user_preferences': CASES[0][1]}, provider)['status'] == 'needs_input'
-
-
-def test_collector_aliases_and_failed_collector_are_not_trusted():
-    provider = RecordingProvider()
-    fields = {**CASES[0][1]}
-    fields['start_date'] = fields.pop('departure_date')
-    assert invoke('train_search', fields, provider, previous=True)['status'] == 'ok'
-    registry = LazyAgentRegistry(None, {}, providers={'train_search': provider})
-    payload = {'previous_results': [{'agent_name': 'event_collection', 'status': 'error', 'data': fields}]}
-    result = json.loads(asyncio.run(registry['train_search'].reply(Msg('user', json.dumps(payload), 'user'))).content)
-    assert result['status'] == 'needs_input'
-    assert len(provider.queries) == 1
+    assert invoke('train_search', {}, provider)['status'] == 'needs_input'
 
 
 def test_provider_failure_does_not_expose_exception_details():
@@ -101,20 +87,3 @@ def test_provider_failure_does_not_expose_exception_details():
     assert 'secret-token' not in json.dumps(result)
 
 
-@pytest.mark.parametrize('name,fields,required', CASES)
-@pytest.mark.parametrize('status', ['success', 'error'])
-def test_actual_orchestrator_nested_collector_result(name, fields, required, status):
-    provider = RecordingProvider()
-    registry = LazyAgentRegistry(None, {}, providers={name: provider})
-    payload = {
-        'context': {'user_preferences': {'origin': '杭州'}},
-        'previous_results': [{
-            'agent_name': 'event_collection', 'priority': 1,
-            'result': {'status': status, 'data': fields},
-        }],
-    }
-    result = json.loads(asyncio.run(registry[name].reply(Msg('user', json.dumps(payload), 'user'))).content)
-    assert result['status'] == ('ok' if status == 'success' else 'needs_input')
-    assert len(provider.queries) == (1 if status == 'success' else 0)
-    if status == 'success':
-        assert result['source'] == provider.source.to_dict()

@@ -53,7 +53,7 @@ class SkillLoader:
             print(f"Error reading {file_path}: {e}")
             return None
 
-    def get_skill_prompt(self, skill_mapping: Optional[Dict[str, str]] = None) -> str:
+    def get_skill_prompt(self, skill_mapping: Optional[Dict[str, str]] = None, allowed_skills: set[str] | None = None) -> str:
         """
         生成用于 Prompt 的技能描述字符串
         
@@ -71,6 +71,8 @@ class SkillLoader:
         sorted_skills = sorted(self.skills.items())
         
         for name, info in sorted_skills:
+            if allowed_skills is not None and name not in allowed_skills:
+                continue
             display_name = name
             if skill_mapping and name in skill_mapping:
                 display_name = skill_mapping[name]

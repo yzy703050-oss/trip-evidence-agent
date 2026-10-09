@@ -37,7 +37,8 @@ from context.session_store import storage_component
 from context.telemetry import MeteredModel, model_stage
 from utils.circuit_breaker import CircuitBreaker, CircuitOpenError
 from utils.llm_resilience import retry_with_backoff, run_health_check as check_llm_health
-from agents.intention_agent import IntentionAgent
+from agents.main_agent import MainAgent
+from agents.contracts import RunState, RunLimits
 from agents.orchestration_agent import OrchestrationAgent
 # 移除其他智能体的导入，改用懒加载
 
@@ -52,7 +53,8 @@ class TripEvidenceCLI:
         self.session_id = None
         self.memory_manager = None
         self.orchestrator = None
-        self.intention_agent = None
+        self.main_agent = None
+        self.last_result = None
         self.model = None
         self._agent_cache = {}  # 智能体缓存
         self.circuit_breaker = None  # 在 initialize_system 中从 RESILIENCE_CONFIG 初始化
@@ -127,11 +129,7 @@ class TripEvidenceCLI:
             )
             self.memory_manager.llm_model = self.model
 
-            # 初始化意图识别智能体（必须预加载）
-            self.intention_agent = IntentionAgent(
-                name="IntentionAgent",
-                model=self.model
-            )
+            self.main_agent = MainAgent(model=self.model)
 
             # 使用懒加载注册器（智能体在首次使用时才加载）
             from agents.lazy_agent_registry import LazyAgentRegistry
@@ -151,6 +149,7 @@ class TripEvidenceCLI:
             # 初始化协调器
             self.orchestrator = OrchestrationAgent(
                 name="OrchestrationAgent",
+                main_agent=self.main_agent,
                 agent_registry=lazy_registry,
                 memory_manager=self.memory_manager
             )
@@ -224,132 +223,48 @@ class TripEvidenceCLI:
                     self.memory_manager.session_store.append_run({
                         "type": "query_run", "turn_id": self.memory_manager.current_turn_id,
                         "status": status, "error": error,
+                        "finalization_method": (self.last_result or {}).get("finalization_method"),
                         "latency_ms": round((perf_counter() - started) * 1000, 3),
                     })
                 except Exception:
                     logging.getLogger(__name__).exception("Could not persist query telemetry")
 
     async def _process_query_impl(self, user_input: str):
-        """
-        处理用户查询（原逻辑保留；仅在入口加熔断检查、对 LLM 调用加重试）
-        """
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from config import RUN_LIMITS
         turn_id = self.memory_manager.start_turn(user_input)
-
-        # ---------- 仅新增：熔断检查 ----------
         if self.circuit_breaker:
             try:
                 self.circuit_breaker.raise_if_open()
             except CircuitOpenError:
-                self.console.print(
-                    "\n[bold yellow]⚠ 服务暂时不可用，请稍后再试。[/bold yellow]\n",
-                    style="dim"
-                )
+                self.console.print("服务暂时不可用，请稍后再试。", style="yellow")
                 return False
-
-        rc = RESILIENCE_CONFIG
-        max_retries = rc.get("max_retries", 3)
-
-        with self.console.status("思考中...", spinner="dots"):
-            from agentscope.message import Msg
-
-            # 1. 按安全边界压缩旧消息，再构造意图识别上下文
-            await self.memory_manager.compact_if_needed_async(
-                token_budget=SYSTEM_CONFIG.get("memory_context_budget_tokens", 6000)
-            )
-            long_term_summary = await self._get_long_term_summary(user_input)
-            snapshot = self.memory_manager.get_compacted_context(n_turns=5)
-            if snapshot["summary"]:
-                long_term_summary = "\n".join(part for part in (long_term_summary, "【当前会话摘要】\n" + snapshot["summary"]) if part)
-            recent_context = [msg for msg in snapshot["recent_messages"] if msg.get("turn_id") != turn_id]
-            context_messages = []
-            if long_term_summary:
-                context_messages.append(Msg(name="system", content=long_term_summary, role="system"))
-            for msg in recent_context:
-                context_messages.append(Msg(name=msg["role"], content=msg["content"], role=msg["role"]))
-            context_messages.append(Msg(name="user", content=user_input, role="user"))
-
-            # 2. 意图识别（仅此调用加重试，原逻辑不变）
-            intention_result = None
-            try:
-                with model_stage("intent"):
-                    intention_result = await retry_with_backoff(
-                        lambda: self.intention_agent.reply(context_messages),
-                        max_retries=max_retries,
-                        base_delay_sec=rc.get("retry_base_delay_sec", 1.0),
-                        max_delay_sec=rc.get("retry_max_delay_sec", 30.0),
-                        on_retry=lambda attempt, exc: self.memory_manager.session_store.append_run({
-                            "type": "retry", "turn_id": turn_id, "stage": "intent",
-                            "attempt": attempt, "error_type": type(exc).__name__,
-                        }),
-                    )
-                if self.circuit_breaker:
-                    self.circuit_breaker.record_success()
-            except CircuitOpenError:
-                raise
-            except Exception as e:
-                if self.circuit_breaker:
-                    self.circuit_breaker.record_failure()
-                raise
-
-            # 3. 解析意图识别结果（原逻辑不变：解析失败则友好提示并 return）
-            try:
-                intention_data = json.loads(intention_result.content)
-            except json.JSONDecodeError:
-                self.console.print("❌ 无法理解您的需求，请重新描述", style="bold red")
-                return False
-
-            schedule = intention_data.get("agent_schedule", [])
-            self.memory_manager.session_store.append_run({
-                "type": "agent_plan", "turn_id": turn_id,
-                "agents": [
-                    {"agent_name": item.get("agent_name"), "priority": item.get("priority")}
-                    for item in schedule if isinstance(item, dict)
-                ],
-            })
-
-        # 4. 调度智能体
-        orchestration_result = None
+        await self.memory_manager.compact_if_needed_async(
+            token_budget=SYSTEM_CONFIG.get('memory_context_budget_tokens', 6000))
+        history = await self._get_long_term_summary(user_input)
+        snapshot = self.memory_manager.get_compacted_context(n_turns=5)
+        context = {'original_query': user_input, 'current_time': datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(),
+                   'history_summary': history, 'session_summary': snapshot['summary'],
+                   'recent_messages': [m for m in snapshot['recent_messages'] if m.get('turn_id') != turn_id]}
+        run = RunState(turn_id, limits=RunLimits(**RUN_LIMITS),
+                       effective_preferences=self.memory_manager.long_term.get_preference())
+        self.current_run = run
         try:
-            orchestration_result = await retry_with_backoff(
-                lambda: self.orchestrator.reply(intention_result),
-                # Replaying a train schedule can repeat a successful paid request
-                # after a later persistence failure. Retry only safe schedules.
-                max_retries=0 if any(
-                    isinstance(item, dict) and item.get("agent_name") == "train_search"
-                    for item in schedule
-                ) else max_retries,
-                base_delay_sec=rc.get("retry_base_delay_sec", 1.0),
-                max_delay_sec=rc.get("retry_max_delay_sec", 30.0),
-                on_retry=lambda attempt, exc: self.memory_manager.session_store.append_run({
-                    "type": "retry", "turn_id": turn_id, "stage": "orchestration",
-                    "attempt": attempt, "error_type": type(exc).__name__,
-                }),
-            )
+            with self.console.status("思考中...", spinner='dots'):
+                result = await self.orchestrator.run_turn(context, run)
             if self.circuit_breaker:
-                self.circuit_breaker.record_success()
-        except CircuitOpenError:
+                if result['status'] == 'error': self.circuit_breaker.record_failure()
+                else: self.circuit_breaker.record_success()
+        except Exception:
+            if self.circuit_breaker: self.circuit_breaker.record_failure()
             raise
-        except Exception as e:
-            if self.circuit_breaker:
-                self.circuit_breaker.record_failure()
-            raise
-
-        # 6. 解析执行结果（原逻辑不变）
-        try:
-            result_data = json.loads(orchestration_result.content)
-        except json.JSONDecodeError:
-            self.console.print("❌ 调度结果无法解析，请重试", style="bold red")
-            return False
-
-        # 7. 显示调用的智能体与最终结果（原逻辑不变）
-        self._display_agents_called(result_data)
-        self.console.print()
-        self._display_results(result_data)
-        self.memory_manager.record_message(
-            "assistant", json.dumps(result_data, ensure_ascii=False), turn_id,
-            final=True, metadata={"format": "orchestration_result"},
-        )
-        return True
+        self.last_result = result
+        self._display_agents_called(result)
+        self._display_results(result)
+        self.memory_manager.record_message('assistant', json.dumps(result, ensure_ascii=False), turn_id,
+            final=True, metadata={'format': 'main_result', 'finalization_method': result['finalization_method']})
+        return result['status'] != 'error'
 
     def _display_agents_called(self, result_data: dict):
         """显示调用的智能体列表"""
@@ -378,31 +293,30 @@ class TripEvidenceCLI:
             self.console.print(f"🤖 调用智能体: {', '.join(agents_called)}", style="dim")
 
     def _display_results(self, result_data: dict):
-        """显示执行结果 - 确保永远有回复"""
+        from travel_data.result_guard import guard_domain_result
+        from agents.itinerary_module import guard_final_itinerary
         self.console.print()
-
-        # 获取结果列表
-        results = result_data.get("results", [])
-
-        if not results:
-            # 情况1: 没有任何智能体被调用
-            status = result_data.get("status", "unknown")
-            if status == "no_agents":
-                self.console.print("✓ 好的，我已记录下来。", style="green")
-                self.console.print("\n💡 您可以继续补充信息，或者尝试：", style="dim")
-                self.console.print("  • 规划行程：「帮我规划去北京的行程」", style="dim")
-                self.console.print("  • 查询信息：「北京的天气怎么样」", style="dim")
-                self.console.print("  • 问问题：「差旅标准是多少」", style="dim")
+        if result_data.get('final_answer'):
+            self.console.print(result_data['final_answer'], markup=False)
+        if result_data.get('missing_fields'):
+            self.console.print('需要补充：' + ', '.join(result_data['missing_fields']), markup=False)
+        domains = result_data.get('domain_results', {})
+        for domain, raw in domains.items():
+            data = guard_domain_result(domain, raw)
+            if domain in ('train', 'hotel', 'guide'):
+                self._display_sourced_result({'train': 'train_search', 'hotel': 'hotel_search', 'guide': 'travel_guide'}[domain], data)
             else:
-                self.console.print("未能获取有效结果，请重新描述您的需求。", style="yellow")
-        else:
-            # 情况2: 有智能体被调用，生成人性化回复
-            has_output = self._generate_human_response(results)
-
-            # 情况3: 智能体执行了但没有显示内容（兜底）
-            if not has_output:
-                self.console.print("✓ 已处理您的请求。", style="green")
-
+                source = data.get('source') or {}
+                self.console.print(f"{source.get('provider', '')} {source.get('url', '')} {source.get('fetched_at', '')}", markup=False)
+                if domain == 'web':
+                    for item in data.get('items', []):
+                        self.console.print(f"{item.get('title', '')}: {item.get('snippet', '')} {item.get('url', '')}", markup=False)
+        if result_data.get('itinerary'):
+            plan = guard_final_itinerary(result_data['itinerary'], domains, result_data.get('travel_conditions'))
+            self.console.print(json.dumps(plan['itinerary'], ensure_ascii=False, indent=2), markup=False)
+            self._display_sourced_plan(plan)
+        if result_data.get('status') == 'error':
+            self.console.print('本轮未能完成请求。', style='yellow')
         self.console.print()
 
     async def _get_long_term_summary(self, user_input: str = "") -> str:
@@ -478,267 +392,6 @@ class TripEvidenceCLI:
 
         return "\n".join(summary_parts) if summary_parts else ""
 
-    def _generate_human_response(self, results: list) -> bool:
-        """
-        根据结果生成人性化的回复
-        """
-        has_output = False
-
-        for result in results:
-            agent_name = result.get("agent_name", "")
-            status = result.get("result", result).get("status", "")
-            data = sourced_data(result)
-            if agent_name in DOMAIN_AGENTS:
-                self._display_sourced_result(agent_name, data)
-                has_output = True
-                continue
-            if agent_name == "itinerary_planning":
-                data = guard_itinerary(data, results)
-                if "error" in data:
-                    self.console.print(data["error"], style="red", markup=False)
-                    has_output = True
-                    continue
-                self._display_sourced_plan(data)
-
-            current_agent_shown = False  # 标记当前Agent是否有内容展示
-
-            # 处理失败的智能体
-            if status == "error":
-                error_msg = data.get("error", "未知错误")
-                agent_display_name = self._get_agent_display_name(agent_name)
-                self.console.print(f"❌ {agent_display_name}执行失败: {error_msg}", style="red")
-                has_output = True
-                continue
-
-            # 只处理成功的智能体 (RAG 的 no_knowledge 视为一种特殊的成功/提示)
-            if status != "success" and not (agent_name == "rag_knowledge" and status == "no_knowledge"):
-                continue
-
-            # --- 特定 Agent 处理 ---
-
-            # 行程规划
-            if agent_name == "itinerary_planning":
-                itinerary = data.get("itinerary")
-                # 增强：支持从 data.data.itinerary 获取
-                if not itinerary and "data" in data and isinstance(data["data"], dict):
-                    itinerary = data["data"].get("itinerary")
-                
-                if itinerary:
-                    title = itinerary.get('title', '行程规划')
-                    self.console.print(f"\n✈️  [bold cyan]{title}[/bold cyan]")
-                    self.console.print(f"时长: {itinerary.get('duration', '未知')}\n")
-
-                    # 每日行程
-                    for day_plan in itinerary.get("daily_plans", []):
-                        day_num = day_plan.get("day", 1)
-                        self.console.print(f"[bold yellow]第 {day_num} 天[/bold yellow]")
-
-                        # 兼容 activities 和 time_slots
-                        activities = day_plan.get("activities") or day_plan.get("time_slots") or []
-                        for slot in activities:
-                            time = slot.get("time", "")
-                            # 兼容 activity 和 location
-                            activity = slot.get("activity") or slot.get("location") or ""
-                            description = slot.get("description", "")
-                            transport = slot.get("transport", "")
-
-                            self.console.print(f"  {time} - {activity}")
-                            if description:
-                                self.console.print(f"    {description}", style="dim")
-                            if transport:
-                                self.console.print(f"    🚇 {transport}", style="dim")
-
-                        # 餐食建议
-                        meals = day_plan.get("meals", {})
-                        if meals:
-                            self.console.print()
-                            if meals.get("lunch"):
-                                self.console.print(f"  🍜 {meals['lunch']}", style="dim")
-                            if meals.get("dinner"):
-                                self.console.print(f"  🍽️  {meals['dinner']}", style="dim")
-                        self.console.print()
-
-                    # 注意事项
-                    notes = itinerary.get("notes", [])
-                    if notes:
-                        self.console.print("[bold]📌 注意事项[/bold]")
-                        for note in notes:
-                            self.console.print(f"  • {note}")
-                    current_agent_shown = True
-
-            # 偏好管理
-            elif agent_name == "preference":
-                raw_prefs = data.get("preferences")
-                # 增强：支持从 data.data.preferences 获取
-                if not raw_prefs and "data" in data and isinstance(data["data"], dict):
-                    raw_prefs = data["data"].get("preferences")
-
-                if isinstance(raw_prefs, dict):
-                    prefs_list = raw_prefs.get("preferences", [])
-                else:
-                    prefs_list = raw_prefs if isinstance(raw_prefs, list) else []
-
-                if prefs_list:
-                    self.console.print("✓ [bold green]已更新您的偏好设置[/bold green]")
-                    type_names = {
-                        "home_location": "常驻地",
-                        "transportation_preference": "交通偏好",
-                        "hotel_brands": "酒店偏好",
-                        "airlines": "航空公司偏好",
-                        "seat_preference": "座位偏好",
-                        "meal_preference": "餐食偏好",
-                        "budget_level": "预算等级"
-                    }
-                    for pref in prefs_list:
-                        pref_type = pref.get("type", "")
-                        pref_value = pref.get("value", "")
-                        action = pref.get("action", "replace")
-                        display_type = type_names.get(pref_type, pref_type)
-                        action_text = "追加" if action == "append" else "设置为"
-                        self.console.print(f"  • {display_type} {action_text} [cyan]{pref_value}[/cyan]")
-                    current_agent_shown = True
-                    has_itinerary = any(r.get("agent_name") == "itinerary_planning" for r in results)
-                    if not has_itinerary:
-                        self.console.print("\n💡 下次规划行程时会参考这些偏好。", style="dim")
-                else:
-                    # 检查是否有错误信息
-                    err = data.get("error", "")
-                    if err:
-                        self.console.print(f"偏好未保存: {err}", style="yellow")
-                        current_agent_shown = True
-                    # 如果只是没提取到，可能就是没偏好，不强求显示，交给兜底逻辑
-
-            # 事项收集
-            elif agent_name == "event_collection":
-                # 增强：支持从 data.data 获取
-                origin = data.get("origin") or data.get("data", {}).get("origin")
-                destination = data.get("destination") or data.get("data", {}).get("destination")
-                start_date = data.get("start_date") or data.get("data", {}).get("start_date")
-                end_date = data.get("end_date") or data.get("data", {}).get("end_date")
-                missing_info = data.get("missing_info") or data.get("data", {}).get("missing_info") or []
-
-                has_itinerary = any(r.get("agent_name") == "itinerary_planning" for r in results)
-                info_shown = False
-                if not has_itinerary:
-                    if destination or origin:
-                        self.console.print("✓ [bold green]已收集行程信息[/bold green]")
-                        if origin: self.console.print(f"  • 出发地: [cyan]{origin}[/cyan]")
-                        if destination: self.console.print(f"  • 目的地: [cyan]{destination}[/cyan]")
-                        if start_date: self.console.print(f"  • 出发日期: [cyan]{start_date}[/cyan]")
-                        if end_date: self.console.print(f"  • 返程日期: [cyan]{end_date}[/cyan]")
-                        info_shown = True
-
-                if missing_info:
-                    self.console.print(f"\n💡 还需要补充: {', '.join(missing_info)}", style="yellow")
-                    info_shown = True
-                
-                if info_shown:
-                    current_agent_shown = True
-
-            # 信息查询
-            elif agent_name == "information_query":
-                query_results = data.get("results")
-                if not query_results and "data" in data and isinstance(data["data"], dict):
-                    query_results = data["data"].get("results")
-                if not query_results:
-                    query_results = data # 兜底：data 本身就是 results
-
-                if not isinstance(query_results, dict):
-                    query_results = {}
-
-                summary = query_results.get("summary", "")
-                sources = query_results.get("sources", []) or []
-                message = query_results.get("message", "")
-                error = query_results.get("error", "")
-
-                if summary:
-                    self.console.print(f"\n{summary}")
-                    current_agent_shown = True
-                elif message:
-                    self.console.print(f"\n{message}", style="dim")
-                    current_agent_shown = True
-                elif error:
-                    self.console.print(f"\n{error}", style="yellow")
-                    current_agent_shown = True
-
-                if sources:
-                    self.console.print("\n[bold]参考来源[/bold]")
-                    for i, source in enumerate(sources[:3], 1):
-                        url = source.get("url", "") if isinstance(source, dict) else str(source)
-                        self.console.print(f"  {i}. {url}", style="dim")
-                    current_agent_shown = True
-
-            # RAG知识库查询
-            elif agent_name == "rag_knowledge":
-                answer = data.get("answer")
-                if not answer and "data" in data and isinstance(data["data"], dict):
-                    answer = data["data"].get("answer")
-                
-                # 增强：也查找 content
-                if not answer:
-                    answer = data.get("content") or data.get("data", {}).get("content")
-
-                # 深度清洗
-                if isinstance(answer, dict):
-                    answer = answer.get("answer", str(answer))
-                
-                if isinstance(answer, str) and answer.strip().startswith("{") and answer.strip().endswith("}"):
-                    try:
-                        import json
-                        json_obj = json.loads(answer)
-                        if isinstance(json_obj, dict) and "answer" in json_obj:
-                            answer = json_obj["answer"]
-                    except:
-                        pass
-
-                if answer:
-                    self.console.print(f"\n{answer}")
-                    current_agent_shown = True
-
-            # 记忆查询
-            elif agent_name == "memory_query":
-                query_result = data.get("answer") or data.get("result") or data.get("content")
-                if not query_result and "data" in data and isinstance(data["data"], dict):
-                    inner = data["data"]
-                    query_result = inner.get("answer") or inner.get("result") or inner.get("content")
-
-                if query_result:
-                    self.console.print(f"\n{query_result}")
-                    current_agent_shown = True
-
-            # --- 通用兜底 (如果特定逻辑未生效) ---
-            if not current_agent_shown:
-                # 尝试查找通用字段
-                common_keys = ["answer", "content", "result", "message", "summary", "text", "description"]
-                fallback_content = ""
-                
-                # 扁平查找
-                for k in common_keys:
-                    if k in data and isinstance(data[k], str) and data[k].strip():
-                        fallback_content = data[k]
-                        break
-                
-                # 嵌套查找 data.data
-                if not fallback_content and "data" in data and isinstance(data["data"], dict):
-                    for k in common_keys:
-                        if k in data["data"] and isinstance(data["data"][k], str) and data["data"][k].strip():
-                            fallback_content = data["data"][k]
-                            break
-
-                if fallback_content:
-                    self.console.print(f"\n{fallback_content}")
-                    current_agent_shown = True
-                else:
-                    # 实在啥也没有，打印个成功标记，避免完全静默
-                    agent_display_name = self._get_agent_display_name(agent_name)
-                    self.console.print(f"✓ {agent_display_name}已完成", style="green")
-                    current_agent_shown = True
-
-            if current_agent_shown:
-                has_output = True
-
-        return has_output
-
     def _display_sourced_result(self, name: str, data: dict):
         status = data.get("status", "error")
         labels = {"ok": "查询完成", "partial": "部分完成", "needs_input": "需补充条件",
@@ -780,9 +433,7 @@ class TripEvidenceCLI:
         """获取智能体的显示名称"""
         # 与 README / LazyAgentRegistry 保持一致，仅保留已存在的 6 个子智能体
         agent_display_names = {
-            "event_collection": "事项收集",
             "preference": "偏好管理",
-            "itinerary_planning": "行程规划",
             "information_query": "信息查询",
             "rag_knowledge": "知识库查询",
             "memory_query": "记忆查询",
