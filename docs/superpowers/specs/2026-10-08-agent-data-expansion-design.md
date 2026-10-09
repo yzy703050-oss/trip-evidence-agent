@@ -79,3 +79,13 @@
 - Collector asks for hotel guests/check_in/check_out only when this request includes hotel search. Train-only and guide-only queries do not require hotel conditions.
 - Domain `ok` maps to execution `success`; `partial`, `needs_input`, `unavailable`, and `error` remain explicit execution states. Mixed successful and incomplete domain results aggregate as `partial_failure`, preserving every domain result. When all requested domains need input or are unavailable, the aggregate retains that uniform state. Errors aggregate as `partial_failure` for compatibility. EDD execution_success requires every requested domain to be `ok`, even for old records wrapped as success.
 - Dependency batches use compact integer ranks rather than arithmetic on model priorities. Nonfinite priorities use the default rank. Collector precedes a common domain batch, which precedes planner, including extreme finite model values.
+
+## 聚合数据火车查询适配（2026-10-09）
+
+用户提供并已开通[聚合数据“火车订票查询”接口](https://www.juhe.cn/docs/api/id/817)。本阶段仅接入文档中的“列车站到站时刻表”查询接口，不接入订票 MCP 或下单。酒店和攻略 Provider 仍按各自后续数据源实施。接口文档给出 `https://apis.juhe.cn/fapigw/train/query`、GET/POST、表单参数 `key`、`search_type`、出发/到达站和日期；日期限 15 天内，返回每个车次的席别价格、`num` 余票值及车次可预订标记。
+
+- 首版用 `search_type=1`，将用户确认的起终点原样作为站名发送，`enable_booking=2` 查询全部车次，以便区分售罄与可订。接口未明确保证城市名涵盖全市车站，因此结果只称为“按所填站名查询”；空结果提示核对具体车站，不声称全市无票。
+- 请求使用文档允许的 POST 表单；KEY 从本地 `.env` 读取，不写入代码、日志或来源链接。每次查询使用一次请求和明确超时，不自动重试计费请求。未配置 KEY 保持 `unavailable`。出发日期不在北京时间今天起的 15 个日历日内时，不调用接口，返回查询范围不可用。
+- 成功响应中一个车次席别映射为一个 `TrainOffer`。票价以 `Decimal` 保存；只有明确可预订且该席别余票为正数或明确“有”时标为 `available`。`num` 为数字时保留数量，为“无”或 0 时标为售罄；其他值保持未知。缺少票价、席别或关键车次字段时不得补造；跳过的行使结果成为 `partial`，如果响应整体格式无效则为 `error`。有效的空 `result` 是 `ok` 且候选项为空。
+- `Source` 标为聚合数据，`fetched_at` 用带时区的北京时间记录收到响应的时刻。来源 URL 指向不含 KEY 的接口文档；接口不返回具体候选项链接时 `TrainOffer.url` 保持 `null`。费用只采用现有预算规则中的 `available` 报价，不把售罄席别计入已知小计。
+- `error_code` 非 0、认证或额度错误、HTTP/网络超时分别映射为明确的不可用或错误状态，不能转换为“无票”。自动测试使用文档字段构造的本地响应，不触发付费请求；配置 KEY 后再进行一次明确授权的真实联调，核对站名范围、`num` 取值、状态和实际价格口径。
