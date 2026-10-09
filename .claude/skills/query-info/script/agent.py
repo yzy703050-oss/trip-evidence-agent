@@ -1,378 +1,124 @@
-"""
-信息查询智能体 - 真实检索版（免费API）
-支持：天气（wttr.in）、网络搜索（DDGS，开启 safesearch + 结果过滤）
+"""Information acquisition agent with validated tools and bounded follow-up."""
+import asyncio
+from copy import deepcopy
+import json
+from uuid import uuid4
 
-使用免费API：
-- 天气：wttr.in（无需 API Key）
-- 搜索：ddgs（Dux Distributed Global Search，可选 bing/duckduckgo 等，需安装：pip install ddgs）
-"""
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
-from typing import Optional, Union, List, Dict, Any
-import json
-import logging
-import re
-import sys
-import os
-
-# Add project root to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
-
-logger = logging.getLogger(__name__)
-
-# 尝试导入 duckduckgo_search (旧包名) 或 ddgs (新包名)
-try:
-    try:
-        from ddgs import DDGS
-    except ImportError:
-        from duckduckgo_search import DDGS
-    DDGS_AVAILABLE = True
-except ImportError:
-    DDGS_AVAILABLE = False
-    logger.warning("ddgs not installed. Install with: pip install ddgs")
-
-# 疑似垃圾/低质域名：多为 SEO 或不良站，不展示给用户
-_SUSPICIOUS_DOMAIN_PATTERN = re.compile(
-    r"\.(cc|tk|ml|ga|cf|gq|xyz|top|work|click|link|pw|buzz)(/|$)",
-    re.I
-)
-# 域名主体若为长随机字母（无明显词），则过滤
-_RANDOM_DOMAIN_PATTERN = re.compile(r"^[a-z0-9]{10,}$", re.I)
-
-
-def _is_suspicious_url(url: str) -> bool:
-    """过滤疑似垃圾/不良站点（如部分 .cc/.tk 等易被滥用的域名）。"""
-    if not url or not url.startswith("http"):
-        return True
-    try:
-        from urllib.parse import urlparse
-        host = urlparse(url).netloc or ""
-        # 去掉端口
-        host = host.split(":")[0].lower()
-        if not host:
-            return True
-        # 可疑 TLD
-        if _SUSPICIOUS_DOMAIN_PATTERN.search(host):
-            return True
-        # 主域名部分（最后一个 . 之前若还有多段则取倒数第二段之前）
-        parts = host.rsplit(".", 2)
-        name = parts[0] if parts else ""
-        if len(name) >= 10 and _RANDOM_DOMAIN_PATTERN.match(name):
-            return True
-        return False
-    except Exception:
-        return False
+from agents.contracts import RunState
+from agents.model_io import collect_model_turn, to_assistant_tool_message, to_tool_message
+from context.telemetry import model_stage
+from utils.json_parser import robust_json_parse
+from utils.skill_loader import SkillLoader
+from travel_data.tools import ToolExecutor, TOOL_DOMAINS
+from travel_data.result_guard import guard_information_result, grounded_answer
+from travel_data.candidates import candidate_view
 
 
 class InformationQueryAgent(AgentBase):
-    """
-    信息查询智能体（真实检索版）
-
-    核心功能：
-    - 天气查询 - 使用 wttr.in 免费 API（无需搜索，结果可靠）
-    - 网络搜索 - 使用 DDGS（开启 safesearch，过滤可疑来源）
-
-    注意：
-    - 差旅标准查询由独立的 RAGKnowledgeAgent 处理
-    """
-
-    def __init__(self, name: str = "InformationQueryAgent", model=None, **kwargs):
+    def __init__(self, name='InformationQueryAgent', model=None, tool_executor=None, memory_manager=None, **kwargs):
         super().__init__()
         self.name = name
         self.model = model
-        from utils.skill_loader import SkillLoader
+        self.tool_executor = tool_executor or ToolExecutor({})
+        self.memory_manager = memory_manager
         self.skill_loader = SkillLoader()
 
-    async def reply(self, x: Optional[Union[Msg, List[Msg]]] = None) -> Msg:
-        if x is None:
-            return Msg(name=self.name, content=json.dumps({"query_success": False}), role="assistant")
+    async def reply(self, msg=None):
+        payload = msg[-1].content if isinstance(msg, list) else msg.content if msg else {}
+        try:
+            payload = json.loads(payload) if isinstance(payload, str) else payload
+        except ValueError:
+            payload = {'context': {'original_query': str(payload)}}
+        context = payload.get('context', payload)
+        result = await self.run(context, RunState(uuid4().hex,
+            effective_preferences=context.get('effective_preferences', context.get('user_preferences', {}))))
+        return Msg(self.name, json.dumps(result, ensure_ascii=False), 'assistant')
 
-        # 解析输入
-        content = x.content if not isinstance(x, list) else x[-1].content
-
-        if isinstance(content, str):
+    async def run(self, context, run):
+        run.info_executions += 1
+        requested = context.get('requested_domains', [])
+        messages = [{'role': 'system', 'content': self.skill_loader.get_skill_content('query-info') or '根据原文整理条件，使用工具查询并总结。'},
+            {'role': 'user', 'content': json.dumps({**context, 'effective_preferences': run.effective_preferences,
+                'travel_conditions': run.travel_conditions, 'domain_results': run.domain_results}, ensure_ascii=False)}]
+        summary, limited, tool_count = '', False, 0
+        seen_ids = set()
+        final_payload = {}
+        for _ in range(run.limits.info_model_calls):
             try:
-                data = json.loads(content)
-                context = data.get("context", {})
-                user_query = context.get("rewritten_query", "") or content
-            except json.JSONDecodeError:
-                user_query = content
-        else:
-            user_query = str(content)
-
-        # 天气类问题优先走 wttr.in，避免通用搜索返回低质结果
-        if self._is_weather_query(user_query):
-            logger.info(f"Weather query: {user_query}")
-            try:
-                result = await self._weather_query(user_query)
-                return Msg(name=self.name, content=json.dumps(result, ensure_ascii=False), role="assistant")
-            except Exception as e:
-                logger.warning(f"Weather query failed, fallback to web search: {e}")
-                result = None
-        else:
-            result = None
-
-        if result is None:
-            logger.info(f"Web search query: {user_query}")
-            try:
-                result = await self._web_search(user_query)
-            except Exception as e:
-                logger.error(f"Query failed: {e}")
-                result = {
-                    "query_type": "网络搜索",
-                    "query_success": False,
-                    "results": {"error": str(e)},
-                }
-
-        return Msg(name=self.name, content=json.dumps(result, ensure_ascii=False), role="assistant")
-
-    def _is_weather_query(self, query: str) -> bool:
-        """简单判断是否为天气类问题。"""
-        q = (query or "").strip()
-        if not q:
-            return False
-        return "天气" in q or "气温" in q or "下雨" in q or "预报" in q
-
-    async def _weather_query(self, query: str) -> Dict[str, Any]:
-        """
-        使用 wttr.in 免费 API 查询天气（无需 API Key，结果可靠）。
-        支持中文城市名，如：杭州、北京。
-        """
-        import asyncio
-        try:
-            import httpx
-        except ImportError:
-            return {
-                "query_type": "天气查询",
-                "query_success": False,
-                "results": {"message": "需要安装 httpx: pip install httpx"},
-            }
-
-        # 从问题中提取城市（简单取第一个常见城市名或整句前 10 字中连续中文）
-        city = self._extract_city_from_query(query)
-        if not city:
-            return {
-                "query_type": "天气查询",
-                "query_success": False,
-                "results": {"message": "未识别到城市，请说明具体城市，如：杭州下周的天气怎么样？"},
-            }
-
-        url = f"https://wttr.in/{city}?format=j1"
-        try:
-            loop = asyncio.get_event_loop()
-            resp = await loop.run_in_executor(
-                None,
-                lambda: httpx.get(url, timeout=10.0, headers={"User-Agent": "curl/7.64.1"}),
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            logger.warning(f"wttr.in request failed: {e}")
-            return {
-                "query_type": "天气查询",
-                "query_success": False,
-                "results": {"message": f"天气接口暂时不可用: {e}", "sources": [{"url": "https://wttr.in", "title": "wttr.in"}]},
-            }
-
-        try:
-            current = data.get("current_condition", [{}])[0]
-            temp_c = current.get("temp_C", "?")
-            wdesc = current.get("weatherDesc", [{}])
-            desc = (wdesc[0].get("value") if wdesc else None) or "—"
-            humidity = current.get("humidity", "?")
-            weather_text = f"{city}当前天气：{desc}，气温 {temp_c}°C，湿度 {humidity}%。"
-            forecasts = []
-            for day in data.get("weather", [])[:5]:
-                date = day.get("date", "")
-                maxtemp = day.get("maxtempC", "?")
-                mintemp = day.get("mintempC", "?")
-                h = (day.get("hourly") or [{}])[0] if day.get("hourly") else {}
-                daily_desc = (h.get("weatherDesc") or [{}])[0].get("value", "—") if h else "—"
-                forecasts.append(f"{date}: {daily_desc}，{mintemp}~{maxtemp}°C")
-            if forecasts:
-                weather_text += " 未来几日：" + "；".join(forecasts[:3])
-            return {
-                "query_type": "天气查询",
-                "query_success": True,
-                "results": {
-                    "summary": weather_text,
-                    "sources": [{"url": "https://wttr.in", "title": "wttr.in"}],
-                },
-            }
-        except Exception as e:
-            logger.warning(f"Parse wttr.in response failed: {e}")
-            return {
-                "query_type": "天气查询",
-                "query_success": False,
-                "results": {"message": "天气数据解析失败", "sources": [{"url": "https://wttr.in", "title": "wttr.in"}]},
-            }
-
-    def _extract_city_from_query(self, query: str) -> str:
-        """从问题中提取城市名（简单实现：常见城市列表匹配）。"""
-        common_cities = [
-            "北京", "上海", "广州", "深圳", "杭州", "南京", "成都", "武汉", "西安", "苏州",
-            "天津", "重庆", "厦门", "青岛", "大连", "宁波", "无锡", "长沙", "郑州", "济南",
-            "哈尔滨", "沈阳", "昆明", "合肥", "福州", "石家庄", "南昌", "贵阳", "太原", "南宁",
-        ]
-        q = (query or "").strip()
-        for city in common_cities:
-            if city in q:
-                return city
-        # 否则取前 2～6 个连续中文字作为可能城市名
-        m = re.search(r"[\u4e00-\u9fa5]{2,6}", q)
-        return m.group(0).strip() if m else ""
-
-    async def _web_search(self, query: str) -> Dict[str, Any]:
-        """
-        网络搜索 - 使用 DDGS（Dux Distributed Global Search），开启 safesearch，过滤可疑来源。
-
-        Args:
-            query: 用户查询
-
-        Returns:
-            搜索结果
-        """
-        if not DDGS_AVAILABLE:
-            return {
-                "query_type": "网络搜索",
-                "query_success": False,
-                "results": {
-                    "message": "搜索库未安装",
-                    "note": "请运行：pip install ddgs",
-                },
-            }
-
-        try:
-            ddgs = DDGS()
-            # 开启安全搜索，优先 bing 后端（质量更稳定），多取几条再过滤
-            search_results = []
-            for backend in ("bing", "duckduckgo", "auto"):
-                try:
-                    raw = ddgs.text(
-                        query,
-                        max_results=10,
-                        safesearch="on",
-                        region="cn-zh",
-                        backend=backend,
-                    )
-                    search_results = list(raw)
-                    if search_results:
-                        break
-                except Exception as e:
-                    logger.debug(f"DDGS backend {backend} failed: {e}")
-                    continue
-
-            results = []
-            for result in search_results:
-                href = result.get("href", "")
-                if _is_suspicious_url(href):
-                    continue
-                results.append({
-                    "title": result.get("title", ""),
-                    "snippet": result.get("body", ""),
-                    "url": href,
-                })
-                if len(results) >= 5:
+                with model_stage('agent:information_query'):
+                    turn = await collect_model_turn(await self.model(messages, tools=self.tool_executor.schemas(), tool_choice='auto'))
+                if not turn.tool_calls:
+                    final_payload = robust_json_parse(turn.text)
+                    summary = final_payload.get('summary', '')
+                    if not isinstance(summary, str):
+                        raise ValueError('summary must be text')
+                    # Extras (purpose, duration) cannot replace actual queried fields.
+                    extras = final_payload.get('travel_conditions', {})
+                    if isinstance(extras, dict):
+                        for key, value in extras.items():
+                            if key not in run.travel_conditions:
+                                run.travel_conditions[key] = value
                     break
+                messages.append(to_assistant_tool_message(turn))
+                async def execute(call, allowed):
+                    if not allowed:
+                        return {'status': 'error', 'message': '工具调用达到上限或 ID 重复。', 'items': []}
+                    return await self.tool_executor.execute(call['name'], call['arguments'], run, call_id=call['id'])
+                allowed = []
+                for call in turn.tool_calls:
+                    valid = call['id'] not in seen_ids and tool_count < run.limits.info_tool_calls
+                    allowed.append(valid)
+                    if valid:
+                        tool_count += 1
+                        seen_ids.add(call['id'])
+                    else:
+                        limited = True
+                results = await asyncio.gather(*(execute(call, ok) for call, ok in zip(turn.tool_calls, allowed)))
+                for call, result in zip(turn.tool_calls, results):
+                    messages.append(to_tool_message(call['id'], result))
+                    self._record_tool(run, call, result)
+            except Exception:
+                limited = True
+                break
+        else:
+            limited = True
+        # A selected view may contain IDs from earlier windows in this same pool.
+        selected_ids = final_payload.get('selected_ids', {})
+        if isinstance(selected_ids, dict) and run.candidates:
+            for domain, ids in selected_ids.items():
+                if domain not in {'train', 'hotel'} or not isinstance(ids, list):
+                    continue
+                eligible = {}
+                for key, raw in run.candidates.cache.items():
+                    if key.startswith(domain + ':'):
+                        view = candidate_view(raw, limit=len(raw.items), offset=0,
+                            constraints=run.travel_conditions.get('constraints', {}), preferences=run.effective_preferences)
+                        eligible.update({item['id']: item for item in view['items']})
+                if any(item_id not in eligible for item_id in ids):
+                    limited = True
+                    continue
+                if domain in run.domain_results:
+                    run.domain_results[domain]['items'] = [eligible[item_id] for item_id in dict.fromkeys(ids)][:run.limits.candidate_limit]
+        result = guard_information_result({'status': 'error' if limited else 'ok', 'summary': summary,
+            'travel_conditions': deepcopy(run.travel_conditions), 'domain_results': deepcopy(run.domain_results),
+            'missing_fields': []}, requested or list(run.domain_results))
+        if limited:
+            result['status'] = 'partial' if run.domain_results else 'error'
+            result['message'] = '信息获取未完成：模型响应无效或执行达到上限。'
+        if not summary:
+            result['summary'] = grounded_answer(result)
+        return result
 
-            if not results:
-                return {
-                    "query_type": "网络搜索",
-                    "query_success": False,
-                    "results": {"message": "未找到相关结果"},
-                }
-
-            # 使用 LLM 总结搜索结果
-            summary = await self._summarize_search_results(query, results)
-
-            return {
-                "query_type": "网络搜索",
-                "query_success": True,
-                "results": {
-                    "summary": summary,
-                    "sources": results,
-                },
-            }
-        except Exception as e:
-            logger.error(f"Web search failed: {e}")
-            return {
-                "query_type": "网络搜索",
-                "query_success": False,
-                "results": {"error": f"搜索失败: {str(e)}"},
-            }
-
-    async def _summarize_search_results(self, query: str, results: List[Dict]) -> str:
-        """
-        使用 LLM 总结搜索结果
-
-        Args:
-            query: 用户查询
-            results: 搜索结果列表
-
-        Returns:
-            总结文本
-        """
-        if not results:
-            return "未找到相关信息"
-
-        # 构建搜索结果文本
-        results_text = ""
-        for i, result in enumerate(results, 1):
-            results_text += f"\n{i}. {result['title']}\n{result['snippet']}\n"
-
-        # 获取当前时间
-        from datetime import datetime
-        current_date = datetime.now().strftime("%Y年%m月%d日")
-        weekday = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][datetime.now().weekday()]
-
-        # 动态读取 Prompt 指令 (Progressive Disclosure)
-        skill_instruction = self.skill_loader.get_skill_content("query-info")
-        if not skill_instruction:
-            skill_instruction = "请直接回答用户的问题，保持简洁。"
-
-        prompt = f"""根据以下搜索结果，简洁地回答用户的问题。
-
-【当前时间】
-{current_date} {weekday}
-（用户查询中的相对时间请基于此日期理解，如"明天"、"2月28日"等）
-
-【用户问题】
-{query}
-
-【搜索结果】
-{results_text}
-
-【任务说明】
-{skill_instruction}
-"""
-
+    def _record_tool(self, run, call, result):
+        if self.memory_manager is None:
+            return
+        record_id = f"{run.turn_id}:info{run.info_executions}:{len(run.tool_requests)}:{call['id']}"
+        scope = f'agent:information_query:{run.info_executions}'
         try:
-            response = await self.model([{"role": "user", "content": prompt}])
-
-            # 获取响应文本 - 处理异步生成器
-            text = ""
-            if hasattr(response, '__aiter__'):
-                # 异步生成器，需要迭代获取内容
-                async for chunk in response:
-                    if isinstance(chunk, str):
-                        text = chunk
-                    elif hasattr(chunk, 'content'):
-                        if isinstance(chunk.content, str):
-                            text = chunk.content
-                        elif isinstance(chunk.content, list):
-                            for item in chunk.content:
-                                if isinstance(item, dict) and item.get('type') == 'text':
-                                    text = item.get('text', '')
-            elif hasattr(response, 'text'):
-                text = response.text
-            elif hasattr(response, 'content'):
-                text = response.content
-            elif isinstance(response, dict) and 'content' in response:
-                text = response['content']
-            else:
-                text = str(response) if response else ""
-
-            return text.strip() if text else "无法生成摘要"
-        except Exception as e:
-            logger.error(f"Summarization failed: {e}")
-            return "搜索成功，但摘要生成失败"
+            self.memory_manager.record_tool_call([{'id': record_id, 'name': call['name'], 'arguments': call['arguments']}], run.turn_id, scope)
+            self.memory_manager.record_tool_result(record_id, result, run.turn_id, scope, status=result.get('status', 'error'))
+        except Exception:
+            # Requests and cache remain in RunState even when logging fails.
+            pass
