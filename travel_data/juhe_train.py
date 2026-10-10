@@ -92,7 +92,9 @@ class JuheTrainProvider:
                     remaining, availability = self._inventory(seat.get('num'), row.get('enable_booking'))
                     offer_id = '|'.join([query.departure_date.isoformat(), *fields[:3], code, name])
                     items.append(TrainOffer(offer_id, *fields, name, price, availability,
-                                            remaining, source, None).to_dict())
+                                            remaining, source, None,
+                                            departure_at=f'{query.departure_date.isoformat()}T{fields[3]}:00+08:00',
+                                            time_evidence={'departure': 'query_date_and_provider_clock'}).to_dict())
                 except (KeyError, TypeError, ValueError, InvalidOperation):
                     skipped = True
         message = '部分车次或席别字段不完整，已跳过。' if skipped else (

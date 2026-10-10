@@ -123,9 +123,20 @@ class TrainOffer(Serializable):
     remaining: int | None
     source: Source | None
     url: str | None
+    departure_at: str | None = None
+    arrival_at: str | None = None
+    time_evidence: dict | None = None
 
     def __post_init__(self):
         _price(self.price_cny, self.source)
+        for key in ('departure_at', 'arrival_at'):
+            value = getattr(self, key)
+            if value is not None:
+                _aware(datetime.fromisoformat(value))
+                if not self.time_evidence or not self.time_evidence.get(key.removesuffix('_at')):
+                    raise ValueError('complete train time requires provider evidence')
+        if self.departure_at and self.arrival_at and datetime.fromisoformat(self.arrival_at) < datetime.fromisoformat(self.departure_at):
+            raise ValueError('arrival precedes departure')
         if self.availability == 'available' and self.price_cny is None:
             raise ValueError('available offer requires a sourced price')
         if self.remaining is not None and (type(self.remaining) is not int or self.remaining < 0):

@@ -93,7 +93,7 @@ def test_defaults_do_not_become_confirmed(route_proposal):
 - `TrainOffer` 追加可选 `departure_at / arrival_at / time_evidence`，默认未知，保留已有位置参数兼容。出发日期绑定查询；抵达只从明确日偏移或已核实耗时构造。
 - Info `run(context, run)` 在 task_request 模式返回第 8.3 节 task_result；旧模式继续原返回。工具按当前任务写查询记录，不回填全程 confirmed_conditions。
 
-- [ ] **RED：** 测试去程/返程相同领域分别保存、不同日期候选拒绝混用、同参数缓存复用、刷新失败保留来源、offset 本地读取、窗口 5 不截断持久化池、越域工具拒绝、模型伪造事实不进入 query_results。测试用固定时间及离线 Provider，不访问真实服务。
+- [x] **RED：** 测试去程/返程相同领域分别保存、不同日期候选拒绝混用、同参数缓存复用、刷新失败保留来源、offset 本地读取、窗口 5 不截断持久化池、越域工具拒绝、模型伪造事实不进入 query_results。测试用固定时间及离线 Provider，不访问真实服务。
 
 ```python
 def test_later_query_preserves_first_leg(populated_workflow):
@@ -106,11 +106,11 @@ def test_later_query_preserves_first_leg(populated_workflow):
     assert len(rows[0]["items"]) == 8
 ```
 
-- [ ] **RED 验证：** `& '..\..\.venv\Scripts\python.exe' -m pytest tests/test_workflow_queries.py tests/test_juhe_train_provider.py -q`，新增查询隔离/时间断言失败。
-- [ ] **实现：** 工具事实由程序登记，Info 只能给小结和已有引用；在工具调用入口限制 train/hotel。保留单项 domain_results 适配。统计来自实际 model/tool/cache 路径，不能采用模型回填值。
-- [ ] **时间测试与实现：** 固定 departure_date+可靠时刻能生成 departure_at；当前 Juhe 样例没有可靠抵达日期时 arrival_at 必须 null。新增标准 TrainOffer 测试用带来源的跨日 arrival_at；仅在 Provider 字段确有已验证定义时解析其日偏移/耗时，不猜字段和次日。
-- [ ] **GREEN：** 上述命令及 `tests/test_information_tools.py tests/test_information_agent_loop.py tests/test_information_query_agent.py` 全通过。
-- [ ] **记录并提交：** 暂存本任务列出的文件，`git commit -m "feat: preserve task-scoped query evidence and candidates"`。
+- [x] **RED 验证：** `& '..\..\.venv\Scripts\python.exe' -m pytest tests/test_workflow_queries.py tests/test_juhe_train_provider.py -q`，新增查询隔离/时间断言失败。
+- [x] **实现：** 工具事实由程序登记，Info 只能给小结和已有引用；在工具调用入口限制 train/hotel。保留单项 domain_results 适配。统计来自实际 model/tool/cache 路径，不能采用模型回填值。
+- [x] **时间测试与实现：** 固定 departure_date+可靠时刻能生成 departure_at；当前 Juhe 样例没有可靠抵达日期时 arrival_at 必须 null。新增标准 TrainOffer 测试用带来源的跨日 arrival_at；仅在 Provider 字段确有已验证定义时解析其日偏移/耗时，不猜字段和次日。
+- [x] **GREEN：** 上述命令及 `tests/test_information_tools.py tests/test_information_agent_loop.py tests/test_information_query_agent.py` 全通过。
+- [x] **记录并提交：** 暂存本任务列出的文件，`git commit -m "feat: preserve task-scoped query evidence and candidates"`。
 
 验收映射：S04、S05、S08、S10–S12、S14、S16、S22。
 

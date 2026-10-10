@@ -64,6 +64,7 @@ class RunState:
     workflow: dict | None = None
     current_task_id: str | None = None
     query_records: dict = field(default_factory=dict)
+    workflow_tool_budget: int | None = None
 
 
 def validate_plan(value: dict) -> dict:

@@ -45,10 +45,48 @@ class ToolExecutor:
                 'additionalProperties': False}}} for name, params in PARAMETERS.items()]
 
     async def execute(self, name, arguments, run, *, call_id):
+        if run.workflow is not None:
+            from agents.workflow_contracts import task_by_id, effective_conditions
+            task = task_by_id(run.workflow, run.current_task_id)
+            domain = TOOL_DOMAINS.get(name)
+            effective, _ = effective_conditions(run.workflow['confirmed_conditions'], task['conditions'], run.effective_preferences)
+            arguments = deepcopy(arguments) if isinstance(arguments, dict) else arguments
+            invalid = domain not in {'train', 'hotel'} or not isinstance(arguments, dict)
+            if not invalid:
+                if domain == 'train':
+                    invalid |= arguments.get('origin') != task['origin'] or arguments.get('destination') != task['destination']
+                    fixed = task['conditions'].get('departure_date')
+                    invalid |= bool(fixed and arguments.get('departure_date') != fixed)
+                    arguments.setdefault('passengers', effective['passengers'])
+                    invalid |= arguments['passengers'] != effective['passengers']
+                else:
+                    invalid |= not task['requires_hotel'] or arguments.get('city') != task['destination']
+                    arguments.setdefault('guests', effective['guests'])
+                    invalid |= arguments['guests'] != effective['guests']
+                    for key in ('check_in', 'check_out'):
+                        fixed = task['conditions'].get(key)
+                        if fixed and key in arguments: invalid |= arguments[key] != fixed
+            if invalid:
+                return AgentDataResult('error', {}, [], [], None, None, '工具参数不属于当前任务或改变了确认条件。').to_dict()
         result = await self._execute(name, arguments, run, call_id=call_id)
         if not any(row['id'] == call_id for row in run.tool_requests):
             run.tool_requests.append({'id': call_id, 'name': name, 'status': result['status'],
                 'cache_hit': False, 'elapsed_ms': 0, 'query': result.get('query', {})})
+        if run.workflow is not None:
+            from agents.workflow_queries import record_query
+            domain = TOOL_DOMAINS[name]
+            parameters = result.get('query') or {k: v for k, v in arguments.items() if k in PARAMETERS[name]}
+            metadata = next(r for r in reversed(run.tool_requests) if r['id'] == call_id)
+            full = result
+            raw = run.candidates.cache.get(query_cache_key(domain, parameters)) if run.candidates else None
+            if raw is not None and result['status'] in {'ok', 'partial'}:
+                full = raw.to_dict()
+            row = record_query(run.workflow, run.current_task_id, parameters,
+                               arguments.get('constraints', {}), full, metadata,
+                               domain=domain, refresh=arguments.get('refresh') is True)
+            run.query_records[row['id']] = deepcopy(row)
+            result.update(query_id=row['id'], result_revision=row['result_revision'], task_id=row['task_id'], task_revision=row['task_revision'])
+            run.workflow['candidate_cache'] = run.candidates.snapshot() if run.candidates else {}
         return result
 
     async def _execute(self, name, arguments, run, *, call_id):
@@ -65,7 +103,13 @@ class ToolExecutor:
         constraints = arguments.get('constraints', {})
         if type(offset) is not int or offset < 0 or not isinstance(constraints, dict):
             return failure('error')
-        previous = run.travel_conditions.get('constraints', {})
+        if run.workflow is not None:
+            from agents.workflow_contracts import task_by_id, effective_conditions
+            task = task_by_id(run.workflow, run.current_task_id)
+            effective, _ = effective_conditions(run.workflow['confirmed_conditions'], task['conditions'], run.effective_preferences)
+            previous = {k: v for k, v in effective.get('constraints', {}).items() if k != 'total_budget_cny'}
+        else:
+            previous = run.travel_conditions.get('constraints', {})
         if any(key in previous and previous[key] != value for key, value in constraints.items()):
             return failure('error', message='不能修改已确认的硬约束。')
         constraints = {**previous, **constraints}
@@ -99,8 +143,9 @@ class ToolExecutor:
             if run.feedback_round and any(key in run.travel_conditions and run.travel_conditions[key] != val
                     for key, val in query.items() if val is not None):
                 return failure('error', message='补查不能修改已确认的查询条件。')
-            run.travel_conditions['constraints'] = constraints
-            run.travel_conditions.update({key: value for key, value in query.items() if value is not None})
+            if run.workflow is None:
+                run.travel_conditions['constraints'] = constraints
+                run.travel_conditions.update({key: value for key, value in query.items() if value is not None})
             if run.candidates is None:
                 run.candidates = CandidateStore()
             key = query_cache_key(domain, query)

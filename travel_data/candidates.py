@@ -15,11 +15,21 @@ class CandidateStore:
             if key in self.cache and not refresh:
                 return self.cache[key], True
             result = await fetch()
+            if refresh and key in self.cache and result.status not in {'ok', 'partial'}:
+                return result, False
             if refresh and key in self.cache:
                 previous = self.cache.pop(key)
                 self.cache[f'{key}:previous:{len(self.cache)}'] = previous
             self.cache[key] = result
             return result, False
+
+    def snapshot(self):
+        return {key: value.to_dict() for key, value in self.cache.items()}
+
+    def restore(self, snapshot):
+        from agents.workflow_queries import as_result
+        self.cache = {key: as_result({**value, 'parameters': value['query']}) for key, value in snapshot.items()}
+        self.locks = {}
 
 
 def query_cache_key(domain: str, query: dict) -> str:
