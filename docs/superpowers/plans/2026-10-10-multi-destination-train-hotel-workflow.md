@@ -124,7 +124,7 @@ def test_later_query_preserves_first_leg(populated_workflow):
 - `finalize_workflow(workflow: dict, check: dict) -> dict`：验证检查对应所有当前版本后原子更新 validated/completed；不接受模型自行宣告完成。
 - issue 字典使用 `code / task_ids / blocking / message / evidence`，供 Main 解释及生成建议，错误事实不由模型改写。
 
-- [ ] **RED：** 使用任务 2 的带来源候选 fixture，覆盖可靠跨日、未知抵达阻断必要衔接、固定日期冲突、住宿离店先于入住、返程覆盖、陈旧查询、库存不足、总预算 Decimal 汇总及 hotel_place 未知费用。
+- [x] **RED：** 使用任务 2 的带来源候选 fixture，覆盖可靠跨日、未知抵达阻断必要衔接、固定日期冲突、住宿离店先于入住、返程覆盖、陈旧查询、库存不足、总预算 Decimal 汇总及 hotel_place 未知费用。
 
 ```python
 def test_hotel_place_cannot_verify_hard_budget(budget_workflow):
@@ -135,10 +135,10 @@ def test_hotel_place_cannot_verify_hard_budget(budget_workflow):
     assert all(t["status"] == "draft" for t in budget_workflow["tasks"])
 ```
 
-- [ ] **RED 验证：** `& '..\..\.venv\Scripts\python.exe' -m pytest tests/test_workflow_guard.py -q`，预期缺新 guard；补齐接口后逐项验证真实约束失败。
-- [ ] **实现：** 来源事实重建优先于模型 schedule；明确未知不计为 0。未知值只有阻止请求目标或衔接才为 blocking；地点推荐不要求伪造报价。用当前全部任务版本签名绑定全程检查。
-- [ ] **GREEN：** 同一命令及 `tests/test_travel_budget.py tests/test_amap_hotel.py` 通过；修订后旧检查不能完成新版本。
-- [ ] **记录并提交：** 暂存本任务文件，`git commit -m "feat: validate train hotel drafts across the whole route"`。
+- [x] **RED 验证：** `& '..\..\.venv\Scripts\python.exe' -m pytest tests/test_workflow_guard.py -q`，预期缺新 guard；补齐接口后逐项验证真实约束失败。
+- [x] **实现：** 来源事实重建优先于模型 schedule；明确未知不计为 0。未知值只有阻止请求目标或衔接才为 blocking；地点推荐不要求伪造报价。用当前全部任务版本签名绑定全程检查。
+- [x] **GREEN：** 同一命令及 `tests/test_travel_budget.py tests/test_amap_hotel.py` 通过；修订后旧检查不能完成新版本。
+- [x] **记录并提交：** 暂存本任务文件，`git commit -m "feat: validate train hotel drafts across the whole route"`。
 
 验收映射：S03、S05、S06、S12–S14。
 
