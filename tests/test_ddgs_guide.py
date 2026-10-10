@@ -114,7 +114,8 @@ def test_cli_startup_wires_guide_without_api_key(monkeypatch):
     assert isinstance(guide, DDGSGuideProvider)
     guide.text_search = lambda query: [{'title': '北京攻略', 'href': URL}]
     result = asyncio.run(executor.execute('travel_guide', {'destination': '北京'}, RunState('guide'), call_id='g'))
-    app._display_results({'domain_results': {'guide': result}})
+    from utils.response_renderer import finalize_business_result
+    app._display_results(finalize_business_result({'domain_results': {'guide': result}}))
     assert URL in output.getvalue()
 
 

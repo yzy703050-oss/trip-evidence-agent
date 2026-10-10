@@ -156,7 +156,7 @@ async def test_cli_displays_the_real_place_address_and_unknown_inventory():
     cli._display_sourced_result("hotel_search", result)
     text = output.getvalue()
     assert "汉庭酒店1" in text and "示例路1号" in text and "amap" in text
-    assert "unknown" in text and "test-secret" not in text
+    assert "房价、空房和入住规则尚未核实" in text and "test-secret" not in text
 
 
 def test_cli_startup_registers_configured_hotel_provider_in_the_information_agent(monkeypatch):
@@ -175,5 +175,6 @@ def test_cli_startup_registers_configured_hotel_provider_in_the_information_agen
         tool.execute("hotel_search", {"city": "上海"}, RunState("startup"), call_id="a")
     )
     assert result["status"] == "ok" and result["items"][0]["hotel_name"] == "汉庭酒店1"
-    app._display_results({"domain_results": {"hotel": result}})
+    from utils.response_renderer import finalize_business_result
+    app._display_results(finalize_business_result({"domain_results": {"hotel": result}}))
     assert "汉庭酒店1" in output.getvalue() and "test-secret" not in output.getvalue()
