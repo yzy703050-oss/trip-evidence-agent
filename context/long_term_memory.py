@@ -302,6 +302,12 @@ class LongTermMemory:
         Args:
             trip_info: 行程信息
         """
+        workflow_id = trip_info.get('workflow_id')
+        previous = next((r for r in self.data['trip_history'] if workflow_id and r.get('workflow_id')==workflow_id),None)
+        if previous is not None:
+            previous.update(trip_info)
+            self._save()
+            return
         trip_record = {
             "trip_id": f"trip_{len(self.data['trip_history']) + 1}",
             "timestamp": datetime.now().isoformat(),

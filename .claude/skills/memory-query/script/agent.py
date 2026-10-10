@@ -98,6 +98,8 @@ class MemoryQueryAgent(AgentBase):
         if self.memory_manager:
             # 获取旅行历史（最近50条）
             trip_history = self.memory_manager.long_term.get_trip_history(limit=50)
+            context['saved_travel_plans'] = [{k:w[k] for k in ('id','revision','status','tasks','confirmed_conditions')}
+                                           for w in self.memory_manager.get_known_workflows()]
 
             # 获取用户偏好
             preferences = self.memory_manager.long_term.get_preference()
@@ -130,6 +132,9 @@ class MemoryQueryAgent(AgentBase):
 
 【用户旅行历史】
 {trip_text}
+
+【保存的旅行方案，可能仍为草稿，不代表已经出行】
+{json.dumps(context.get('saved_travel_plans',[]),ensure_ascii=False)}
 
 【用户偏好】
 {pref_text}

@@ -59,6 +59,7 @@ class MemoryManager:
         self.long_term = LongTermMemory(user_id, storage_path)
         self.session_store = SessionStore(storage_path, user_id, session_id)
         self.workflow_store = WorkflowStore(storage_path, user_id)
+        self.workflow_store.trip_memory.repair(self.workflow_store)
         self.short_term = ShortTermMemory(max_turns=10)
         self._record_lock = threading.RLock()
         self._cleared_through_seq = self.session_store.read_state().get("cleared_through_seq", 0)
@@ -77,6 +78,10 @@ class MemoryManager:
         if not ids:
             return self.workflow_store.list_active()
         return [value for workflow_id in ids if (value := self.workflow_store.load(workflow_id)) is not None]
+
+    def get_known_workflows(self):
+        self.workflow_store.trip_memory.repair(self.workflow_store)
+        return self.workflow_store.list_all()
 
     def set_active_workflow(self, workflow_id):
         with self.session_store._lock:

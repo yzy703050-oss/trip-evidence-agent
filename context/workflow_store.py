@@ -47,6 +47,8 @@ def _file_lock(path):
 class WorkflowStore:
     def __init__(self, root, user_id):
         self.directory = Path(root) / storage_component(user_id) / 'workflows'
+        from context.trip_memory import TripMemory
+        self.trip_memory = TripMemory(root,user_id)
 
     def _path(self, workflow_id):
         return self.directory / f'{storage_component(workflow_id)}.json'
@@ -81,9 +83,14 @@ class WorkflowStore:
                 revision = expected_revision + 1
             value['revision'] = revision
             atomic_json_write(path, value)
+        self.trip_memory.repair(self)
         return value
+
+    def list_all(self):
+        if not self.directory.exists(): return []
+        return [value for path in sorted(self.directory.glob('*.json')) if (value := self.load(path.stem))]
 
     def list_active(self):
         if not self.directory.exists(): return []
-        values = [self.load(path.stem) for path in sorted(self.directory.glob('*.json'))]
+        values = self.list_all()
         return [value for value in values if value and value['status'] in {'running', 'needs_input', 'partial'}]
