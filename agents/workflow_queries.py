@@ -1,5 +1,6 @@
 """Task-owned query evidence; domain names are never the primary key."""
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime
 from agents.workflow_contracts import task_by_id, identifier
 from travel_data.candidates import candidate_view
@@ -51,6 +52,12 @@ def as_result(row):
                            source, fetched, row.get('message'))
 
 
+def eligible_result(row, task):
+    result = as_result(row)
+    rejected = task.get('rejected_candidates', {}).get(row['domain'], [])
+    return replace(result, items=[i for i in result.items if i['id'] not in rejected])
+
+
 def query_views(workflow, task_id, *, limit=5, offset=None):
     if type(limit) is not int or limit < 1 or (offset is not None and (type(offset) is not int or offset < 0)):
         raise ValueError('invalid candidate window')
@@ -59,7 +66,7 @@ def query_views(workflow, task_id, *, limit=5, offset=None):
     for query_id in task['query_ids']:
         row = workflow['results_by_query'][query_id]
         if row['task_revision'] != task['revision']: continue
-        view = candidate_view(as_result(row), limit=limit, offset=row.get('view_offset', 0) if offset is None else offset, constraints=row['constraints'],
+        view = candidate_view(eligible_result(row, task), limit=limit, offset=row.get('view_offset', 0) if offset is None else offset, constraints=row['constraints'],
                               preferences=workflow.get('effective_preferences', {}))
         views.append({**deepcopy(row), 'history': [], 'items': view['items'],
                       'candidate_total': view.get('candidate_total', len(row['items']))})
@@ -73,7 +80,7 @@ def resolve_selection(workflow, task_id, task_revision, selection):
     row = workflow['results_by_query'].get(selection.get('query_id'))
     if not row or row['task_id'] != task_id or row['task_revision'] != task_revision or row['result_revision'] != selection.get('result_revision'):
         raise ValueError('candidate query/version mismatch')
-    eligible = candidate_view(as_result(row), limit=max(1, len(row['items'])), offset=0,
+    eligible = candidate_view(eligible_result(row, task), limit=max(1, len(row['items'])), offset=0,
                               constraints=row['constraints'], preferences={})['items']
     item = next((i for i in eligible if i['id'] == selection.get('candidate_id')), None)
     if item is None:

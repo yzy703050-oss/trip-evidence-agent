@@ -47,7 +47,7 @@ class ToolExecutor:
                 'required': ['city'] if name == 'hotel_search' and place_search else REQUIRED[name],
                 'additionalProperties': False}}} for name, params in PARAMETERS.items()]
 
-    async def execute(self, name, arguments, run, *, call_id):
+    async def execute(self, name, arguments, run, *, call_id, _date_retry=False):
         if run.workflow is not None:
             from agents.workflow_contracts import task_by_id, effective_conditions
             task = task_by_id(run.workflow, run.current_task_id)
@@ -104,6 +104,28 @@ class ToolExecutor:
             row['view_offset'] = arguments.get('candidate_offset', 0)
             result.update(query_id=row['id'], result_revision=row['result_revision'], task_id=row['task_id'], task_revision=row['task_revision'])
             run.workflow['candidate_cache'] = run.candidates.snapshot() if run.candidates else {}
+            # Only suggested dates may move, and only after a successful empty query.
+            # Unavailable/error and unknown arrival evidence do not authorize retries.
+            if (name == 'train_search' and not _date_retry and result['status'] == 'ok' and not result['items']
+                    and task.get('field_sources', {}).get('departure_date') in {'default', 'proposal'}
+                    and not effective.get('arrival_date') and not effective.get('arrival_before')):
+                from datetime import date, timedelta
+                original_date = task['conditions']['departure_date']
+                original_source = task['field_sources']['departure_date']
+                for days in (1, 2):
+                    if run.workflow_tool_budget is not None:
+                        if run.workflow_tool_budget <= 0: break
+                        run.workflow_tool_budget -= 1
+                    proposed = (date.fromisoformat(original_date)+timedelta(days=days)).isoformat()
+                    if effective.get('end_date') and proposed > effective['end_date']: break
+                    task['conditions']['departure_date'] = proposed
+                    task['field_sources']['departure_date'] = 'proposal'
+                    result = await self.execute(name, {**arguments, 'departure_date': proposed}, run,
+                                                call_id=call_id+f':date{days}', _date_retry=True)
+                    if result['items'] or result['status'] != 'ok': break
+                if not result['items']:
+                    task['conditions']['departure_date'] = original_date
+                    task['field_sources']['departure_date'] = original_source
         return result
 
     async def _execute(self, name, arguments, run, *, call_id):

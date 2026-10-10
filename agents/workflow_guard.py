@@ -13,7 +13,7 @@ from travel_data.budget import build_budget
 
 def state_signature(workflow):
     payload = {'conditions': workflow['confirmed_conditions'],
-               'tasks': [{k: t[k] for k in ('id', 'revision', 'origin', 'destination', 'requires_hotel', 'conditions', 'draft_plan')}
+               'tasks': [{k: t.get(k) for k in ('id', 'revision', 'origin', 'destination', 'purpose', 'requires_hotel', 'conditions', 'draft_plan', 'rejected_candidates', 'update_scope')}
                          for t in workflow['tasks']], 'queries': workflow['results_by_query']}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
@@ -29,7 +29,7 @@ def check_task(workflow, task_id, draft):
     effective, _ = effective_conditions(workflow['confirmed_conditions'], task['conditions'], {})
     constraints = effective.get('constraints', {})
     plan = {'task_id': task_id, 'task_revision': task['revision'], 'origin': task['origin'],
-            'destination': task['destination'], 'train': None, 'hotel': None,
+            'destination': task['destination'], 'purpose': task.get('purpose', 'unspecified'), 'train': None, 'hotel': None,
             'schedule': dict(departure_at=None, arrival_at=None, check_in=None, check_out=None, next_departure_not_before=None)}
     if not isinstance(draft, dict) or set(draft) - {'task_revision', 'train_selection', 'hotel_selection', 'schedule', 'unverified_requirements'}:
         add('invalid_draft', '草稿包含不支持的字段。')
@@ -41,6 +41,8 @@ def check_task(workflow, task_id, draft):
         add('invalid_schedule', '时间安排包含不支持的字段。'); schedule = {}
     for domain in ('train', 'hotel'):
         selection = draft.get(f'{domain}_selection')
+        if domain not in task.get('update_scope', ['train', 'hotel']) and selection != (task.get('draft_plan') or {}).get(domain+'_selection'):
+            add('preserved_component_changed', '局部修改不能替换未授权的其他安排。')
         if domain == 'hotel' and not task['requires_hotel']:
             if selection is not None: add('unexpected_hotel', '返程任务不能增加酒店。')
             continue
@@ -62,17 +64,24 @@ def check_task(workflow, task_id, draft):
                 if parameters.get('passengers', 1) != effective['passengers']:
                     raise ValueError('train party mismatch')
                 fixed_date = task['conditions'].get('departure_date')
-                if fixed_date and parameters.get('departure_date') != fixed_date:
+                queried_date = parameters.get('departure_date') or (item.get('departure_at') or '')[:10]
+                if fixed_date and queried_date != fixed_date:
                     raise ValueError('train date mismatch')
                 departure = item.get('departure_at')
                 if not departure and parameters.get('departure_date') and item.get('departure_time'):
                     departure = parameters['departure_date']+'T'+item['departure_time']+':00+08:00'
-                if departure and (datetime.fromisoformat(departure).date().isoformat() != parameters['departure_date'] or
+                if departure and ((parameters.get('departure_date') and datetime.fromisoformat(departure).date().isoformat() != parameters['departure_date']) or
                                   datetime.fromisoformat(departure).strftime('%H:%M') != item['departure_time']):
                     raise ValueError('departure evidence mismatch')
                 arrival = item.get('arrival_at')
                 if arrival and datetime.fromisoformat(arrival).strftime('%H:%M') != item['arrival_time']:
                     raise ValueError('arrival evidence mismatch')
+                if arrival and effective.get('arrival_date') and arrival[:10] != effective['arrival_date']:
+                    raise ValueError('arrival date constraint mismatch')
+                if arrival and effective.get('arrival_before') and datetime.fromisoformat(arrival) > datetime.fromisoformat(effective['arrival_before']):
+                    raise ValueError('arrival deadline mismatch')
+                if arrival and departure and datetime.fromisoformat(arrival) <= datetime.fromisoformat(departure):
+                    raise ValueError('invalid train chronology')
                 plan['schedule'].update(departure_at=departure, arrival_at=arrival)
                 if not departure: add('departure_time_unknown', '火车出发时间未核实。')
                 if not arrival: add('arrival_time_unknown', '抵达日期未核实，不能保证住宿与下一段衔接。')

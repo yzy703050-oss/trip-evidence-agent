@@ -50,6 +50,7 @@ class InformationQueryAgent(AgentBase):
             if task_by_id(run.workflow, run.current_task_id)['revision'] != task_request['revision']:
                 raise ValueError('stale task request')
         initial_tool_count = len(run.tool_requests)
+        initial_external_count = run.external_request_count
         run.info_executions += 1
         requested = context.get('requested_domains', [])
         feedback = context.get('feedback') or {}
@@ -143,17 +144,33 @@ class InformationQueryAgent(AgentBase):
                         data['message'] = (data.get('message') or '刷新未完成。') + '保留此前取得的候选，需重新确认报价和库存。'
         if workflow_mode:
             from agents.workflow_queries import query_views
+            from agents.planning_conditions import prepare_task
             rows = query_views(run.workflow, run.current_task_id, limit=run.limits.candidate_limit)
             calls = run.tool_requests[initial_tool_count:]
-            missing = sorted({f for r in rows for f in r.get('missing_fields', [])})
+            task = task_by_id(run.workflow, run.current_task_id)
+            options = []
+            for row in rows:
+                if row['domain'] != 'train' or row.get('needs_revalidation'): continue
+                for item in row['items']:
+                    if item.get('departure_at') and item.get('arrival_at'):
+                        options.append(dict(query_id=row['id'], result_revision=row['result_revision'], candidate_id=item['id'],
+                                            departure_at=item['departure_at'], arrival_at=item['arrival_at'], source=item['source']))
+            if options and not task['conditions'].get('departure_date'):
+                task['conditions']['departure_date'] = options[0]['departure_at'][:10]
+                task['field_sources']['departure_date'] = 'derived'
+            prepared = prepare_task(run.workflow, run.current_task_id, context.get('current_time'), previous_boundary=context.get('previous_boundary'))
+            missing = sorted(set(prepared['missing_fields']) | {f for r in rows for f in r.get('missing_fields', [])})
             statuses = [r['status'] for r in rows]
-            status = 'needs_input' if missing else 'ok' if statuses and all(s == 'ok' for s in statuses) and not limited else 'partial'
+            status = 'ok' if not missing and statuses and all(s == 'ok' for s in statuses) and not limited else 'partial'
             if statuses and len(set(statuses)) == 1 and statuses[0] in {'unavailable', 'error'}:
                 status = statuses[0]
             return dict(type='task_result', task_id=task_request['id'], task_revision=task_request['revision'],
                         agent='information_query', status=status, summary=summary,
-                        query_results=rows, missing_fields=missing, issues=[], execution={
+                        query_results=rows, missing_fields=missing, date_options=options,
+                        completed_conditions=prepared['effective_conditions'], field_sources=prepared['field_sources'],
+                        readiness=prepared['readiness'], issues=[], execution={
                             'model_calls': model_count, 'tool_calls': len(calls),
+                            'external_requests': run.external_request_count-initial_external_count,
                             'cache_hits': sum(bool(c.get('cache_hit')) for c in calls),
                             'failed_calls': sum(c['status'] in {'error', 'unavailable'} for c in calls),
                             'elapsed_ms': round((perf_counter()-started)*1000, 3),

@@ -1,10 +1,28 @@
 """Program-owned date suggestions and task readiness, without personal-field prompts."""
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from copy import deepcopy
+import re
 
 from agents.workflow_contracts import effective_conditions, task_by_id
 
 BEIJING = timezone(timedelta(hours=8))
+
+
+def ambiguous_date_options(query, current_time):
+    """Suggest a month only for bare day references; never label it user-confirmed."""
+    if not current_time or re.search(r'\d{4}[-/年]|\d{1,2}月|下个月|本月|这个月',query): return []
+    today=datetime.fromisoformat(current_time).astimezone(BEIJING).date()
+    values=[]
+    for match in re.finditer(r'(?<!\d)([1-9]|[12]\d|3[01])(?:号|日)',query):
+        for offset in range(13):
+            month_index=today.year*12+today.month-1+offset
+            year,month=divmod(month_index,12)
+            try: proposed=date(year,month+1,int(match[1]))
+            except ValueError: continue
+            if proposed>=today:
+                values.append(dict(original=match[0],date=proposed.isoformat(),source='proposal'))
+                break
+    return values
 
 
 def prepare_task(workflow, task_id, current_time, *, previous_boundary=None):
@@ -13,6 +31,12 @@ def prepare_task(workflow, task_id, current_time, *, previous_boundary=None):
     sources.update(task.get('field_sources', {}))
     index = workflow['tasks'].index(task)
     boundary = previous_boundary or {}
+    if (index and task.get('needs_dependency_check') and boundary.get('arrival_at')
+            and task['field_sources'].get('departure_date') in {'derived','proposal'}
+            and not effective.get('arrival_date') and not effective.get('arrival_before')):
+        value=boundary.get('check_out') or boundary['arrival_at'][:10]
+        task['conditions']['departure_date']=value
+        effective['departure_date']=value
     if not effective.get('departure_date') and not effective.get('arrival_date') and not effective.get('arrival_before'):
         value, source = None, None
         if index == 0 and current_time:
@@ -20,7 +44,8 @@ def prepare_task(workflow, task_id, current_time, *, previous_boundary=None):
             value, source = (now.date() + timedelta(days=7)).isoformat(), 'default'
         elif boundary.get('arrival_at'):
             value = boundary.get('check_out') or boundary['arrival_at'][:10]
-            source = 'derived' if not boundary.get('check_out') else 'proposal'
+            previous = workflow['tasks'][index-1]
+            source = 'derived' if not boundary.get('check_out') or previous.get('field_sources', {}).get('check_out') in {'user', 'context'} else 'proposal'
         if value:
             task['conditions']['departure_date'] = value
             task['field_sources']['departure_date'] = source

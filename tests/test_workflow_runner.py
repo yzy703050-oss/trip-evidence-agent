@@ -19,7 +19,7 @@ async def test_three_and_five_tasks_have_drafts_then_global_validation(tmp_path,
     assert r.main.contexts[2]['workflow']['tasks'][0]['status'] == 'draft'
     for context in r.main.contexts:
         child = context.get('latest_child_result') or {}
-        assert all(len(row['items']) <= 5 for row in child.get('query_results', []))
+        assert all(len(row.get('items', [])) <= 5 for row in child.get('query_results', []))
     assert max(len(row['items']) for row in result['workflow']['results_by_query'].values()) == 8
     assert r.main.initial_calls == 1
     assert 'activities' not in str(result['workflow']['tasks'])
@@ -37,13 +37,12 @@ async def test_model_cannot_finish_without_check_or_spin_forever(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_unknown_arrival_pauses_with_persisted_checkpoint(tmp_path):
+async def test_unknown_arrival_preserves_draft_without_personal_question(tmp_path):
     r = Runtime(tmp_path); r.train.unknown_time = True
     result = await r.turn()
-    assert result['status'] == 'needs_input'
+    assert result['status'] == 'partial'
     saved = r.memory.workflow_store.load(result['workflow_id'])
-    assert saved['checkpoint']['question']
-    assert saved['checkpoint']['expected_workflow_revision'] == saved['revision']
+    assert saved['checkpoint'] is None
     assert len(saved['results_by_query']) >= 2
 
 
@@ -67,8 +66,9 @@ async def test_missing_date_can_still_query_hotel_places(tmp_path):
     p = proposal(); p['confirmed_conditions'] = {}
     for task in p['tasks']: task['conditions'] = {}; task['field_sources'] = {}
     r = Runtime(tmp_path, main=WorkflowMain(p)); result = await r.turn()
-    assert r.hotel.calls and not r.train.calls
-    assert result['status'] in {'needs_input', 'partial'}
+    assert r.hotel.calls and r.train.calls
+    assert result['status'] == 'partial'
+    assert result['workflow']['tasks'][0]['field_sources']['departure_date'] == 'default'
     assert result['workflow']['effective_conditions']['passengers'] == 1
 
 
@@ -216,8 +216,8 @@ async def test_return_empty_success_is_distinct_from_unavailable(tmp_path):
     result = await r.turn()
     rows = [q for q in result['workflow']['results_by_query'].values() if q['domain'] == 'train']
     assert rows[-1]['status'] == 'ok' and rows[-1]['items'] == []
-    assert result['status'] == 'needs_input'
-    assert result['workflow']['checkpoint']['question']
+    assert result['status'] == 'partial'
+    assert result['workflow']['checkpoint'] is None
 
 
 @pytest.mark.asyncio

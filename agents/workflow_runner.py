@@ -9,6 +9,7 @@ import math
 from agents.workflow_contracts import task_by_id, validate_action, identifier, effective_conditions
 from agents.workflow_queries import query_views
 from agents.workflow_guard import check_task, check_workflow, finalize_workflow
+from agents.planning_conditions import prepare_task
 from context.telemetry import model_scope
 from context.workflow_store import WorkflowConflictError
 from travel_data.candidates import CandidateStore
@@ -94,13 +95,24 @@ class WorkflowRunner:
         index = self.w['tasks'].index(task)
         previous = self.w['tasks'][index-1] if index else None
         boundary = check_task(self.w, previous['id'], previous.get('draft_plan'))['reconstructed_plan']['schedule'] if previous else {}
+        prepared = prepare_task(self.w, task['id'], self.context.get('current_time'), previous_boundary=boundary)
+        effective, sources = prepared['effective_conditions'], prepared['field_sources']
         public = {k: deepcopy(v) for k, v in self.w.items() if k not in {'candidate_cache', 'results_by_query'}}
-        return {**self.context, 'original_query': self.w['original_query'], 'current_user_query': self.context['original_query'],
-                'workflow': public, 'workflow_overview': deepcopy(self.w['tasks']), 'current_task': deepcopy(task),
+        if public.get('validation'):
+            public['validation']={k:public['validation'][k] for k in ('valid','issues','validated_revisions','signature')}
+        latest=deepcopy(self.latest)
+        if latest:
+            latest['query_results']=[{k:r.get(k) for k in ('id','task_id','task_revision','domain','result_revision','status','candidate_total','missing_fields','message')}
+                                     for r in latest.get('query_results',[])]
+        base={k:v for k,v in self.context.items() if k not in {'active_workflows','known_workflows'}}
+        overview=[{k:t.get(k) for k in ('id','revision','status','origin','destination','purpose','requires_hotel','depends_on','summary')} for t in self.w['tasks']]
+        return {**base, 'original_query': self.w['original_query'], 'current_user_query': self.context['original_query'],
+                'workflow': public, 'workflow_overview': overview, 'current_task': deepcopy(task),
                 'confirmed_conditions': deepcopy(self.w['confirmed_conditions']), 'effective_conditions': effective,
                 'field_sources': sources, 'effective_preferences': deepcopy(self.run_state.effective_preferences),
+                'preflight': prepared,
                 'previous_boundary': boundary, 'relevant_results': query_views(self.w, task['id'], limit=self.run_state.limits.candidate_limit),
-                'latest_child_result': deepcopy(self.latest), 'issues': deepcopy(task['issues']),
+                'latest_child_result': latest, 'issues': deepcopy(task['issues']),
                 'resources': {'main_calls_remaining': len(self.w['tasks'])*self.limits.main_steps_per_task+self.limits.main_extra_steps-self.main_calls,
                               'tools_remaining': self.run_state.workflow_tool_budget,
                               'task_info_remaining': self.limits.info_executions_per_task-self.counts.get(task['id'], 0)}}
@@ -147,6 +159,7 @@ class WorkflowRunner:
                 current = task_by_id(self.w, task['id']); current['status'] = 'running'
                 self._save()
                 request = self._message({'type': 'task_request', 'task': {'id': task['id'], 'revision': task['revision'],
+                        'mode': action.get('mode', 'query_candidates'), 'purpose': task.get('purpose'),
                         'goal': action['goal'], 'query_requests': action['query_requests'],
                         'requested_domains': list(dict.fromkeys(r['domain'] for r in action['query_requests']))},
                         'context': self._model_context()}, task_id=task['id'])
@@ -168,15 +181,20 @@ class WorkflowRunner:
             elif name == 'draft_task':
                 current = task_by_id(self.w, task['id'])
                 checked = check_task(self.w, task['id'], action['draft_plan'])
-                if any(i['code'] in {'invalid_draft', 'invalid_candidate_reference', 'stale_draft'} for i in checked['issues']):
+                if any(i['code'] in {'invalid_draft', 'invalid_candidate_reference', 'stale_draft', 'preserved_component_changed'} for i in checked['issues']):
                     feedback = checked; continue
                 current.update(status='draft', draft_plan=deepcopy(action['draft_plan']), summary=action.get('summary', ''), issues=checked['issues'])
-                if checked['valid']:
+                for key in ('check_in', 'check_out'):
+                    value = action['draft_plan'].get('schedule', {}).get(key)
+                    if value and current['field_sources'].get(key) not in {'user', 'context'}:
+                        current['conditions'][key] = value
+                        current['field_sources'][key] = 'proposal'
+                if current['status'] == 'draft':
                     pending = next((t for t in self.w['tasks'] if t['status'] == 'pending'), None)
                     if pending:
                         self.w['current_task_id'] = pending['id']
                         pending_effective, _ = effective_conditions(self.w['confirmed_conditions'], pending['conditions'], {})
-                        if pending_effective.get('flexible_dates') and not pending['conditions'].get('departure_date'):
+                        if checked['valid'] and pending_effective.get('flexible_dates') and not pending['conditions'].get('departure_date'):
                             boundary = checked['reconstructed_plan']['schedule']['next_departure_not_before']
                             if boundary:
                                 # Preserve day precision; never invent a checkout hour.
@@ -184,6 +202,8 @@ class WorkflowRunner:
                                 pending['field_sources']['departure_date'] = 'derived'
                 self._save()
             elif name == 'ask_user':
+                if not self.context.get('allow_scope_question'):
+                    return self._stop('partial', 'conditions_unresolved', '已保留可用结果；缺少的条件与冲突见草稿，你可以继续补充或修改。')
                 for task_id in action['affected_task_ids']: task_by_id(self.w, task_id)['status'] = 'needs_input'
                 self.w.update(status='needs_input', checkpoint={
                     'reason': action['reason'], 'question': action['question'], 'affected_task_ids': action['affected_task_ids'],
@@ -227,7 +247,11 @@ class WorkflowRunner:
             budget = checked['budget']
             answer += f"已核实费用合计 {budget['known_subtotal_cny']} 元。"
             if not budget['verified']: answer += '酒店等未知费用另计，全程费用尚未完整核实。'
+        simulated = any(str((row.get('source') or {}).get('provider', '')).startswith('simulation:') for row in self.w['results_by_query'].values())
+        if simulated: answer = '【模拟接口测评，车次、票价和酒店均非真实数据】'+answer
+        missing = sorted({field for t in self.w['tasks'] for field in prepare_task(self.w,t['id'],self.context.get('current_time'))['missing_fields']})
         return {'status': status, 'finalization_method': 'workflow', 'final_answer': answer,
+                'data_mode': 'simulation' if simulated else 'provider',
                 'workflow_id': self.w['id'], 'workflow_revision': self.w['revision'], 'workflow': deepcopy(self.w),
                 'validated_plan': checked, 'stop_reason': reason, 'gaps': gaps or checked['issues'],
-                'results': public_results(self.run_state.results), 'domain_results': {}, 'missing_fields': []}
+                'results': public_results(self.run_state.results), 'domain_results': {}, 'missing_fields': missing}

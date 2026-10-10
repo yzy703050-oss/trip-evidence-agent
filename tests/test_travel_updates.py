@@ -52,6 +52,14 @@ def test_explicit_origin_supplement_resumes_same_task():
     assert result['tasks'][0]['origin'] == '重庆'
 
 
+def test_origin_only_update_preserves_existing_hotel():
+    from agents.travel_updates import apply_travel_update
+    w=populated_workflow(); t=w['tasks'][0]
+    newer=apply_travel_update(w,dict(update_type='change',target=dict(workflow_id=w['id'],task_ids=[t['id']],components=['train']),condition_updates={'origin':'重庆'}))
+    assert newer['tasks'][0]['update_scope']==['train']
+    assert newer['tasks'][0]['draft_plan']['hotel_selection']==t['draft_plan']['hotel_selection']
+
+
 def test_wrong_workflow_or_task_cannot_be_modified():
     from agents.travel_updates import apply_travel_update
     w = populated_workflow()

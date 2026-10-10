@@ -84,6 +84,14 @@ def create_workflow(proposal, context, *, workflow_id=None):
     route = [r.get('destination') for r in rows if isinstance(r, dict)]
     if 'origin' in confirmed and confirmed.pop('origin') != rows[0].get('origin'):
         raise ValueError('route metadata origin mismatch')
+    if 'destination' in confirmed:
+        destination=confirmed.pop('destination')
+        if len(rows)!=1 or destination!=rows[0]['destination']: raise ValueError('route metadata destination mismatch')
+    if 'requires_hotel' in confirmed:
+        hotel=confirmed.pop('requires_hotel')
+        if type(hotel) is not bool or hotel!=any(r.get('requires_hotel') for r in rows): raise ValueError('hotel scope metadata mismatch')
+    if 'scope' in confirmed and confirmed.pop('scope') not in {'交通与住宿','火车和酒店','train_hotel'}:
+        raise ValueError('unsupported scope metadata')
     if 'return_to' in confirmed and confirmed.pop('return_to') != rows[-1].get('destination'):
         raise ValueError('route metadata return mismatch')
     if 'destinations' in confirmed:
@@ -109,6 +117,7 @@ def create_workflow(proposal, context, *, workflow_id=None):
             raise ValueError('route is not continuous')
         if tasks and row.get('origin') is None: row = {**row, 'origin': tasks[-1]['destination']}
         purpose = row.get('purpose', 'unspecified')
+        if purpose=='unspecified' and row.get('purpose_source')=='unspecified': row={**row,'purpose_source':'proposal'}
         if purpose not in PURPOSES or row.get('purpose_source', 'proposal') not in SOURCES:
             raise ValueError('invalid task purpose')
         # Optional proposal dependencies refer to prior task indices; IDs are runtime-owned.
@@ -118,9 +127,17 @@ def create_workflow(proposal, context, *, workflow_id=None):
             raise ValueError('task hotel scope is required')
         conditions = validate_conditions(row.get('conditions', {}))
         field_sources = row.get('field_sources', {})
-        if not isinstance(field_sources, dict) or any(v not in SOURCES for v in field_sources.values()):
-            raise ValueError('invalid field source')
+        if not isinstance(field_sources,dict): raise ValueError('invalid field source')
         field_sources = deepcopy(field_sources)
+        for key,source in list(field_sources.items()):
+            if key.startswith('conditions.'):
+                ordinary=key.removeprefix('conditions.')
+                if ordinary in field_sources and field_sources[ordinary]!=source: raise ValueError('conflicting field sources')
+                field_sources[ordinary]=field_sources.pop(key)
+        for key,source in list(field_sources.items()):
+            if source=='missing' and row.get(key,conditions.get(key)) is None: field_sources.pop(key)
+        if any(v not in SOURCES for v in field_sources.values()):
+            raise ValueError('invalid field source')
         if index == 0 and not conditions.get('departure_date') and confirmed.get('start_date'):
             conditions['departure_date'] = confirmed['start_date']
             field_sources['departure_date'] = 'derived'
