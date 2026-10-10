@@ -61,6 +61,9 @@ class RunState:
     candidates: object = None
     info_executions: int = 0
     tool_record_seq: int = 0
+    workflow: dict | None = None
+    current_task_id: str | None = None
+    query_records: dict = field(default_factory=dict)
 
 
 def validate_plan(value: dict) -> dict:
