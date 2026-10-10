@@ -1,6 +1,6 @@
 """Versioned travel state and decisions. Only the harness changes status or IDs."""
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -9,7 +9,9 @@ from agents.contracts import validate_constraints
 DOMAINS = {'train', 'hotel'}
 SOURCES = {'user', 'context', 'preference', 'derived', 'default', 'proposal'}
 CONDITION_KEYS = {'start_date', 'end_date', 'departure_date', 'check_in', 'check_out',
+                  'arrival_date', 'arrival_before', 'hotel_keywords',
                   'passengers', 'guests', 'constraints', 'nights', 'flexible_dates', 'hotel_quote_required'}
+PURPOSES = {'visit', 'business', 'return', 'transit', 'unspecified'}
 
 
 def identifier(prefix):
@@ -32,6 +34,11 @@ def validate_conditions(value):
         elif key in {'flexible_dates', 'hotel_quote_required'}:
             if type(item) is not bool:
                 raise ValueError('invalid boolean condition')
+        elif key == 'arrival_before':
+            stamp = datetime.fromisoformat(item)
+            if stamp.tzinfo is None: raise ValueError('arrival deadline needs timezone')
+        elif key == 'hotel_keywords':
+            if not isinstance(item, str) or not item.strip(): raise ValueError('invalid hotel keywords')
         elif key == 'constraints':
             if not isinstance(item, dict):
                 raise ValueError('invalid constraints')
@@ -93,12 +100,17 @@ def create_workflow(proposal, context, *, workflow_id=None):
     sources.update({k: 'user' for k, v in confirmed.items() if v is not None})
     tasks = []
     for index, row in enumerate(proposal['tasks']):
-        if not isinstance(row, dict) or set(row) - {'origin', 'destination', 'requires_hotel', 'conditions', 'field_sources', 'depends_on'}:
+        if not isinstance(row, dict) or set(row) - {'origin', 'destination', 'requires_hotel', 'purpose', 'purpose_source', 'conditions', 'field_sources', 'depends_on'}:
             raise ValueError('invalid task proposal')
-        if not all(isinstance(row.get(k), str) and row[k].strip() for k in ('origin', 'destination')):
+        if not isinstance(row.get('destination'), str) or not row['destination'].strip() or (
+                row.get('origin') is not None and (not isinstance(row['origin'], str) or not row['origin'].strip())):
             raise ValueError('task route needs cities')
-        if row['origin'] == row['destination'] or (tasks and row['origin'] != tasks[-1]['destination']):
+        if row.get('origin') == row['destination'] or (tasks and row.get('origin') is not None and row['origin'] != tasks[-1]['destination']):
             raise ValueError('route is not continuous')
+        if tasks and row.get('origin') is None: row = {**row, 'origin': tasks[-1]['destination']}
+        purpose = row.get('purpose', 'unspecified')
+        if purpose not in PURPOSES or row.get('purpose_source', 'proposal') not in SOURCES:
+            raise ValueError('invalid task purpose')
         # Optional proposal dependencies refer to prior task indices; IDs are runtime-owned.
         if row.get('depends_on', []) not in ([], [index-1] if index else []):
             raise ValueError('invalid dependency')
@@ -113,12 +125,11 @@ def create_workflow(proposal, context, *, workflow_id=None):
             conditions['departure_date'] = confirmed['start_date']
             field_sources['departure_date'] = 'derived'
         tasks.append(dict(id=identifier('task'), revision=1, status='pending',
-                          origin=row['origin'], destination=row['destination'],
+                          origin=row.get('origin'), destination=row['destination'],
+                          purpose=purpose, purpose_source=row.get('purpose_source', 'proposal'),
                           requires_hotel=row['requires_hotel'], depends_on=[tasks[-1]['id']] if tasks else [],
                           conditions=conditions, field_sources={k: field_sources.get(k, 'proposal') for k in conditions},
                           draft_plan=None, summary='', query_ids=[], issues=[]))
-    if len(tasks) > 1 and tasks[-1]['destination'] == tasks[0]['origin'] and tasks[-1]['requires_hotel']:
-        raise ValueError('return task must not require a destination hotel')
     return dict(id=workflow_id or identifier('workflow'), revision=1, status='running',
                 original_query=context.get('original_query', ''), confirmed_conditions=confirmed,
                 effective_conditions=effective, field_sources=sources, current_task_id=tasks[0]['id'],
@@ -139,7 +150,7 @@ def validate_action(action, workflow):
     value = deepcopy(action)
     name = value.get('action')
     allowed = {
-        'dispatch': {'action', 'task_id', 'task_revision', 'goal', 'query_requests'},
+        'dispatch': {'action', 'task_id', 'task_revision', 'goal', 'query_requests', 'mode'},
         'draft_task': {'action', 'task_id', 'task_revision', 'draft_plan', 'summary'},
         'ask_user': {'action', 'question', 'reason', 'affected_task_ids', 'suggested_changes', 'resume_task_id'},
         'validate_workflow': {'action', 'workflow_revision', 'analysis'},
@@ -157,6 +168,8 @@ def validate_action(action, workflow):
             raise ValueError('only current task can be modified')
         value['task_revision'] = task['revision']
         if name == 'dispatch':
+            if value.get('mode', 'query_candidates') not in {'complete_conditions', 'query_candidates'}:
+                raise ValueError('invalid dispatch mode')
             if not isinstance(value.get('goal'), str) or not value['goal'].strip():
                 raise ValueError('dispatch needs a goal')
             requests = value.get('query_requests')
