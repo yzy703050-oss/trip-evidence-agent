@@ -1,7 +1,35 @@
-from copy import deepcopy
 import pytest
 from workflow_runtime import Runtime,WorkflowMain
-from test_preflight_workflow import runtime,PreflightMain
+from test_preflight_workflow import runtime
+
+
+@pytest.mark.asyncio
+async def test_scope_checkpoint_can_be_paused_then_resumed_across_sessions(tmp_path):
+    r = Runtime(tmp_path)
+    first = await r.turn()
+    workflow_id = first['workflow_id']
+    async def clarify(context):
+        return dict(response_mode='direct', intents=[{'type': 'update'}], agent_schedule=[],
+            final_answer='改哪部分？', feedback_scope={'workflow_id': workflow_id, 'question': '改哪部分？'})
+    r.main.initialize = clarify
+    scoped = await r.turn('不满意')
+    assert scoped['status'] == 'needs_input'
+    async def pause(context):
+        return dict(intents=[{'type': 'control'}], travel_update=dict(update_type='pause',
+            target={'workflow_id': workflow_id}))
+    r.main.initialize = pause
+    paused = await r.turn('先暂停')
+    assert paused['status'] == 'paused'
+    assert paused['workflow']['checkpoint']['question'] == '改哪部分？'
+    assert paused['workflow']['checkpoint']['expected_workflow_revision'] == paused['workflow_revision']
+    restarted = Runtime(tmp_path, session='resume-scope')
+    async def resume(context):
+        return dict(response_mode='workflow', intents=[{'type': 'control'}],
+                    resume_workflow_id=workflow_id, agent_schedule=[])
+    restarted.main.initialize = resume
+    result = await restarted.turn('继续规划')
+    assert result['status'] == 'completed' and result['workflow_id'] == workflow_id
+    assert not restarted.train.calls and not restarted.hotel.calls
 
 
 @pytest.mark.asyncio

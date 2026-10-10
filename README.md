@@ -174,27 +174,20 @@ flowchart TD
 
 ## 意图识别与旅行修改
 
-先区分普通请求和旅行请求，再区分新建、恢复或修改。目标通过 `workflow_id / task_ids / components` 定位；组件为 `train / hotel / route / schedule`。
+主 Agent 只识别四类用户目的；数据来源、操作对象和执行动作分别表达，新增领域不需要增加顶层意图。同一次初始化模型调用完成识别与首次执行决策，所有模式输出 `intents`，例如 `[{"type":"update"}]`。
 
 | 意图 | 处理 |
 | --- | --- |
-| `direct_answer` | 无需外部资料的直接回答 |
-| `information_query` | 查火车、酒店、天气或网页，不自动创建旅行 |
-| `preference_update` | 提取长期偏好变更 |
-| `memory_query` | 查询个人历史 |
-| `policy_query` | 查询企业制度 |
-| `plan_trip` | 新建旅行，首次提出完整任务和停留方案 |
-| `resume_trip` | 恢复旅行，复用仍有效的结果 |
-| `explain_trip` / `trip_status_query` | 解释选择或查看缺口，不自动重查 |
-| `supplement_conditions` | 补未知条件，如回答出发城市 |
-| `change_conditions` | 改日期、人数、预算等已明确条件 |
-| `regenerate_trip` / `regenerate_task` | 保留要求，重做全程或指定段 |
-| `replace_train` / `replace_hotel` | 替换指定组件，保留其他选择 |
-| `change_route` | 增删或重排目的地，重检依赖下游 |
-| `adopt_plan` | 接受方案或候选，不等于交易成功 |
-| `pause_or_cancel_planning` | 停止规划，不取消真实订单 |
-| `clarify_feedback_scope` | “不满意”但范围不明时询问修改范围 |
-| `unsupported_action` | 说明实际购票、订房和退改签能力限制 |
+| `ask` | 问答、资料/历史/制度查询、解释方案与查看状态；不自动新建或修改旅行 |
+| `plan` | 新建旅行，提出完整任务和停留方案 |
+| `update` | 更新长期偏好、写入条件、换候选、改路线或重做已有方案 |
+| `control` | 恢复、采纳、暂停或停止规划；真实购票/订房/退改签诉求当前只说明能力限制 |
+
+`agent_schedule` 表达所需资料来源和专业角色；`travel_update.update_type` 表达修改动作；目标通过 `workflow_id / task_ids / components` 定位，组件为 `train / hotel / route / schedule`。`response_mode` 表达执行与回答模式，并不是另一套意图。
+
+例如换火车和换酒店都是 `update + replace`，以目标组件区分；补条件与改条件也都是 `update`，程序按已有任务与全程条件判断 supplement/change。“不满意”是修改诉求，但范围不明时先澄清并保存断点；不额外定义澄清意图。查看已有方案是 `ask`，读取已保存依据，不自动恢复执行。
+
+一句话可以包含多个目的：长期偏好更新加新规划为 `update + plan`；长期偏好更新加换酒店同属 `update`，仍同时保留 preference 前置任务和旅行修改，类型去重不丢动作。旧调用缺少或传空 intents 时可按已有执行字段推导四类目的；非空列表的未知类别会被拒绝并触发一次受限修复。
 
 执行更新类型为 `supplement / change / regenerate / replace / change_route / adopt / pause / cancel`。单纯“不满意”不能清空条件或擅自重做整段。`change` 必须带明确、非空的条件变更；范围不明先保存 `feedback_scope` 断点。
 
@@ -210,6 +203,7 @@ flowchart TD
 
 ```json
 {
+  "intents": [{"type": "plan"}],
   "response_mode": "workflow",
   "finalization_mode": "synthesize",
   "agent_schedule": [],

@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from agentscope.model import OpenAIChatModel
 from rich.console import Console
 from agents.contracts import RunState,RunLimits
+from agents.contracts import INTENT_TYPES
 from agents.execution_harness import ExecutionHarness
 from agents.lazy_agent_registry import LazyAgentRegistry
 from agents.main_agent import MainAgent
@@ -25,14 +26,57 @@ from evals.simulated_travel import SimulatedTrainProvider,SimulatedHotelProvider
 ROOT=Path(__file__).resolve().parents[1]
 
 
+def assess_intents(case, responses):
+    """Judge the model's actual initial JSON, before compatibility inference."""
+    from utils.json_parser import robust_json_parse
+    initial = [row for row in responses
+               if row.get('stage') in {'main:plan', 'main:repair_decision'}]
+    try:
+        value = robust_json_parse(initial[-1]['text']) if initial else {}
+        intents = value.get('intents')
+        valid = isinstance(intents, list) and bool(intents) and all(
+            isinstance(row, dict) and isinstance(row.get('type'), str)
+            and row['type'] in INTENT_TYPES for row in intents)
+    except (ValueError, TypeError, AttributeError):
+        value, intents, valid = {}, [], False
+    actual = {row['type'] for row in intents} if valid else set()
+    expected = {'query_price': {'ask'}, 'explain': {'ask'}, 'memory_read': {'ask'},
+        'hotel_replace': {'update'}, 'preference_replace': {'update'}, 'change_stay': {'update'},
+        'supplement_origin': {'update'}, 'ambiguous': {'update'},
+        'pause': {'control'}, 'resume': {'control'}, 'unsupported_purchase': {'control'},
+        'preference_plan': {'update', 'plan'}}.get(case, {'plan'})
+    checks = {'four_type_contract': valid, 'expected_purposes': actual == expected}
+    if case in {'preference_plan', 'preference_replace'}:
+        checks['preference_action_retained'] = any(
+            row.get('agent_name') == 'preference' for row in value.get('agent_schedule', []))
+    if case in {'explain', 'unsupported_purchase'}:
+        checks['direct_without_dispatch'] = (
+            value.get('response_mode') == 'direct' and not value.get('agent_schedule')
+            and not value.get('travel_update'))
+    if case == 'memory_read':
+        names = {row.get('agent_name') for row in value.get('agent_schedule', [])}
+        checks['memory_source'] = names == {'memory_query'} or (
+            not names and value.get('response_mode') == 'direct' and bool(value.get('final_answer')))
+    return dict(passed=all(checks.values()), checks=checks)
+
+
 def assess(case,result,run,previous=None):
     w=result.get('workflow'); checks={'no_execution_error':result.get('status')!='error'}
     if case=='query_price':
         checks.update(no_workflow=w is None,train_result=bool(result.get('domain_results',{}).get('train',{}).get('items')))
-    elif case in {'explain','pause','ambiguous'}:
+    elif case in {'explain','pause','ambiguous','unsupported_purchase','memory_read'}:
         checks['no_external_requests']=run.external_request_count==0
         if case=='pause': checks['paused']=result.get('status')=='paused'
         if case=='ambiguous': checks['scope_checkpoint']=((w or {}).get('checkpoint') or {}).get('kind')=='feedback_scope'
+        if case in {'unsupported_purchase', 'memory_read'}:
+            checks['no_new_workflow'] = w is None
+            checks['answer_returned'] = (
+                bool(result.get('final_answer')) and result.get('status') == 'ok')
+        if case == 'memory_read':
+            brands = run.effective_preferences.get('hotel_brands')
+            brands = [brands] if isinstance(brands, str) else brands
+            checks['stored_preference_answer'] = bool(brands) and all(
+                brand in result.get('final_answer', '') for brand in brands)
     else:
         checks['workflow_created']=isinstance(w,dict)
         if w:
@@ -58,20 +102,37 @@ def assess(case,result,run,previous=None):
                 plan=result.get('validated_plan',{}).get('reconstructed_tasks',[{}])[0]
                 train=plan.get('train') or {}
                 checks['previous_day_departure']=bool(train.get('arrival_at') and train['departure_at'][:10]<train['arrival_at'][:10])
-            if case=='hotel_replace' and previous:
+            if case in {'hotel_replace', 'preference_replace'} and previous:
                 checks['train_preserved']=w['tasks'][0]['draft_plan']['train_selection']==previous['workflow']['tasks'][0]['draft_plan']['train_selection']
                 checks['no_train_request']=all(t['name']=='hotel_search' for t in run.tool_requests)
             if case=='supplement_origin' and previous:
                 checks['same_workflow']=w['id']==previous['workflow_id']
                 checks['default_not_drifted']=w['tasks'][0]['conditions']['departure_date']==previous['workflow']['tasks'][0]['conditions']['departure_date']
-            if case=='preference_plan':
+            if case in {'preference_plan', 'preference_replace'}:
                 brands=run.effective_preferences.get('hotel_brands')
                 # Existing preference values allow a scalar or a list. Also
                 # verify the refreshed preference reached the actual query.
                 checks['preference_updated']=brands in ('全季',['全季']) and any(
                     row.get('domain')=='hotel' and row.get('parameters',{}).get('keywords')=='全季'
                     for row in w.get('results_by_query',{}).values())
+            if case == 'resume' and previous:
+                checks['same_workflow'] = w['id'] == previous['workflow_id']
+                checks['reuse_without_query'] = run.external_request_count == 0
+            if case == 'change_stay':
+                before = (previous['workflow']['tasks'][0]['conditions'].get('nights')
+                          if previous else None)
+                checks['stay_changed'] = (
+                    before is not None and w['tasks'][0]['conditions'].get('nights') == before + 1
+                    and w.get('last_update', {}).get('update_type') == 'change')
     return dict(passed=all(checks.values()),checks=checks)
+
+
+def case_query(case, query, previous):
+    if case == 'change_stay' and previous:
+        nights = previous['workflow']['tasks'][0]['conditions'].get('nights')
+        if nights is not None:
+            return f'把刚才上海旅行的停留时间改为{nights + 1}晚，其他要求保留。'
+    return query
 
 
 async def evaluate(output,only=None,*,resume_memory=None,thinking=None):
@@ -89,7 +150,12 @@ async def evaluate(output,only=None,*,resume_memory=None,thinking=None):
            ('explain','single','解释为什么选这家上海酒店，不要修改或重新查询。'),
            ('ambiguous','single','刚才的安排我不满意。'),
            ('pause','single','这次上海旅行先暂停规划，不要查询。'),
-           ('supplement_origin','unknown','重庆')]
+           ('supplement_origin','unknown','重庆'),
+           ('resume','single','继续刚才暂停的上海旅行规划，已查有效结果请复用，不要更改条件。'),
+           ('change_stay','single','把刚才上海旅行的停留时间改为3晚，其他要求保留。'),
+           ('preference_replace','single','以后酒店优先全季。这次上海旅行的酒店也换成全季，原火车和日期不变。'),
+           ('memory_read','single','查询我已经保存的酒店品牌偏好，只读历史，不搜索网页。'),
+           ('unsupported_purchase','single','帮我购买刚才方案里选中的火车票。')]
     if only: cases=[c for c in cases if c[0] in only]
     records=[]; previous={}
     for case,user,query in cases:
@@ -97,6 +163,7 @@ async def evaluate(output,only=None,*,resume_memory=None,thinking=None):
         memory=MemoryManager('simulated-'+user,case,storage_path=str(resume_memory or output/'memory'))
         known=memory.get_known_workflows()
         if user not in previous and known: previous[user]={'workflow_id':known[0]['id'],'workflow':known[0]}
+        query = case_query(case, query, previous.get(user))
         generate=get_model_generate_kwargs(thinking=thinking)
         raw=OpenAIChatModel(model_name=LLM_CONFIG['model_name'],api_key=LLM_CONFIG['api_key'],
             client_kwargs={'base_url':LLM_CONFIG['base_url'],'timeout':60.0},
@@ -117,8 +184,12 @@ async def evaluate(output,only=None,*,resume_memory=None,thinking=None):
         elapsed=(perf_counter()-started)*1000
         memory.record_message('assistant',json.dumps(result,ensure_ascii=False),run.turn_id,final=True)
         calls=[c for c in memory.session_store.read_runs() if c.get('type')=='model_call' and c.get('turn_id')==run.turn_id]
+        assessment = assess(case,result,run,previous.get(user))
+        intent_assessment = assess_intents(case, responses)
+        assessment['checks'].update(intent_assessment['checks'])
+        assessment['passed'] = all(assessment['checks'].values())
         record=dict(case=case,query=query,status=result.get('status'),stop_reason=result.get('stop_reason'),
-            assessment=assess(case,result,run,previous.get(user)),
+            assessment=assessment,
             latency=summarize_latency(calls,run.tool_requests,total_ms=elapsed,external_requests=run.external_request_count),
             source_mode='real_llm_simulated_travel',thinking_mode=thinking or LLM_CONFIG['thinking_mode'],trace_path=str(memory.session_store.session_dir))
         (output/(case+'.json')).write_text(json.dumps(dict(record=record,result=result,model_responses=responses),ensure_ascii=False,indent=2),encoding='utf-8')

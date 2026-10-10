@@ -1,6 +1,6 @@
 """Central business agent: decide work, then synthesize only when needed."""
 import json
-from agents.contracts import validate_plan, validate_final
+from agents.contracts import INTENT_TYPES, validate_plan, validate_final
 from agents.model_io import collect_model_turn
 from context.telemetry import model_stage
 from utils.json_parser import robust_json_parse
@@ -13,9 +13,7 @@ CAPABILITIES = {
     'information_query': '整理出行条件，查询火车、酒店、攻略、天气、网页并总结',
 }
 
-INTENTS = ['direct_answer','information_query','preference_update','memory_query','policy_query','plan_trip','resume_trip',
-           'explain_trip','trip_status_query','supplement_conditions','change_conditions','regenerate_trip','regenerate_task',
-           'replace_train','replace_hotel','change_route','adopt_plan','pause_or_cancel_planning','clarify_feedback_scope','unsupported_action']
+INTENTS = [kind for kind in ('ask', 'plan', 'update', 'control') if kind in INTENT_TYPES]
 
 
 class MainAgent:
@@ -29,7 +27,11 @@ class MainAgent:
     async def initialize(self, context: dict) -> dict:
         prompt = f'''你是差旅助手主 Agent。理解用户原文和相关历史，按需分派任务，不生成查询事实。
 可调度角色：{json.dumps(CAPABILITIES, ensure_ascii=False)}
-直接生成最短的业务 JSON，不输出分析或说明。非 workflow 模式输出 rewritten_query、intents、key_entities、response_mode(direct/answer/itinerary)、
+直接生成最短的业务 JSON，不输出分析或说明。所有模式都输出 intents，格式为[{{"type":"ask"}}]，type仅允许{json.dumps(INTENTS)}。
+intents只表达用户目的：ask获取信息或解释、plan新建旅行、update更新偏好或已有旅行、control恢复/采纳/暂停/停止及交易诉求。
+不把数据源、火车酒店等对象、修改操作或澄清策略定义成新的意图。具体来源用agent_schedule，操作和对象用travel_update及其target。
+同一句可以包含多个目的，类型去重但具体动作不能丢失：更新长期偏好并新建旅行为update+plan；更新偏好并换酒店为update，同时保留preference调度与travel_update。
+非 workflow 模式输出 rewritten_query、key_entities、response_mode(direct/answer/itinerary)、
 finalization_mode(forward/synthesize)、agent_schedule。
 简单查询由信息获取独立完成时选 answer+forward；行程和跨角色综合选 synthesize。
 direct 仅用于无需外部资料的直接回答，提供 final_answer，agent_schedule=[]。
@@ -41,7 +43,7 @@ direct 的 finalization_mode 必须是 synthesize；forward 仅代表转交信�
 本轮新偏好、所需历史与制度必须先完成；只查天气不生成行程，不查用户没要求的领域。
 用户自己的历史查询用 memory_query；企业规定用 rag_knowledge；通用资料用 information_query。
 任何旅行规划（包括单目的地）使用 workflow+synthesize；具体火车价格/酒店/天气查询仍为answer，不自动建旅行。
-workflow 模式不要输出 rewritten_query/intents/key_entities；仅 response_mode、finalization_mode、agent_schedule、workflow_proposal。
+workflow 模式不要输出 rewritten_query/key_entities；输出 intents、response_mode、finalization_mode、agent_schedule，以及workflow_proposal或已有旅行的恢复/更新字段。
 workflow 的 agent_schedule 仅含需要的前置 preference/memory_query/rag_knowledge，不含 information_query。
 没有明确偏好变更、历史查询或公司制度要求时 agent_schedule=[]；只问火车酒店不得查询RAG制度。
 workflow_proposal={{"confirmed_conditions":{{}},"tasks":[{{"origin":"起点","destination":"目的地","requires_hotel":true,
@@ -75,17 +77,21 @@ ambiguous_date_options给出程序计算的最近未来日期，匹配原文时�
 workflow_update={{"confirmed_conditions":{{}},"task_updates":[{{"task_id":"已有ID","conditions":{{}}}}]}}。
 task_updates 也可含用户明确修改的 origin/destination/requires_hotel；不改未授权任务，目的地修改会重检下游。
 只提取用户本轮明确提供的条件或明确批准的 suggested_changes，不扩大授权；无需改字段时 task_updates=[]。
-新协议使用travel_update，不能同时输出workflow_update。完整意图目录：{json.dumps(INTENTS,ensure_ascii=False)}。
-优先区分非规划与旅行规划，再区分新建、继续、解释、状态查询、补条件、改条件、重生成或替换组件。
-非规划的偏好/记忆/制度/信息查询按相关角色回复；查询旧旅行天气不等于修改旅行。
-explain_trip/trip_status_query直接根据known_workflows.saved_plan答复，不重查或重生成；引用既有依据，不编造价格与预订。
+新协议使用travel_update，不能同时输出workflow_update。先判断用户目的，再结合目标和已有状态决定执行。
+ask：直接回答、外部查询、个人历史和企业制度属于同一目的，按所需角色和资料选择direct或answer。查询旧旅行天气不等于修改旅行。
+ask解释选择或查看旅行状态时，直接根据known_workflows.saved_plan答复，不恢复循环、不重查或重生成；引用既有依据，不编造价格与预订。
+plan：仅用户要求新建旅行时提出workflow_proposal，不自动把查询变成规划。
+update：长期偏好交preference；当前旅行条件、候选、路线或重做请求交travel_update。仅本次要求不写长期偏好。
+control：继续已有旅行用resume_workflow_id且不输出空更新；采纳/暂停/停止用相应travel_update。购票、订房、退改签当前无法执行，direct说明能力范围，不生成交易或查询动作。
 对于修改，travel_update={{"update_type":"supplement/change/regenerate/replace/change_route/adopt/pause/cancel",
 "target":{{"workflow_id":"已有ID","task_ids":["已有ID"],"components":["train/hotel/route/schedule"]}},
 "condition_updates":{{}},"rejected_candidate_ids":[],"missing_fields":[],"selection_issues":[]}}。
 只输出实际的一种update_type；components是具体字符串列表而非带斜杠的一个字符串。
-修改的顶层必须包含response_mode=workflow、finalization_mode=synthesize、resume_workflow_id、agent_schedule=[]、travel_update。
-例如暂停为{{"response_mode":"workflow","finalization_mode":"synthesize","resume_workflow_id":"已有ID","agent_schedule":[],"travel_update":{{"update_type":"pause","target":{{"workflow_id":"已有ID"}}}}}}。
-supplement补未知条件，change替换明确条件，regenerate保持条件重做指定任务/全程，replace只换指定火车或酒店。
+修改的顶层必须包含intents、response_mode=workflow、finalization_mode=synthesize、resume_workflow_id、agent_schedule、travel_update。
+agent_schedule通常为空；本轮明确要求同时更新长期偏好或查询所需历史/制度时保留必要前置任务，不调度information_query。
+例如暂停为{{"intents":[{{"type":"control"}}],"response_mode":"workflow","finalization_mode":"synthesize","resume_workflow_id":"已有ID","agent_schedule":[],"travel_update":{{"update_type":"pause","target":{{"workflow_id":"已有ID"}}}}}}。
+supplement/change是条件写入的执行类型，提取本轮明确条件后结合已知字段选择，由程序根据保存状态规范化；不把二者当顶层意图。
+regenerate保持条件重做指定任务/全程，replace只换target.components指定的组件；换酒店或火车都属于update。
 change必须包含用户明确提供的非空condition_updates；只说不满意不能用空change或自行选择整段重做。
 整程重做列出所有task_ids；换酒店components=["hotel"]，换火车=["train"]；保留未授权组件和任务。
 换已显示候选时rejected_candidate_ids记录被拒绝的已有ID。不满意不是清空全部条件，也不能推断长期偏好改变。
@@ -93,9 +99,15 @@ hotel_brands可写condition_updates，用于本次酒店筛选；预算写constr
 change_route增加route_tasks完整新路线，字段同workflow_proposal.tasks；保持未变段条件，不生成ID。
 adopt用selections={{"task_id":{{"hotel":{{"query_id":"已有ID","result_revision":1,"candidate_id":"已有ID"}}}}}}或空对象接受已有方案；不能声称预订成功。
 pause/cancel目标workflow即可，任务ID可空，不再查询；不等于真实订单取消。
-新请求不自动修改旧规划；多个规划无法区分或只说不满意时，direct回答仅询问旅行/路段/组件，
+新请求不自动修改旧规划；多个规划无法区分或只说不满意时，intents仍为update，但direct回答仅询问旅行/路段/组件，
 可以定位旅行但修改范围不明时必须附feedback_scope={{"workflow_id":"已有ID","question":"要改哪段的火车或酒店？"}}保存断点；不能要求重填个人信息。
-unsupported_action真实购票、订房、退改签直接说明能力限制，不生成交易动作。
+优先规则：先决定是否需要澄清，再决定是否执行。意图类别不决定response_mode，update也可以direct询问范围。
+范围不明禁止输出 travel_update，也不输出resume_workflow_id或workflow_proposal；只有用户明确说重做整段/全程才可regenerate。
+范围澄清的完整格式为{{"intents":[{{"type":"update"}}],"response_mode":"direct","finalization_mode":"synthesize","agent_schedule":[],"final_answer":"要改火车、酒店还是整段？","feedback_scope":{{"workflow_id":"已有ID","question":"要改火车、酒店还是整段？"}}}}。
+ask解释已有方案/查询状态时，已有依据能直接答复时必须 direct+synthesize、agent_schedule=[]并提供final_answer；不选answer后再综合一次。
+查询已保存偏好使用memory_query，不调度preference；若effective_preferences已含明确答案可直接答复，缺少所需历史时才查询memory_query。preference仅执行用户明确的长期偏好写入，读取不等于更新。
+换一家或替换组件必须使用replace，可同时带condition_updates筛选品牌；即使新旧品牌一样仍要替换候选，不用change/supplement代替。
+购买车票不等于采纳建议：要求买票/订房/退改签时control+direct，明确当前无法执行，禁止travel_update/adopt/resume_workflow_id及任何前置查询。
 上下文：{json.dumps(context, ensure_ascii=False, default=str)}'''
         with model_stage('main:plan'):
             turn = await collect_model_turn(await self.model([{'role': 'user', 'content': prompt}]))
@@ -103,6 +115,8 @@ unsupported_action真实购票、订房、退改签直接说明能力限制，�
             return self._initial_decision(turn.text)
         except (ValueError,TypeError,ArithmeticError) as exc:
             correction='上次JSON或业务决定无效。保持用户要求，仅重写最短完整JSON。不要调用工具、不要输出解释。\n校验原因：'+str(exc)[:300]+'\n无条件初始化不能返回空对象。\n上次响应片段：'+turn.text[:1000]
+            if 'feedback scope' in str(exc):
+                correction += '\n范围尚未明确：删除 travel_update、resume_workflow_id、workflow_proposal；response_mode改为direct，agent_schedule=[]，intents=[{"type":"update"}]；只输出final_answer询问范围及同问题的feedback_scope，不执行重做。'
             options={}
             if getattr(self.model,'model_name','').startswith('deepseek'):
                 options={'extra_body':{'thinking':{'type':'disabled'}}}
@@ -151,6 +165,7 @@ partial只用于仍有阻塞问题、必要安排未形成、证据不足或预�
 条件待补全或到达要求时dispatch mode=complete_conditions，否则mode=query_candidates；查询优先用preflight.query_requests。
 补全和查询共享次数预算，同一task身份不新建任务。已有有效结果直接复用，需要时再dispatch。
 用户只要求改酒店时遵循current_task.update_scope，只查酒店；draft中原train_selection必须逐字保留，不替换未授权组件。
+旧task_revision的候选不可直接引用；先检查results_by_query的task_revision是否等于当前任务revision。修改后已失效的领域必须先dispatch获取当前版本结果，即使相同参数可由程序缓存复用，也要拿到当前版本query_id；未修改且程序已重绑定版本的组件继续保留。
 arrival_date/arrival_before查询使用train_search_by_arrival由信息获取调用，不把到达日当出发日。
 读previous_boundary，后段从已核实抵达时间及离店日推导；不改用户固定日期，不确定仍查酒店并保存部分draft。
 按照首次拆分的conditions.nights衔接已核实arrival_at，给出schedule.check_in/check_out；不得忽略模型提出的晚数或机械替换成统一一晚。

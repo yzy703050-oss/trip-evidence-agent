@@ -5,6 +5,62 @@ import pytest
 from workflow_support import populated_workflow
 
 
+@pytest.mark.parametrize('old,changes,model_kind,expected', [
+    ({'origin': None}, {'origin': '重庆'}, 'change', 'supplement'),
+    ({'origin': '上海'}, {'origin': '重庆'}, 'supplement', 'change'),
+    ({'conditions': {'hotel_keywords': None}}, {'hotel_keywords': '全季'}, 'change', 'supplement'),
+    ({'conditions': {'nights': 2}, 'field_sources': {'nights': 'proposal'}}, {'nights': 3}, 'supplement', 'change'),
+    ({'conditions': {'nights': 2}}, {'nights': 2}, 'change', 'supplement'),
+    ({'conditions': {'constraints': {'seat_class': '二等座'}}},
+     {'constraints': {'hotel_max_nightly_cny': 500}}, 'change', 'supplement'),
+    ({'conditions': {'constraints': {'seat_class': '二等座'}}},
+     {'constraints': {'seat_class': '一等座', 'hotel_max_nightly_cny': 500}}, 'supplement', 'change'),
+    ({'conditions': {'departure_date': '2026-10-11'}},
+     {'departure_date': '2026-10-12', 'constraints': {'hotel_max_nightly_cny': 500}}, 'supplement', 'change'),
+])
+def test_condition_update_type_comes_from_saved_values(old, changes, model_kind, expected):
+    from agents.travel_updates import apply_travel_update
+    w = populated_workflow()
+    task = w['tasks'][0]
+    for key, value in old.items():
+        if isinstance(value, dict):
+            task[key].update(value)
+        else:
+            task[key] = value
+    update = dict(update_type=model_kind, target=dict(workflow_id=w['id'], task_ids=[task['id']],
+                 components=['schedule']), condition_updates=changes)
+    original, original_update = deepcopy(w), deepcopy(update)
+    result = apply_travel_update(w, update)
+    assert result['last_update']['update_type'] == expected
+    assert result['last_update']['condition_updates'] == changes
+    assert w == original and update == original_update
+    assert result['id'] == w['id'] and result['tasks'][0]['id'] == task['id']
+
+
+@pytest.mark.parametrize('condition', [
+    {'passengers': 1}, {'constraints': {'seat_class': '二等座'}},
+])
+def test_changes_compare_inherited_confirmed_conditions(condition):
+    from agents.travel_updates import apply_travel_update
+    w = populated_workflow()
+    w['confirmed_conditions'].update(condition)
+    changes = {'passengers': 2} if 'passengers' in condition else {'constraints': {'seat_class': '一等座'}}
+    result = apply_travel_update(w, dict(update_type='supplement',
+        target=dict(workflow_id=w['id'], task_ids=[w['tasks'][0]['id']]), condition_updates=changes))
+    assert result['last_update']['update_type'] == 'change'
+
+
+def test_condition_change_in_any_selected_task_is_a_change():
+    from agents.travel_updates import apply_travel_update
+    w = populated_workflow()
+    w['tasks'][1]['conditions']['nights'] = 2
+    result = apply_travel_update(w, dict(update_type='supplement',
+        target=dict(workflow_id=w['id'], task_ids=[t['id'] for t in w['tasks'][:2]]),
+        condition_updates={'nights': 3}))
+    assert result['last_update']['update_type'] == 'change'
+    assert all(t['conditions']['nights'] == 3 for t in result['tasks'][:2])
+
+
 def test_only_hotel_replacement_preserves_train_and_other_tasks():
     from agents.travel_updates import apply_travel_update
     w = populated_workflow()
