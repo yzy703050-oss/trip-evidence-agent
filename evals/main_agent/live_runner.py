@@ -18,7 +18,7 @@ from agents.main_agent import MainAgent
 from agents.orchestration_agent import OrchestrationAgent
 from agents.lazy_agent_registry import LazyAgentRegistry
 from cli import TripEvidenceCLI
-from config import LLM_CONFIG, get_settings
+from config import LLM_CONFIG, get_settings, get_model_generate_kwargs
 from context.memory_manager import MemoryManager
 from context.telemetry import MeteredModel
 from travel_data.juhe_train import JuheTrainProvider
@@ -122,7 +122,7 @@ async def run_case(case_id, query, expected):
     memory = MemoryManager(USER, case_id, storage_path=str(OUT / 'memory'))
     raw = OpenAIChatModel(model_name=LLM_CONFIG['model_name'], api_key=LLM_CONFIG['api_key'],
         client_kwargs={'base_url': LLM_CONFIG['base_url'], 'timeout': 60.0},
-        generate_kwargs={'temperature': LLM_CONFIG['temperature'], 'max_tokens': LLM_CONFIG['max_tokens']})
+        generate_kwargs=get_model_generate_kwargs())
     model_responses = []
     model = MeteredModel(RecordingModel(raw, model_responses), memory.session_store.append_run,
         input_usd_per_million=LLM_CONFIG['input_usd_per_million'],

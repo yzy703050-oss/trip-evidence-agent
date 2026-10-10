@@ -91,8 +91,20 @@ class JuheTrainProvider:
                         raise ValueError('invalid price')
                     remaining, availability = self._inventory(seat.get('num'), row.get('enable_booking'))
                     offer_id = '|'.join([query.departure_date.isoformat(), *fields[:3], code, name])
+                    departure = datetime.fromisoformat(f'{query.departure_date.isoformat()}T{fields[3]}:00+08:00')
+                    arrival = None
+                    evidence = {'departure': 'query_date_and_provider_clock'}
+                    duration = row.get('duration')
+                    if isinstance(duration, str) and re.fullmatch(r'\d{1,3}:[0-5]\d', duration):
+                        hours, minutes = (int(part) for part in duration.split(':'))
+                        candidate = departure + timedelta(hours=hours, minutes=minutes)
+                        if candidate.strftime('%H:%M') == fields[4]:
+                            arrival = candidate.isoformat()
+                            evidence['arrival'] = 'provider_segment_duration'
                     items.append(TrainOffer(offer_id, *fields, name, price, availability,
-                                            remaining, source, None).to_dict())
+                                            remaining, source, None,
+                                            departure_at=departure.isoformat(), arrival_at=arrival,
+                                            time_evidence=evidence).to_dict())
                 except (KeyError, TypeError, ValueError, InvalidOperation):
                     skipped = True
         message = '部分车次或席别字段不完整，已跳过。' if skipped else (

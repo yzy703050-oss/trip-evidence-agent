@@ -38,7 +38,20 @@ LLM_CONFIG = {
     "output_usd_per_million": settings.llm_output_usd_per_1m_tokens,
     "temperature": 0.7,
     "max_tokens": 8192,
+    "thinking_mode": "disabled",
 }
+
+
+def get_model_generate_kwargs(config=None, *, thinking=None):
+    """Keep runtime and evaluation generation options consistent."""
+    cfg=LLM_CONFIG if config is None else config
+    options={'temperature':cfg.get('temperature',0.7),'max_tokens':cfg.get('max_tokens',2000)}
+    if cfg.get('model_name','').startswith('deepseek'):
+        mode=thinking or cfg.get('thinking_mode','disabled')
+        if mode not in {'disabled','low','high'}: raise ValueError('invalid thinking mode')
+        options['extra_body']={'thinking':{'type':'disabled' if mode=='disabled' else 'enabled'}}
+        if mode!='disabled': options['reasoning_effort']=mode
+    return options
 
 # System Configuration
 SYSTEM_CONFIG = {
@@ -65,3 +78,5 @@ RESILIENCE_CONFIG = {
 }
 
 RUN_LIMITS = dict(info_model_calls=6, info_tool_calls=10, feedback_rounds=1, tool_timeout=30.0, candidate_limit=5)
+WORKFLOW_LIMITS = dict(info_executions_per_task=3, main_steps_per_task=4, main_extra_steps=4,
+                       tools_per_task=10, turn_timeout=600.0, evidence_max_age_seconds=3600.0)

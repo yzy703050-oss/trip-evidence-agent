@@ -11,6 +11,16 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 _stage: ContextVar[str] = ContextVar("v0_model_stage", default="unspecified")
+_scope: ContextVar[dict] = ContextVar('workflow_model_scope', default={})
+
+
+@contextmanager
+def model_scope(**ids):
+    token = _scope.set({**_scope.get(), **ids})
+    try:
+        yield
+    finally:
+        _scope.reset(token)
 
 
 @contextmanager
@@ -49,7 +59,7 @@ class MeteredModel:
         return getattr(self.model, name)
 
     def _write(
-        self, started: float, stage: str, usage: Any, status: str, error: str | None = None
+        self, started: float, stage: str, usage: Any, status: str, error: str | None = None, ttft_ms: float | None = None
     ) -> None:
         input_tokens = _usage_value(usage, "input_tokens")
         output_tokens = _usage_value(usage, "output_tokens")
@@ -73,9 +83,11 @@ class MeteredModel:
                     "status": status,
                     "error": error,
                     "latency_ms": round((perf_counter() - started) * 1000, 3),
+                    "ttft_ms": ttft_ms,
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                     "estimated_cost_usd": cost,
+                    **_scope.get(),
                 }
             )
         except Exception:
@@ -93,10 +105,12 @@ class MeteredModel:
 
             async def measured_stream():
                 usage = None
+                first_chunk_ms = None
                 status = "success"
                 error = None
                 try:
                     async for chunk in response:
+                        if first_chunk_ms is None: first_chunk_ms=round((perf_counter()-started)*1000,3)
                         usage = getattr(chunk, "usage", None) or usage
                         yield chunk
                 except Exception as exc:
@@ -104,7 +118,7 @@ class MeteredModel:
                     error = str(exc)
                     raise
                 finally:
-                    self._write(started, stage, usage, status, error)
+                    self._write(started, stage, usage, status, error, first_chunk_ms)
 
             return measured_stream()
         self._write(started, stage, getattr(response, "usage", None), "success")

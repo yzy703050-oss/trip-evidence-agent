@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional
 from .short_term_memory import ShortTermMemory
 from .long_term_memory import LongTermMemory
 from .session_store import SessionStore
+from .workflow_store import WorkflowStore
 from .compaction import estimate_tokens, select_safe_prefix
 import logging
 import json
@@ -57,6 +58,8 @@ class MemoryManager:
         # 初始化两层记忆
         self.long_term = LongTermMemory(user_id, storage_path)
         self.session_store = SessionStore(storage_path, user_id, session_id)
+        self.workflow_store = WorkflowStore(storage_path, user_id)
+        self.workflow_store.trip_memory.repair(self.workflow_store)
         self.short_term = ShortTermMemory(max_turns=10)
         self._record_lock = threading.RLock()
         self._cleared_through_seq = self.session_store.read_state().get("cleared_through_seq", 0)
@@ -67,6 +70,37 @@ class MemoryManager:
         self.current_turn_id = latest_user.get("turn_id") if latest_user else None
 
         logger.info(f"Memory manager initialized for user {user_id}, session {session_id}")
+
+    def get_active_workflows(self):
+        state = self.session_store.read_state()
+        ids = state.get('active_workflow_ids', [])
+        # A new session may resume this user's unfinished workflow.
+        if not ids:
+            return self.workflow_store.list_active()
+        return [value for workflow_id in ids if (value := self.workflow_store.load(workflow_id)) is not None]
+
+    def get_known_workflows(self, query='', limit=5):
+        if type(limit) is not int or limit<1: raise ValueError('invalid known workflow limit')
+        self.workflow_store.trip_memory.repair(self.workflow_store)
+        values=self.workflow_store.list_all()
+        def score(w):
+            cities={t.get(k) for t in w['tasks'] for k in ('origin','destination')}
+            return sum(bool(city and city in query) for city in cities)+int(w['id'] in query)
+        ranked=sorted(values,key=score,reverse=True) if query else values
+        ids={w['id'] for w in ranked[:limit]}
+        ids.update(w['id'] for w in values if w['status'] in {'running','needs_input','partial'})
+        return [w for w in ranked if w['id'] in ids]
+
+    def set_active_workflow(self, workflow_id):
+        with self.session_store._lock:
+            state = self.session_store.read_state()
+            ids = state.get('active_workflow_ids', [])
+            if workflow_id is None:
+                state.update(active_workflow_ids=[], active_workflow_id=None)
+            else:
+                if workflow_id not in ids: ids.append(workflow_id)
+                state.update(active_workflow_ids=ids, active_workflow_id=workflow_id)
+            self.session_store.write_state(state)
 
     # ========== 短期记忆操作 ==========
 

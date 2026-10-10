@@ -3,6 +3,7 @@ import asyncio
 from copy import deepcopy
 import json
 from uuid import uuid4
+from time import perf_counter
 
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
@@ -37,19 +38,36 @@ class InformationQueryAgent(AgentBase):
         return Msg(self.name, json.dumps(result, ensure_ascii=False), 'assistant')
 
     async def run(self, context, run):
+        started = perf_counter()
+        workflow_mode = context.get('type') == 'task_request'
+        task_request = context.get('task', {}) if workflow_mode else {}
+        if workflow_mode:
+            context = {**context['context'], 'task': task_request,
+                       'requested_domains': task_request['requested_domains'], 'type': 'task_request'}
+            if run.workflow is None or run.current_task_id != task_request['id']:
+                raise ValueError('task request does not match workflow')
+            from agents.workflow_contracts import task_by_id
+            if task_by_id(run.workflow, run.current_task_id)['revision'] != task_request['revision']:
+                raise ValueError('stale task request')
+        initial_tool_count = len(run.tool_requests)
+        initial_external_count = run.external_request_count
         run.info_executions += 1
         requested = context.get('requested_domains', [])
         feedback = context.get('feedback') or {}
         messages = [{'role': 'system', 'content': self.skill_loader.get_skill_content('query-info') or '根据原文整理条件，使用工具查询并总结。'},
             {'role': 'user', 'content': json.dumps({**context, 'effective_preferences': run.effective_preferences,
                 'travel_conditions': run.travel_conditions, 'domain_results': run.domain_results}, ensure_ascii=False)}]
-        summary, limited, tool_count = '', False, 0
+        summary, limited, tool_count, model_count = '', False, 0, 0
         seen_ids = set()
         final_payload = {}
         for _ in range(run.limits.info_model_calls):
             try:
                 with model_stage('agent:information_query'):
-                    turn = await collect_model_turn(await self.model(messages, tools=self.tool_executor.schemas(), tool_choice='auto'))
+                    schemas = self.tool_executor.schemas()
+                    if workflow_mode:
+                        schemas = [s for s in schemas if TOOL_DOMAINS[s['function']['name']] in requested]
+                    model_count += 1
+                    turn = await collect_model_turn(await self.model(messages, tools=schemas, tool_choice='auto'))
                 if not turn.tool_calls:
                     final_payload = robust_json_parse(turn.text)
                     summary = final_payload.get('summary', '')
@@ -57,7 +75,7 @@ class InformationQueryAgent(AgentBase):
                         raise ValueError('summary must be text')
                     # Extras (purpose, duration) cannot replace actual queried fields.
                     extras = final_payload.get('travel_conditions', {})
-                    if isinstance(extras, dict):
+                    if isinstance(extras, dict) and not workflow_mode:
                         for key, value in extras.items():
                             if key not in run.travel_conditions:
                                 run.travel_conditions[key] = value
@@ -66,7 +84,7 @@ class InformationQueryAgent(AgentBase):
                 async def execute(call, allowed):
                     if not allowed:
                         return {'status': 'error', 'message': '工具调用达到上限或 ID 重复。', 'items': []}
-                    if feedback and TOOL_DOMAINS.get(call['name']) not in requested:
+                    if (feedback or workflow_mode) and TOOL_DOMAINS.get(call['name']) not in requested:
                         return {'status': 'error', 'message': '补查只能查询受影响领域。', 'items': []}
                     arguments = deepcopy(call['arguments'])
                     if feedback:
@@ -80,7 +98,11 @@ class InformationQueryAgent(AgentBase):
                     return await self.tool_executor.execute(call['name'], arguments, run, call_id=execution_id)
                 allowed = []
                 for call in turn.tool_calls:
-                    valid = call['id'] not in seen_ids and tool_count < run.limits.info_tool_calls
+                    in_scope = not workflow_mode or TOOL_DOMAINS.get(call['name']) in requested
+                    valid = call['id'] not in seen_ids and tool_count < run.limits.info_tool_calls and in_scope
+                    if workflow_mode and run.workflow_tool_budget is not None:
+                        valid = valid and run.workflow_tool_budget > 0
+                        if valid: run.workflow_tool_budget -= 1
                     allowed.append(valid)
                     if valid:
                         tool_count += 1
@@ -98,7 +120,7 @@ class InformationQueryAgent(AgentBase):
             limited = True
         # A selected view may contain IDs from earlier windows in this same pool.
         selected_ids = final_payload.get('selected_ids', {})
-        if isinstance(selected_ids, dict) and run.candidates:
+        if isinstance(selected_ids, dict) and run.candidates and not workflow_mode:
             for domain, ids in selected_ids.items():
                 if domain not in {'train', 'hotel'} or not isinstance(ids, list):
                     continue
@@ -120,6 +142,39 @@ class InformationQueryAgent(AgentBase):
                         data['source'] = deepcopy(data['items'][0]['source'])
                         data['fetched_at'] = data['source'].get('fetched_at') if isinstance(data['source'], dict) else None
                         data['message'] = (data.get('message') or '刷新未完成。') + '保留此前取得的候选，需重新确认报价和库存。'
+        if workflow_mode:
+            from agents.workflow_queries import query_views
+            from agents.planning_conditions import prepare_task
+            rows = query_views(run.workflow, run.current_task_id, limit=run.limits.candidate_limit)
+            calls = run.tool_requests[initial_tool_count:]
+            task = task_by_id(run.workflow, run.current_task_id)
+            options = []
+            for row in rows:
+                if row['domain'] != 'train' or row.get('needs_revalidation'): continue
+                for item in row['items']:
+                    if item.get('departure_at') and item.get('arrival_at'):
+                        options.append(dict(query_id=row['id'], result_revision=row['result_revision'], candidate_id=item['id'],
+                                            departure_at=item['departure_at'], arrival_at=item['arrival_at'], source=item['source']))
+            if options and not task['conditions'].get('departure_date'):
+                task['conditions']['departure_date'] = options[0]['departure_at'][:10]
+                task['field_sources']['departure_date'] = 'derived'
+            prepared = prepare_task(run.workflow, run.current_task_id, context.get('current_time'), previous_boundary=context.get('previous_boundary'))
+            missing = sorted(set(prepared['missing_fields']) | {f for r in rows for f in r.get('missing_fields', [])})
+            statuses = [r['status'] for r in rows]
+            status = 'ok' if not missing and statuses and all(s == 'ok' for s in statuses) and not limited else 'partial'
+            if statuses and len(set(statuses)) == 1 and statuses[0] in {'unavailable', 'error'}:
+                status = statuses[0]
+            return dict(type='task_result', task_id=task_request['id'], task_revision=task_request['revision'],
+                        agent='information_query', status=status, summary=summary,
+                        query_results=rows, missing_fields=missing, date_options=options,
+                        completed_conditions=prepared['effective_conditions'], field_sources=prepared['field_sources'],
+                        readiness=prepared['readiness'], issues=[], execution={
+                            'model_calls': model_count, 'tool_calls': len(calls),
+                            'external_requests': run.external_request_count-initial_external_count,
+                            'cache_hits': sum(bool(c.get('cache_hit')) for c in calls),
+                            'failed_calls': sum(c['status'] in {'error', 'unavailable'} for c in calls),
+                            'elapsed_ms': round((perf_counter()-started)*1000, 3),
+                            'stop_reason': 'info_limit_or_invalid_response' if limited else None})
         result = guard_information_result({'status': 'error' if limited else 'ok', 'summary': summary,
             'travel_conditions': deepcopy(run.travel_conditions), 'domain_results': deepcopy(run.domain_results),
             'missing_fields': []}, requested or list(run.domain_results))

@@ -58,22 +58,54 @@ class RunState:
     feedback_round: int = 0
     tool_requests: list = field(default_factory=list)
     external_requests_started: bool = False
+    external_request_count: int = 0
+    external_requests_by_task: dict = field(default_factory=dict)
     candidates: object = None
     info_executions: int = 0
     tool_record_seq: int = 0
+    workflow: dict | None = None
+    current_task_id: str | None = None
+    query_records: dict = field(default_factory=dict)
+    workflow_tool_budget: int | None = None
 
 
 def validate_plan(value: dict) -> dict:
     if not isinstance(value, dict):
         raise ValueError('plan must be an object')
     plan = deepcopy(value)
+    if isinstance(plan.get('travel_update'),dict):
+        target=plan['travel_update'].get('target',{})
+        if isinstance(target,dict) and isinstance(target.get('workflow_id'),str):
+            plan.setdefault('resume_workflow_id',target['workflow_id'])
+            plan['response_mode']='workflow'
     mode = plan.setdefault('response_mode', 'answer')
+    if mode == 'itinerary' and (isinstance(plan.get('workflow_proposal'), dict) or isinstance(plan.get('resume_workflow_id'), str)):
+        # A structured task proposal is an unambiguous workflow signal, even with the legacy label.
+        mode = plan['response_mode'] = 'workflow'
     finish = plan.setdefault('finalization_mode', 'synthesize')
-    if mode not in {'direct', 'answer', 'itinerary'} or finish not in {'forward', 'synthesize'}:
+    if mode not in {'direct', 'answer', 'itinerary', 'workflow'} or finish not in {'forward', 'synthesize'}:
         raise ValueError('invalid response mode')
     if finish == 'forward' and mode != 'answer':
         raise ValueError('only information answers can be forwarded')
     rows = plan.setdefault('agent_schedule', [])
+    if mode == 'workflow':
+        if not isinstance(plan.get('workflow_proposal'), dict) and not isinstance(plan.get('resume_workflow_id'), str):
+            raise ValueError('workflow needs a proposal or resume target')
+        if any(isinstance(r, dict) and r.get('agent_name') == 'information_query' for r in rows):
+            raise ValueError('workflow queries are task-scoped, not preflight agents')
+        update=plan.get('travel_update')
+        if update is not None:
+            if not isinstance(update,dict) or update.get('update_type') not in {'supplement','change','regenerate','replace','change_route','adopt','pause','cancel'}:
+                raise ValueError('invalid travel update')
+            target=update.get('target',{})
+            if not isinstance(target,dict) or target.get('workflow_id')!=plan.get('resume_workflow_id'):
+                raise ValueError('update target differs from resume target')
+            if update['update_type'] == 'change' and not update.get('condition_updates'):
+                raise ValueError('change needs explicit changed conditions; unclear dissatisfaction requires a direct feedback_scope question, not empty change')
+    if plan.get('feedback_scope') is not None:
+        scope=plan['feedback_scope']
+        if mode!='direct' or not isinstance(scope,dict) or not all(isinstance(scope.get(k),str) and scope[k].strip() for k in ('workflow_id','question')):
+            raise ValueError('invalid feedback scope checkpoint')
     if not isinstance(rows, list) or (mode == 'direct' and rows):
         raise ValueError('invalid schedule')
     names = set()

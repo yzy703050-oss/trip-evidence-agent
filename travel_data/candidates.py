@@ -15,14 +15,28 @@ class CandidateStore:
             if key in self.cache and not refresh:
                 return self.cache[key], True
             result = await fetch()
+            if refresh and key in self.cache and result.status not in {'ok', 'partial'}:
+                return result, False
             if refresh and key in self.cache:
                 previous = self.cache.pop(key)
                 self.cache[f'{key}:previous:{len(self.cache)}'] = previous
             self.cache[key] = result
             return result, False
 
+    def snapshot(self):
+        return {key: value.to_dict() for key, value in self.cache.items()}
+
+    def restore(self, snapshot):
+        from agents.workflow_queries import as_result
+        self.cache = {key: as_result({**value, 'parameters': value['query']}) for key, value in snapshot.items()
+                      if value.get('status') in {'ok', 'partial'}}
+        self.locks = {}
+
 
 def query_cache_key(domain: str, query: dict) -> str:
+    if domain == 'hotel' and query.get('search_kind') == 'hotel_place':
+        # Place facts do not depend on party size or proposed stay dates.
+        query = {k: v for k, v in query.items() if k not in {'guests', 'check_in', 'check_out'}}
     return domain + ':' + json.dumps(query, sort_keys=True, ensure_ascii=False)
 
 
@@ -32,7 +46,7 @@ def candidate_view(result, *, limit, offset, constraints, preferences):
         from travel_data.hotel_places import hotel_place_view
         return hotel_place_view(value, limit=limit, offset=offset,
                                 constraints=constraints, preferences=preferences)
-    kind = 'train' if 'departure_date' in value['query'] else 'hotel' if 'check_in' in value['query'] else None
+    kind = 'train' if 'departure_date' in value['query'] or value['query'].get('search_kind') == 'train_arrival' else 'hotel' if 'check_in' in value['query'] else None
     if not kind:
         return value
     items = []

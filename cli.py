@@ -30,7 +30,7 @@ from travel_data.plan_guard import guard_itinerary
 # 导入系统组件
 from agentscope.model import OpenAIChatModel
 from config_agentscope import init_agentscope
-from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, get_settings
+from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, get_settings, get_model_generate_kwargs
 from travel_data.juhe_train import JuheTrainProvider
 from travel_data.ddgs_guide import DDGSGuideProvider
 from travel_data.amap_hotel import AmapHotelProvider
@@ -111,10 +111,7 @@ class TripEvidenceCLI:
                     "base_url": LLM_CONFIG["base_url"],
                     "timeout": float(timeout_sec),
                 },
-                generate_kwargs={
-                    "temperature": LLM_CONFIG.get("temperature", 0.7),
-                    "max_tokens": LLM_CONFIG.get("max_tokens", 2000),
-                },
+                generate_kwargs=get_model_generate_kwargs(),
             )
 
             # 初始化记忆管理器（传入LLM模型用于总结）
@@ -304,6 +301,31 @@ class TripEvidenceCLI:
             self.console.print(result_data['final_answer'], markup=False)
         if result_data.get('missing_fields'):
             self.console.print('需要补充：' + ', '.join(result_data['missing_fields']), markup=False)
+        if result_data.get('workflow'):
+            checked = result_data.get('validated_plan', {})
+            for task in checked.get('reconstructed_tasks', []):
+                self.console.print(f"{task['origin']} → {task['destination']}（{task['task_id']}）", markup=False)
+                self.console.print(json.dumps(task['schedule'], ensure_ascii=False), markup=False)
+                if task.get('train'):
+                    item = task['train']; source = item.get('source') or {}
+                    self.console.print(f"火车 {item.get('train_number')} / {item.get('seat_class')} / 单人票价 {item.get('price_cny')} 元 / {item.get('availability')}", markup=False)
+                    self.console.print(f"{source.get('provider')} {source.get('url')} {source.get('fetched_at')}", markup=False)
+                    if item.get('needs_revalidation'): self.console.print('此前取得的价格和库存，需要重新核实。', markup=False)
+                if task.get('hotel'):
+                    item = task['hotel']; source = item.get('source') or {}
+                    self.console.print(f"酒店 {item.get('hotel_name')} / {item.get('address', '')}", markup=False)
+                    if item.get('kind') == 'hotel_place':
+                        self.console.print('酒店地点参考；房价、空房和入住规则未知。', markup=False)
+                    else:
+                        self.console.print(f"住宿报价 {item.get('stay_total_cny')} 元 / {item.get('availability')}", markup=False)
+                    self.console.print(f"{source.get('provider')} {source.get('url')} {source.get('fetched_at')}", markup=False)
+                    if item.get('needs_revalidation'): self.console.print('此前取得的报价和库存，需要重新核实。', markup=False)
+            budget = checked.get('budget', {})
+            self.console.print(f"已知费用合计：{budget.get('known_subtotal_cny', '未知')} 元；全程费用核实：{budget.get('verified', False)}", markup=False)
+            for gap in result_data.get('gaps', []):
+                self.console.print(gap.get('message', str(gap)) if isinstance(gap, dict) else str(gap), markup=False)
+            self.console.print(f"规划状态：{result_data['status']}；停止原因：{result_data.get('stop_reason')}", markup=False)
+            return
         domains = result_data.get('domain_results', {})
         for domain, raw in domains.items():
             data = guard_domain_result(domain, raw)
