@@ -20,11 +20,17 @@ class TripMemory:
         with _file_lock(self.directory/'trip-summary.lock'):
             workflows=workflow_store.list_all()
             lines=['# 保存的旅行方案', '', 'JSON 工作流是权威状态；本文件为可重建摘要。规划不代表已经出行或预订。', '']
+            recent_inactive=0
             for w in workflows:
                 lines.extend(['## '+w['id'], f"revision: {w['revision']}", f"status: {w['status']}",
                               'record_kind: planned_itinerary', 'route: '+ ' → '.join([w['tasks'][0].get('origin') or '出发地待补充']+[t['destination'] for t in w['tasks']]),
                               'conditions: '+json.dumps(w['confirmed_conditions'],ensure_ascii=False),
                               'recent_change: '+json.dumps(w.get('last_update',{}),ensure_ascii=False)])
+                if w['status'] not in {'running','needs_input','partial'}:
+                    recent_inactive+=1
+                    if recent_inactive>5:
+                        lines.extend(['详细任务见 workflows/'+w['id']+'.json',''])
+                        continue
                 for t in w['tasks']:
                     draft=t.get('draft_plan') or {}
                     selections={}

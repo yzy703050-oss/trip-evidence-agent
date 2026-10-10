@@ -23,7 +23,7 @@ def offline_coverage():
         'S03': ['test_three_and_five_tasks_have_drafts_then_global_validation', 'test_model_cannot_finish_without_check_or_spin_forever'],
         'S04': ['test_queries_do_not_overwrite_the_route_and_five_is_only_a_view'],
         'S05': ['test_verified_cross_day_cannot_check_in_before_arrival', 'test_unknown_arrival_day_cannot_be_invented_in_draft'],
-        'S06': ['test_later_departure_cannot_precede_previous_stay', 'test_unknown_arrival_pauses_with_persisted_checkpoint'],
+        'S06': ['test_later_departure_cannot_precede_previous_stay', 'test_unknown_arrival_preserves_draft_without_personal_question'],
         'S07': ['test_global_party_change_is_confirmed_but_default_was_not', 'test_party_update_reuses_place_facts_not_old_train_pricing'],
         'S08': ['test_resume_second_task_preserves_first_and_reuses_unchanged_places'],
         'S09': ['test_restart_preserves_candidates_and_checkpoint', 'test_resume_second_task_preserves_first_and_reuses_unchanged_places'],

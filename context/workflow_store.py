@@ -1,6 +1,7 @@
 """User-isolated workflow snapshots with atomic writes and process-safe CAS."""
 from contextlib import contextmanager
 from copy import deepcopy
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -82,13 +83,16 @@ class WorkflowStore:
                     raise WorkflowConflictError('workflow revision changed')
                 revision = expected_revision + 1
             value['revision'] = revision
+            value.setdefault('created_at',datetime.now(timezone.utc).isoformat())
+            value['updated_at']=datetime.now(timezone.utc).isoformat()
             atomic_json_write(path, value)
         self.trip_memory.repair(self)
         return value
 
     def list_all(self):
         if not self.directory.exists(): return []
-        return [value for path in sorted(self.directory.glob('*.json')) if (value := self.load(path.stem))]
+        values=[value for path in sorted(self.directory.glob('*.json')) if (value := self.load(path.stem))]
+        return sorted(values,key=lambda w:w.get('updated_at') or str(self._path(w['id']).stat().st_mtime),reverse=True)
 
     def list_active(self):
         if not self.directory.exists(): return []

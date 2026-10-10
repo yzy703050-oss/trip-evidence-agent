@@ -51,3 +51,31 @@ def test_projection_failure_does_not_fail_canonical_save(tmp_path,monkeypatch):
     monkeypatch.setattr(TripMemory,'rebuild',fail)
     saved=m.workflow_store.save(populated_workflow(),expected_revision=None)
     assert m.workflow_store.load(saved['id'])==saved
+
+
+def test_known_plans_are_recent_first_and_query_can_find_older_completed_plan(tmp_path):
+    from agents.workflow_contracts import create_workflow
+    m=MemoryManager('alice','one',storage_path=str(tmp_path))
+    for name,city in [('workflow_z','上海'),('workflow_a','杭州')]:
+        w=create_workflow(dict(confirmed_conditions={},tasks=[dict(origin='重庆',destination=city,requires_hotel=False)]),{},workflow_id=name)
+        w['status']='completed'; m.workflow_store.save(w,expected_revision=None)
+    assert m.get_known_workflows(limit=1)[0]['id']=='workflow_a'
+    assert m.get_known_workflows(query='找之前上海的方案',limit=1)[0]['id']=='workflow_z'
+
+
+def test_active_trips_do_not_displace_five_recent_completed_details(tmp_path):
+    from context.trip_memory import TripMemory
+    from types import SimpleNamespace
+    from copy import deepcopy
+    rows=[]
+    for index in range(12):
+        w=deepcopy(populated_workflow()); w['id']=f'workflow_{index}'
+        w['status']='partial' if index<6 else 'completed'
+        rows.append(w)
+    projection=TripMemory(tmp_path,'alice')
+    projection.rebuild(SimpleNamespace(list_all=lambda:rows))
+    text=(tmp_path/'alice'/'trip.md').read_text(encoding='utf-8')
+    for index in range(11):
+        section=text.split('## workflow_'+str(index)+'\n')[1].split('\n## ')[0]
+        assert '详细任务见' not in section
+    assert '详细任务见 workflows/workflow_11.json' in text

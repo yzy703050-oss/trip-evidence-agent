@@ -100,12 +100,34 @@ class ExecutionHarness:
         self.memory_manager, self.emit = memory_manager, emit
 
     async def run_turn(self, context, run):
+        from config import WORKFLOW_LIMITS
+        try:
+            return await asyncio.wait_for(self._run_turn(context,run),timeout=WORKFLOW_LIMITS['turn_timeout'])
+        except asyncio.TimeoutError:
+            result={**self._error('turn_timeout',run),'status':'partial','stop_reason':'turn_timeout',
+                    'final_answer':'本轮时间上限已到，已有结果已保留，可以继续修改。'}
+            if run.workflow is not None and self.memory_manager:
+                from context.workflow_store import WorkflowConflictError
+                w=deepcopy(run.workflow); w.update(status='partial',stop_reason='turn_timeout')
+                try: w=self.memory_manager.workflow_store.save(w,expected_revision=w['revision'])
+                except (OSError,WorkflowConflictError): return self._error('workflow_save_failed',run)
+                result.update(finalization_method='workflow',workflow=w,workflow_id=w['id'],workflow_revision=w['revision'])
+            return result
+
+    async def _run_turn(self, context, run):
         context = deepcopy(context)
         context['effective_preferences'] = deepcopy(run.effective_preferences)
+        from agents.planning_conditions import ambiguous_date_options
+        context['ambiguous_date_options']=ambiguous_date_options(context['original_query'],context.get('current_time'))
         try:
             if self.memory_manager:
                 context['active_workflows'] = [{k: deepcopy(v) for k, v in w.items() if k not in {'results_by_query', 'candidate_cache'}}
                                                for w in self.memory_manager.get_active_workflows()]
+                context['known_workflows'] = []
+                from agents.workflow_guard import check_workflow
+                for w in self.memory_manager.get_known_workflows(query=context['original_query']):
+                    context['known_workflows'].append({**{k:deepcopy(w[k]) for k in ('id','revision','status','original_query','confirmed_conditions','tasks','checkpoint')},
+                                                      'saved_plan':check_workflow(w)})
             initial = getattr(self.main_agent, 'initialize', self.main_agent.plan if hasattr(self.main_agent, 'plan') else None)
             with model_scope(turn_id=run.turn_id):
                 decision = validate_plan(await initial(context))
@@ -128,6 +150,17 @@ class ExecutionHarness:
         context.update({'rewritten_query': decision.get('rewritten_query') or context['original_query'],
                         'response_mode': decision['response_mode']})
         if decision['response_mode'] == 'direct':
+            scope=decision.get('feedback_scope')
+            if scope and self.memory_manager:
+                from context.workflow_store import WorkflowConflictError
+                w=self.memory_manager.workflow_store.load(scope['workflow_id'])
+                observed=next((r for r in context.get('known_workflows',[]) if r['id']==scope['workflow_id']),None)
+                if not w or not observed or observed['revision']!=w['revision']:
+                    return self._error('workflow_revision_conflict',run)
+                w.update(status='needs_input',checkpoint=dict(kind='feedback_scope',question=scope['question'],expected_workflow_revision=w['revision']+1),stop_reason='feedback_scope_required')
+                try: w=self.memory_manager.workflow_store.save(w,expected_revision=w['revision'])
+                except (WorkflowConflictError,OSError): return self._error('workflow_save_failed',run)
+                return dict(status='needs_input',finalization_method='direct',final_answer=scope['question'],workflow_id=w['id'],workflow=w,results=[],domain_results={},missing_fields=[])
             return {'status': 'ok', 'finalization_method': 'direct', 'final_answer': decision['final_answer'],
                     'results': [], 'domain_results': {}, 'missing_fields': []}
         remaining = list(decision['agent_schedule'])
@@ -183,19 +216,26 @@ class ExecutionHarness:
                 if self.memory_manager is None: raise ValueError('resume needs storage')
                 workflow = self.memory_manager.workflow_store.load(workflow_id)
                 if workflow is None: raise ValueError('unknown resume workflow')
-                observed = next((w for w in context.get('active_workflows', []) if w['id'] == workflow_id), None)
+                observed = next((w for w in context.get('known_workflows', context.get('active_workflows', [])) if w['id'] == workflow_id), None)
                 if observed is None or observed['revision'] != workflow['revision']:
                     raise WorkflowConflictError('resume decision was made against a different revision')
                 checkpoint = workflow.get('checkpoint')
                 if checkpoint and checkpoint.get('expected_workflow_revision') != workflow['revision']:
                     raise WorkflowConflictError('checkpoint revision changed')
-                workflow = apply_user_update(workflow, decision.get('workflow_update', {}))
+                if decision.get('travel_update'):
+                    from agents.travel_updates import apply_travel_update
+                    workflow = apply_travel_update(workflow,decision['travel_update'])
+                else:
+                    workflow = apply_user_update(workflow, decision.get('workflow_update', {}))
                 workflow = self.memory_manager.workflow_store.save(workflow, expected_revision=workflow['revision'])
             else:
                 workflow = create_workflow(decision['workflow_proposal'], context)
                 if self.memory_manager:
                     workflow = self.memory_manager.workflow_store.save(workflow, expected_revision=None)
             workflow['effective_preferences'] = deepcopy(run.effective_preferences)
+            if workflow['status'] in {'paused','cancelled'}:
+                return dict(status=workflow['status'],workflow_id=workflow['id'],workflow_revision=workflow['revision'],workflow=workflow,
+                            finalization_method='workflow',final_answer='已停止规划并保存方案。没有执行购票、订房或退改签。',results=[],domain_results={},missing_fields=[])
             from config import WORKFLOW_LIMITS
             runner = WorkflowRunner(self.main_agent, self.agent_registry['information_query'], self.memory_manager,
                                     limits=WorkflowLimits(**WORKFLOW_LIMITS), emit=self.emit)

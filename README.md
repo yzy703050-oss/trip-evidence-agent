@@ -12,7 +12,7 @@ preference、memory_query、rag_knowledge、information_query。
 需要综合或生成行程时，由主 Agent 在阶段 3 完成。行程规划不再独立调度。
 
 信息获取负责条件整理、模型原生工具调用、结果检查、补查和总结。
-它的内部工具是 train_search、hotel_search、travel_guide、weather_query、web_search，
+它的内部工具是 train_search、train_search_by_arrival、hotel_search、travel_guide、weather_query、web_search，
 工具自身不调用 LLM。主 Agent 只看到四个子 Agent 的能力，查询工具 schema 只交给信息获取。
 
 完整简单查询走「决策 → 信息获取 → 程序直返」，主 Agent 最终阶段模型调用为 0。
@@ -22,9 +22,17 @@ missing_fields，行程请求还包含 itinerary。
 
 火车和酒店默认最多展示 5 个候选，本轮全量池与缓存继续保留。
 查看后续窗口不向聚合接口发送分页参数。每次信息获取最多 6 次模型调用、10 次工具调用，
-单工具超时 30 秒。主 Agent 最多反馈一次，复用同一缓存；信息获取最多执行两次，
+单工具超时 30 秒。普通查询主 Agent 最多反馈一次，复用同一缓存；信息获取最多执行两次，
 最终综合最多调用两次。不能静默修改已确认硬条件。实际查询发出后，后续模型或记录失败
 不会重放整轮请求。
+
+旅行规划先按路线创建任务，每段由主 Agent 循环决定补全条件、查询、生成草稿和校验，
+全部任务处理后还需全程校验。缺日期时首段建议北京时间今天的一周后，保存后不漂移；
+只有到达日期时，可有界查询到达日及前两日的出发车次。缺出发地仍推荐目的地酒店，
+未知事实保留为部分方案，不强制询问个人字段。返程默认不需要酒店，用户明确要求时可安排。
+每任务最多执行信息获取 3 次，补全与查询共享预算，内部真实外部请求也计数；整轮上限 600 秒。
+用户可补条件、换火车或酒店、重做指定路段、改路线、接受候选、暂停或取消规划。
+局部修改保留其他组件；不能定位修改范围时才询问范围。规划状态不代表已订票或订房。
 
 RAG 内部、模型与 embedding 配置及外部 RAG 项目保持不变。
 酒店地点搜索已接入高德 Web 服务 API，通过 `AMAP_API_KEY` 配置；未配置时返回 unavailable。
@@ -49,6 +57,8 @@ RAG 内部、模型与 embedding 配置及外部 RAG 项目保持不变。
 data/memory/{user_id}/
 ├─ profile.json                 # 可查看、可手动修改的用户偏好
 ├─ trips.json                   # 历史行程
+├─ trip.md                      # 活动与近期旅行的可读摘要，可重建
+├─ workflows/                   # 带版本的详细旅行JSON，恢复的权威依据
 └─ sessions/{session_id}/
    ├─ events.jsonl             # 按发生顺序追加的会话事件
    ├─ state.json               # 压缩摘要与覆盖边界
@@ -56,6 +66,10 @@ data/memory/{user_id}/
 ```
 
 `events.jsonl` 可记录用户消息、助手回复，以及信息获取模型调用工具时的调用和结果。当前 V0 的子 Agent 调用属于**调度执行阶段**，不会伪装成模型工具调用。会话变长时，程序只在已完成轮次或阶段的安全边界选择压缩范围；不会切在工具调用与结果之间。摘要供模型读取，原始事件仍保留。跨会话查询使用用户画像及相关历史摘要。
+
+部分方案也会保存为长期旅行状态；同一旅行更新不重复累计历史，已完成旅行可在新会话中修改。
+`trip.md` 保留活动旅行及最近 5 个非活动旅行的详情，更旧旅行保留索引，完整数据仍在 JSON 中。
+模型调用耗时、首响应块时间、token 数及所属阶段记录在 `runs.jsonl`；工具耗时与缓存记录分别统计。
 
 用户可在 CLI 中执行 `preferences` 查看画像，执行 `preferences set hotel_brands '["全季"]'` 修改偏好，或用 `preferences delete hotel_brands` 删除。手动设置优先于 Agent 自动提取。
 
@@ -97,6 +111,15 @@ python -m pytest -q tests
 ```
 
 退休角色的旧在线演示已由主 Agent 和内部工具离线回归替代。离线测试结果以本仓库当前测试运行输出为准。
+
+真实配置模型与显式模拟火车、酒店接口的测评（需要模型 API，使用独立测评记忆）：
+
+```powershell
+python -m evals.run_preflight_simulated --output data/evals/preflight-new-run
+```
+
+输出逐用例响应、模型调用记录和分阶段耗时 CSV；模拟数据明确标注来源，生产入口不会自动回退到模拟。
+当前测评及延迟分析见 [规划补全测评报告](docs/evals/2026-10-10-planning-preflight-evaluation.md)。
 
 真实 EDD 会检查计划与实际 Agent 调用是否一致、执行是否成功、答案关键事实、RAG 来源与依据、跨会话回忆、行程约束，并记录延迟、模型调用量及 token。先用 CLI 完成相应会话，再用对应 case 对已保存的日志评分：
 

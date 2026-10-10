@@ -34,11 +34,11 @@
 
 **Interfaces:** `prepare_task(workflow, task_id, current_time) -> dict`返回有效条件、来源、缺项；`apply_travel_update(workflow, update) -> dict`执行组件/任务/路线更新，既有`apply_user_update`继续兼容。
 
-- [ ] 先写P01/P02/P09/P13/P17/P18的默认、未知起点、目的与返程酒店测试；P23/P24/P25/P28的作用域、拒绝候选和版本测试。
-- [ ] RED：`../../.venv/Scripts/python.exe -m pytest tests/test_planning_conditions.py tests/test_travel_updates.py -q`，预期因接口缺失或新字段拒绝失败。
-- [ ] 最小实现骨架校验、到达条件、程序日期建议、组件更新与保留未改变证据；完成条件来源及下游重检。
-- [ ] GREEN：上面命令及`tests/test_workflow_contracts.py`通过；只调整被本次已确认规格取代的旧断言。
-- [ ] 保存Task 1验证证据并本地提交。
+- [x] 先写P01/P02/P09/P13/P17/P18的默认、未知起点、目的与返程酒店测试；P23/P24/P25/P28的作用域、拒绝候选和版本测试。
+- [x] RED：`../../.venv/Scripts/python.exe -m pytest tests/test_planning_conditions.py tests/test_travel_updates.py -q`，预期因接口缺失或新字段拒绝失败。
+- [x] 最小实现骨架校验、到达条件、程序日期建议、组件更新与保留未改变证据；完成条件来源及下游重检。
+- [x] GREEN：上面命令及`tests/test_workflow_contracts.py`通过；只调整被本次已确认规格取代的旧断言。
+- [x] 保存Task 1验证证据并本地提交。
 
 ### Task 2: 到达日期查询、历时与模拟Provider
 
@@ -46,11 +46,11 @@
 
 **Interfaces:** `search_by_arrival(provider, fields, *, request_budget) -> AgentDataResult`在有界日期范围查询并过滤；模拟train/hotel Provider符合现有search契约，所有source显式simulation。
 
-- [ ] 先写P03/P05/P06/P07/P14测试：同日/跨日/>24小时/跨年、只有时刻未知、接口失败不盲目重试、内部请求预算、模拟来源与酒店无报价。
-- [ ] RED：`../../.venv/Scripts/python.exe -m pytest tests/test_arrival_search.py tests/test_simulated_travel.py -q`，预期缺新接口/历时未解析。
-- [ ] 解析区间duration并核对到达时刻，工具参数增加arrival查询与预算；保留旧出发查询。
-- [ ] GREEN：上述测试及`tests/test_juhe_train_provider.py tests/test_information_tools.py`通过。
-- [ ] 保存Task 2证据并提交。
+- [x] 先写P03/P05/P06/P07/P14测试：同日/跨日/>24小时/跨年、只有时刻未知、接口失败不盲目重试、内部请求预算、模拟来源与酒店无报价。
+- [x] RED：`../../.venv/Scripts/python.exe -m pytest tests/test_arrival_search.py tests/test_simulated_travel.py -q`，预期缺新接口/历时未解析。
+- [x] 解析区间duration并核对到达时刻，工具参数增加arrival查询与预算；保留旧出发查询。
+- [x] GREEN：上述测试及`tests/test_juhe_train_provider.py tests/test_information_tools.py`通过。
+- [x] 保存Task 2证据并提交。
 
 ### Task 3: 先答复的任务补全与ReAct编排
 
@@ -58,11 +58,11 @@
 
 **Interfaces:** 原`dispatch`增加mode，补全请求携带已有task身份；部分draft可保存但最终完成校验不放宽；Runner使用Task 1条件整理和Task 2工具。
 
-- [ ] 先写P02/P11/P19/P21/P22/P29：缺起点酒店仍返回、不询问必填、到达日期补全结果复用、下游可靠日期继承、次数共享、部分draft不能completed。
-- [ ] RED：`../../.venv/Scripts/python.exe -m pytest tests/test_preflight_workflow.py -q`。
-- [ ] 最小实现完整/不足条件分支、程序处理有来源日期提案、逐段结果观察、独立查询推进和修改后组件复用。
-- [ ] GREEN：上述测试及`tests/test_workflow_runner.py tests/test_workflow_guard.py tests/test_workflow_queries.py`通过。
-- [ ] 保存Task 3证据并提交。
+- [x] 先写P02/P11/P19/P21/P22/P29：缺起点酒店仍返回、不询问必填、到达日期补全结果复用、下游可靠日期继承、次数共享、部分draft不能completed。
+- [x] RED：`../../.venv/Scripts/python.exe -m pytest tests/test_preflight_workflow.py -q`。
+- [x] 最小实现完整/不足条件分支、程序处理有来源日期提案、逐段结果观察、独立查询推进和修改后组件复用。
+- [x] GREEN：上述测试及`tests/test_workflow_runner.py tests/test_workflow_guard.py tests/test_workflow_queries.py`通过。
+- [x] 保存Task 3证据并提交。
 
 ### Task 4: trip.md长期摘要、恢复与幂等迁移
 
@@ -70,11 +70,11 @@
 
 **Interfaces:** 从已保存workflows构建/更新trip.md，`get_known_workflows`按需返回活动及最近已完成概览；JSON为恢复依据，摘要失败可重建。
 
-- [ ] 先写P30/P31/P32/P33：partial首轮记录、新会话completed查询、同ID覆盖、旧trips保留、过时摘要重建、失败不重放API。
-- [ ] RED：`../../.venv/Scripts/python.exe -m pytest tests/test_trip_memory.py -q`。
-- [ ] 程序原子更新用户隔离Markdown投影，摘要带ID/revision/状态/目的/安排/来源/缺项，不从Markdown推断事实。
-- [ ] GREEN：上述测试及`tests/test_workflow_store.py`和相关记忆测试通过。
-- [ ] 保存Task 4证据并提交。
+- [x] 先写P30/P31/P32/P33：partial首轮记录、新会话completed查询、同ID覆盖、旧trips保留、过时摘要重建、失败不重放API。
+- [x] RED：`../../.venv/Scripts/python.exe -m pytest tests/test_trip_memory.py -q`。
+- [x] 程序原子更新用户隔离Markdown投影，摘要带ID/revision/状态/目的/安排/来源/缺项，不从Markdown推断事实。
+- [x] GREEN：上述测试及`tests/test_workflow_store.py`和相关记忆测试通过。
+- [x] 保存Task 4证据并提交。
 
 ### Task 5: 主Agent完整意图与模拟接口端到端评测
 
@@ -82,10 +82,22 @@
 
 **Interfaces:** 主Agent支持设计10.1全部意图和请求级作用域更新；Harness执行Task 1更新并加载Task 4状态，既有非规划查询/偏好/RAG路由保持。
 
-- [ ] 先写P08/P10/P12/P20/P26/P27/P28及新旅行、补充、换火车/酒店、整段/全程重生成、路线修改、接受选择、暂停取消；不支持交易明确回复。
-- [ ] RED：`../../.venv/Scripts/python.exe -m pytest tests/test_planning_intents.py tests/test_preflight_end_to_end.py -q`。
-- [ ] 更新模型结构与指南，接入查询条件、目标范围和长期摘要；模型结构无效仍有界修复，不编造证据。
-- [ ] GREEN：相关测试通过，再运行`../../.venv/Scripts/python.exe -m pytest -q -rs`和`git diff --check`。
-- [ ] 真实模型+显式模拟Provider评测至少覆盖设计所列真实模型用例与修改回合；记录模型调用与simulation来源，不声称真实票价/库存验证。
-- [ ] 整体自审、P01–P33规格核对、更新本计划状态及正式设计实施状态；报告任何测试失败或真实接口缺口。
-- [ ] 本地提交并保留当前分支，不擅自push/merge。
+- [x] 先写P08/P10/P12/P20/P26/P27/P28及新旅行、补充、换火车/酒店、整段/全程重生成、路线修改、接受选择、暂停取消；不支持交易明确回复。
+- [x] RED：`../../.venv/Scripts/python.exe -m pytest tests/test_planning_intents.py tests/test_preflight_end_to_end.py -q`。
+- [x] 更新模型结构与指南，接入查询条件、目标范围和长期摘要；模型结构无效仍有界修复，不编造证据。
+- [x] GREEN：相关测试通过，再运行`../../.venv/Scripts/python.exe -m pytest -q -rs`和`git diff --check`。
+- [x] 真实模型+显式模拟Provider评测至少覆盖设计所列真实模型用例与修改回合；记录模型调用与simulation来源，不声称真实票价/库存验证。
+- [x] 整体自审、P01–P33规格核对、更新本计划状态及正式设计实施状态；报告任何测试失败或真实接口缺口。
+- [x] 本地提交并保留当前分支，不擅自push/merge。
+
+## 完成证据（2026-10-10）
+
+- Task 5先RED 10项失败，初步GREEN 11项；整体自审后补充作用域、日期、意图执行、超时、长期记忆排序和测评契约回归。
+- 最终命令：`../../.venv/Scripts/python.exe -m pytest -q -rs --junitxml=data/evals/preflight-final-tests.xml`；422 passed、3 skipped、1条既有DashScope弃用告警，19.08秒。
+- `python -m evals.write_preflight_report`：默认真实模型与模拟旅行接口11/11，P01–P33实际测试证据33/33；部分方案按已确认规格验收，并非都completed。
+- 自审纠正初始JSON截断修复、明确travel_update执行、整轮600秒覆盖首次意图与前置Agent、只换酒店保护火车、起点补充保留酒店、下游推导日期重检、近期状态排序和历史幂等。
+- 延迟统计与失败原始记录见[测评报告](../../evals/2026-10-10-planning-preflight-evaluation.md)。模型占本批耗时99.6%，主Agent循环占模型耗时74.5%；没有用模拟工具耗时替代真实接口耗时。
+- 关闭思考仅作测评对照，复杂三段未达到完成验收，生产默认未改。测评原来的住宿完整性与偏好列表断言修正均保留原始判断，并增加契约回归。
+- 当前项目没有OpenSpec初始化或verify/archive工作流，人工核对正式设计、P01–P33场景、任务及测试证据；未声称运行OpenSpec verify/archive。
+- 最终采用用户已选定的单代理整体自审、本地提交并保留当前分支；不push、merge或删除工作区。
+- 摘要保留规则补充RED/GREEN：活动旅行不占用最近5个非活动旅行详情名额；回归6项通过，最终全套422项通过。`git diff --check`通过。

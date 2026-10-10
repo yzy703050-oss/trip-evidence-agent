@@ -99,7 +99,7 @@ class MemoryQueryAgent(AgentBase):
             # 获取旅行历史（最近50条）
             trip_history = self.memory_manager.long_term.get_trip_history(limit=50)
             context['saved_travel_plans'] = [{k:w[k] for k in ('id','revision','status','tasks','confirmed_conditions')}
-                                           for w in self.memory_manager.get_known_workflows()]
+                                           for w in self.memory_manager.get_known_workflows(query=user_query,limit=50)]
 
             # 获取用户偏好
             preferences = self.memory_manager.long_term.get_preference()

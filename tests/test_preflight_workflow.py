@@ -45,8 +45,8 @@ class PreflightInfoModel:
         return SimpleNamespace(text='{"summary":"模拟资料已整理"}')
 
 
-def runtime(tmp_path, tasks, confirmed=None):
-    r = Runtime(tmp_path, main=PreflightMain(dict(confirmed_conditions=confirmed or {}, tasks=tasks)))
+def runtime(tmp_path, tasks, confirmed=None, *, session='s'):
+    r = Runtime(tmp_path, main=PreflightMain(dict(confirmed_conditions=confirmed or {}, tasks=tasks)),session=session)
     r.train = SimulatedTrainProvider(); r.hotel = SimulatedHotelProvider()
     r.info.model = PreflightInfoModel()
     r.info.tool_executor = ToolExecutor({'train_search': r.train, 'hotel_search': r.hotel})

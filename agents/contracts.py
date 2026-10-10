@@ -73,6 +73,11 @@ def validate_plan(value: dict) -> dict:
     if not isinstance(value, dict):
         raise ValueError('plan must be an object')
     plan = deepcopy(value)
+    if isinstance(plan.get('travel_update'),dict):
+        target=plan['travel_update'].get('target',{})
+        if isinstance(target,dict) and isinstance(target.get('workflow_id'),str):
+            plan.setdefault('resume_workflow_id',target['workflow_id'])
+            plan['response_mode']='workflow'
     mode = plan.setdefault('response_mode', 'answer')
     if mode == 'itinerary' and (isinstance(plan.get('workflow_proposal'), dict) or isinstance(plan.get('resume_workflow_id'), str)):
         # A structured task proposal is an unambiguous workflow signal, even with the legacy label.
@@ -88,6 +93,17 @@ def validate_plan(value: dict) -> dict:
             raise ValueError('workflow needs a proposal or resume target')
         if any(isinstance(r, dict) and r.get('agent_name') == 'information_query' for r in rows):
             raise ValueError('workflow queries are task-scoped, not preflight agents')
+        update=plan.get('travel_update')
+        if update is not None:
+            if not isinstance(update,dict) or update.get('update_type') not in {'supplement','change','regenerate','replace','change_route','adopt','pause','cancel'}:
+                raise ValueError('invalid travel update')
+            target=update.get('target',{})
+            if not isinstance(target,dict) or target.get('workflow_id')!=plan.get('resume_workflow_id'):
+                raise ValueError('update target differs from resume target')
+    if plan.get('feedback_scope') is not None:
+        scope=plan['feedback_scope']
+        if mode!='direct' or not isinstance(scope,dict) or not all(isinstance(scope.get(k),str) and scope[k].strip() for k in ('workflow_id','question')):
+            raise ValueError('invalid feedback scope checkpoint')
     if not isinstance(rows, list) or (mode == 'direct' and rows):
         raise ValueError('invalid schedule')
     names = set()

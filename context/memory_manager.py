@@ -79,9 +79,17 @@ class MemoryManager:
             return self.workflow_store.list_active()
         return [value for workflow_id in ids if (value := self.workflow_store.load(workflow_id)) is not None]
 
-    def get_known_workflows(self):
+    def get_known_workflows(self, query='', limit=5):
+        if type(limit) is not int or limit<1: raise ValueError('invalid known workflow limit')
         self.workflow_store.trip_memory.repair(self.workflow_store)
-        return self.workflow_store.list_all()
+        values=self.workflow_store.list_all()
+        def score(w):
+            cities={t.get(k) for t in w['tasks'] for k in ('origin','destination')}
+            return sum(bool(city and city in query) for city in cities)+int(w['id'] in query)
+        ranked=sorted(values,key=score,reverse=True) if query else values
+        ids={w['id'] for w in ranked[:limit]}
+        ids.update(w['id'] for w in values if w['status'] in {'running','needs_input','partial'})
+        return [w for w in ranked if w['id'] in ids]
 
     def set_active_workflow(self, workflow_id):
         with self.session_store._lock:

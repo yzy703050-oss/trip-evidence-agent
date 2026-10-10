@@ -22,6 +22,7 @@ def apply_travel_update(workflow, update):
         raise ValueError('invalid travel update type')
     components = set(target.get('components', []))
     if not components <= {'train', 'hotel', 'route', 'schedule'}: raise ValueError('invalid component scope')
+    w['last_update'] = deepcopy(update)
     if kind in {'pause', 'cancel'}:
         w.update(status='paused' if kind == 'pause' else 'cancelled', stop_reason=kind)
         return w
@@ -48,6 +49,28 @@ def apply_travel_update(workflow, update):
     ids = target.get('task_ids', [])
     if not isinstance(ids, list) or not ids: raise ValueError('travel update needs task identity')
     selected = [task_by_id(w, task_id) for task_id in ids]
+    if kind == 'adopt':
+        from agents.workflow_queries import resolve_selection
+        if update.get('condition_updates') or update.get('rejected_candidate_ids'):
+            raise ValueError('adoption cannot change conditions')
+        selections=update.get('selections',{})
+        if not isinstance(selections,dict) or set(selections)-set(ids): raise ValueError('invalid adoption scope')
+        for task in selected:
+            chosen=selections.get(task['id'],{})
+            if not isinstance(chosen,dict) or set(chosen)-{'train','hotel'} or (components and set(chosen)-components):
+                raise ValueError('invalid adoption components')
+            for domain,ref in chosen.items():
+                row=w['results_by_query'].get(ref.get('query_id')) if isinstance(ref,dict) else None
+                if not row or row['domain']!=domain: raise ValueError('invalid adoption evidence')
+                resolve_selection(w,task['id'],task['revision'],ref)
+            if chosen and task.get('draft_plan') is None: raise ValueError('adoption needs a draft')
+            task['revision']+=1
+            _rebind(w,task,{'train','hotel'})
+            for domain,ref in chosen.items(): task['draft_plan'][domain+'_selection']=deepcopy(ref)
+            task['status']='draft' if task.get('draft_plan') else 'pending'
+            task['user_adopted']=True
+        w.update(status='running',checkpoint=None,validation=None,stop_reason=None,current_task_id=selected[0]['id'])
+        return w
     changes = deepcopy(update.get('condition_updates', {}))
     if not isinstance(changes, dict): raise ValueError('invalid condition updates')
     if 'hotel_brands' in changes:
@@ -59,7 +82,9 @@ def apply_travel_update(workflow, update):
     conditions = validate_conditions(changes)
     changed_domains = set(components) & {'train', 'hotel'}
     timing = bool({'departure_date', 'arrival_date', 'arrival_before', 'check_in', 'check_out', 'nights', 'start_date', 'end_date'} & set(conditions))
-    if route_changes or timing or {'passengers', 'guests'} & set(conditions) or components & {'route', 'schedule'}:
+    if 'origin' in route_changes: changed_domains.add('train')
+    if 'requires_hotel' in route_changes: changed_domains.add('hotel')
+    if 'destination' in route_changes or timing or {'passengers', 'guests'} & set(conditions) or components & {'route', 'schedule'}:
         changed_domains = {'train', 'hotel'}
     if not changed_domains: changed_domains = {'train', 'hotel'}
     first = min(w['tasks'].index(t) for t in selected)
@@ -67,7 +92,13 @@ def apply_travel_update(workflow, update):
         task['revision'] += 1
         task['status'] = 'pending'
         task['issues'] = []
-        task['conditions'].update(conditions)
+        if (conditions.get('arrival_date') or conditions.get('arrival_before')) and not conditions.get('departure_date') and task.get('field_sources',{}).get('departure_date') in {'default','proposal','derived'}:
+            task['conditions'].pop('departure_date',None)
+            task['field_sources'].pop('departure_date',None)
+        merged=deepcopy(conditions)
+        if 'constraints' in merged:
+            merged['constraints']={**task['conditions'].get('constraints',{}),**merged['constraints']}
+        task['conditions'].update(merged)
         task['field_sources'].update({k: 'user' for k in conditions})
         for key, value in route_changes.items():
             if key in {'origin', 'destination'} and (not isinstance(value, str) or not value.strip()):
