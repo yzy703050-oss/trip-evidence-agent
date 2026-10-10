@@ -151,7 +151,7 @@ def test_hotel_place_cannot_verify_hard_budget(budget_workflow):
 - 新快照 expected_revision=None；更新必须匹配已保存版本，保存成功后递增工作流 revision；不递增未变化的 task_revision。`WorkflowConflictError` 区分过期提交。
 - `MemoryManager.workflow_store`；`get_active_workflows() -> list[dict]`、`set_active_workflow(workflow_id: str | None) -> None`；session state 原字段保留，只增加活动索引。
 
-- [ ] **RED：** 创建临时存储，测试重新构造 MemoryManager 后读取完整候选/断点、用户隔离、危险路径拒绝、两个实例的过期 CAS、两个进程互斥、写入失败保留原文件、文本压缩后索引与快照不变。
+- [x] **RED：** 创建临时存储，测试重新构造 MemoryManager 后读取完整候选/断点、用户隔离、危险路径拒绝、两个实例的过期 CAS、两个进程互斥、写入失败保留原文件、文本压缩后索引与快照不变。
 
 ```python
 def test_stale_writer_cannot_overwrite(tmp_path, workflow):
@@ -164,10 +164,10 @@ def test_stale_writer_cannot_overwrite(tmp_path, workflow):
     assert a.load(saved["id"])["revision"] == newer["revision"]
 ```
 
-- [ ] **RED 验证：** `& '..\..\.venv\Scripts\python.exe' -m pytest tests/test_workflow_store.py -q`。
-- [ ] **实现：** 复用 storage_component 与 atomic_json_write；采用工作流粒度 OS 文件锁，Windows/Linux 使用标准库平台适配，锁内 load/CAS/replace。完整持久化 results_by_query 与候选；不以日志回放重建收费请求。
-- [ ] **GREEN：** 同一命令及 `tests/test_v0_session_store.py tests/test_v0_cross_session.py tests/test_v0_compaction.py` 通过。
-- [ ] **记录并提交：** 暂存本任务文件，`git commit -m "feat: persist resumable travel workflows with revision checks"`。
+- [x] **RED 验证：** `& '..\..\.venv\Scripts\python.exe' -m pytest tests/test_workflow_store.py -q`。
+- [x] **实现：** 复用 storage_component 与 atomic_json_write；采用工作流粒度 OS 文件锁，Windows/Linux 使用标准库平台适配，锁内 load/CAS/replace。完整持久化 results_by_query 与候选；不以日志回放重建收费请求。
+- [x] **GREEN：** 同一命令及 `tests/test_v0_session_store.py tests/test_v0_cross_session.py tests/test_v0_compaction.py` 通过。
+- [x] **记录并提交：** 暂存本任务文件，`git commit -m "feat: persist resumable travel workflows with revision checks"`。
 
 验收映射：S07–S09、S14、S22。
 
