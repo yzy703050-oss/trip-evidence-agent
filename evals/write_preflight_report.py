@@ -67,7 +67,7 @@ def write_report():
     for r in comparison:
         normal=next(row for row in records if row['case']==r['case'])
         lines.append(f"- {labels[r['case']]}：默认 {normal['latency']['end_to_end_ms']/1000:.1f}s，关闭思考 {r['latency']['end_to_end_ms']/1000:.1f}s，{r['status']}，验收{'通过' if r['assessment']['passed'] else '未通过'}。")
-    lines.extend(['', '复杂三段对照未完成全程校验，说明减少思考并不保证同等规划质量；不把该实验算入默认配置验收通过率。这些都是单次观测，不是稳定的性能承诺。',
+    lines.extend(['', '复杂三段对照实际已生成全部草稿并通过程序全程校验（validation.valid=true），酒店价格未知为非阻塞提示。主Agent仍重复校验，并因建议日期未确认、酒店无价格库存、模拟来源而选择finish partial；验收要求本场景completed，因此未通过的是完成状态判断，不能描述为未完成校验。模型共调用23次（默认17次）。本次单次对照不足以证明关闭思考必然降低规划质量，不把该实验算入默认配置验收通过率；生产默认未改。这些都是单次观测，不是稳定的性能承诺。',
         '', '自审与验证：按用户选择由当前代理整体自审。修复了局部换酒店的其他组件保护、出发地补充保留酒店、下游推导日期重检、初始阶段整轮超时、近期旅行排序及同ID历史计数。RAG调用链未修改。项目未初始化OpenSpec，本次未运行verify/archive，采用下表人工规格核对及实际测试证据。',
         '', '| 场景 | 测试证据 | 结果 |','| --- | --- | --- |'])
     for scenario,row in coverage.items(): lines.append(f"| {scenario} | {'、'.join(row['tests'])} | {'通过' if row['passed'] else '缺证据/失败'} |")
