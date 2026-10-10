@@ -13,7 +13,7 @@ def _rebind(workflow, task, domains):
         task['draft_plan']['task_revision'] = task['revision']
 
 
-def apply_travel_update(workflow, update):
+def apply_travel_update(workflow, update, *, context=None):
     w = deepcopy(workflow)
     target = update.get('target', {})
     if target.get('workflow_id') != w['id']: raise ValueError('wrong travel identity')
@@ -27,8 +27,12 @@ def apply_travel_update(workflow, update):
         w.update(status='paused' if kind == 'pause' else 'cancelled', stop_reason=kind)
         return w
     if kind == 'change_route':
+        route_context = deepcopy(context) if context is not None else {}
+        if context is not None:
+            route_context['original_query'] = w.get('original_query', '') + '\n' + context.get('original_query', '')
         replacement = create_workflow({'confirmed_conditions': w['confirmed_conditions'],
-                                       'tasks': update.get('route_tasks')}, {}, workflow_id=w['id'])
+                                       'tasks': update.get('route_tasks')}, route_context,
+                                      workflow_id=w['id'], require_stay_proposals=context is not None)
         old = {(t['origin'], t['destination']): t for t in w['tasks']}
         rows = []
         for candidate in replacement['tasks']:
@@ -115,6 +119,9 @@ def apply_travel_update(workflow, update):
         if task is w['tasks'][0] and conditions.get('departure_date'):
             w['confirmed_conditions']['start_date'] = conditions['departure_date']
         task['update_scope'] = sorted(changed_domains)
+        if (w.get('checkpoint') or {}).get('kind') == 'required_conditions' and task['requires_hotel'] and not (task.get('draft_plan') or {}).get('hotel_selection'):
+            # Resuming a pre-query checkpoint must still build the original hotel plan.
+            task['update_scope'] = sorted(changed_domains | {'hotel'})
         rejected = update.get('rejected_candidate_ids', [])
         if not isinstance(rejected, list) or not all(isinstance(x, str) for x in rejected): raise ValueError('invalid rejection')
         for domain in changed_domains:

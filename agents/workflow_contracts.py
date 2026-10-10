@@ -3,6 +3,7 @@ from copy import deepcopy
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import uuid4
+import re
 
 from agents.contracts import validate_constraints
 
@@ -72,7 +73,21 @@ def effective_conditions(confirmed, task_conditions, preferences):
     return effective, sources
 
 
-def create_workflow(proposal, context, *, workflow_id=None):
+def validate_quote_requirement(conditions, context):
+    if not conditions.get('hotel_quote_required') or 'original_query' not in context:
+        return
+    if context.get('effective_preferences', {}).get('hotel_quote_required') is True:
+        return
+    # A model-authored source label is not evidence of a user requirement.
+    clauses = re.split(r'[，。；！\n,;.!]', context['original_query'])
+    for clause in clauses:
+        if re.search(r'房价|(?:酒店|住宿|hotel)(?:(?!火车|车票|航班).){0,12}(?:报价|价格|价钱|费用|price|quote|rate)', clause, re.I):
+            if not re.search(r'不用|不要|无需|不需要|不关心|不重要|不核实|not required|no need', clause, re.I):
+                return
+    raise ValueError('hotel quote requirement lacks explicit user or trusted preference evidence')
+
+
+def create_workflow(proposal, context, *, workflow_id=None, require_stay_proposals=False):
     if not isinstance(proposal, dict) or not isinstance(proposal.get('tasks'), list) or not proposal['tasks']:
         raise ValueError('workflow needs ordered tasks')
     confirmed = deepcopy(proposal.get('confirmed_conditions', {}))
@@ -104,6 +119,7 @@ def create_workflow(proposal, context, *, workflow_id=None):
             if key in constraints and constraints.pop(key) is not True:
                 raise ValueError('workflow scope metadata mismatch')
     confirmed = validate_conditions(confirmed)
+    validate_quote_requirement(confirmed, context)
     effective, sources = effective_conditions(confirmed, {}, context.get('effective_preferences', {}))
     sources.update({k: 'user' for k, v in confirmed.items() if v is not None})
     tasks = []
@@ -126,6 +142,12 @@ def create_workflow(proposal, context, *, workflow_id=None):
         if type(row.get('requires_hotel')) is not bool:
             raise ValueError('task hotel scope is required')
         conditions = validate_conditions(row.get('conditions', {}))
+        if require_stay_proposals and row['requires_hotel']:
+            stay = {**confirmed, **conditions}
+            dated = stay.get('check_in') and stay.get('check_out') and date.fromisoformat(stay['check_out']) > date.fromisoformat(stay['check_in'])
+            if not stay.get('nights') and not dated:
+                raise ValueError(f'task {index + 1} needs a model stay proposal (nights or check_in/check_out); no default nights are supplied')
+        validate_quote_requirement(conditions, context)
         field_sources = row.get('field_sources', {})
         if not isinstance(field_sources,dict): raise ValueError('invalid field source')
         field_sources = deepcopy(field_sources)
@@ -138,6 +160,10 @@ def create_workflow(proposal, context, *, workflow_id=None):
             if source=='missing' and row.get(key,conditions.get(key)) is None: field_sources.pop(key)
         if any(v not in SOURCES for v in field_sources.values()):
             raise ValueError('invalid field source')
+        if require_stay_proposals and row['requires_hotel'] and any(
+                conditions.get(key) is not None and field_sources.get(key) == 'default'
+                for key in ('nights', 'check_in', 'check_out')):
+            raise ValueError('stay proposal must come from model reasoning or known conditions, not default values')
         if conditions.get('hotel_quote_required') is True and field_sources.get('hotel_quote_required') in {'derived','default','proposal'}:
             raise ValueError('hotel quote requirement must come from explicit user, context or preference; needing a hotel does not require a quote')
         if index == 0 and not conditions.get('departure_date') and confirmed.get('start_date'):

@@ -121,10 +121,22 @@ class WorkflowRunner:
         maximum = len(self.w['tasks'])*self.limits.main_steps_per_task+self.limits.main_extra_steps
         feedback = None
         for _ in range(maximum):
+            context = self._model_context()
+            task = context['current_task']
+            if not task.get('origin') and 'train' in task.get('update_scope', ['train', 'hotel']):
+                question = '你准备从哪个城市出发？'
+                task_by_id(self.w, task['id'])['status'] = 'needs_input'
+                self.w.update(status='needs_input', checkpoint={
+                    'kind': 'required_conditions', 'missing_fields': ['origin'],
+                    'reason': '交通查询需要真实出发城市，不能替用户猜测。', 'question': question,
+                    'affected_task_ids': [task['id']], 'resume_task_id': task['id'],
+                    'suggested_changes': []}, stop_reason='user_input_required')
+                self._message({'type': 'required_conditions', 'missing_fields': ['origin'], 'question': question}, task_id=task['id'])
+                self._save()
+                return self._envelope('needs_input', 'user_input_required', question)
             self.main_calls += 1
             self.w['audit']['model_calls'] += 1
-            context = self._model_context(); context['action_feedback'] = feedback
-            task = context['current_task']
+            context['action_feedback'] = feedback
             self.run_state.current_task_id = task['id']
             try:
                 with model_scope(turn_id=self.run_state.turn_id, workflow_id=self.w['id'], task_id=task['id'], task_revision=task['revision']):

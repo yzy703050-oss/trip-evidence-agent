@@ -81,3 +81,19 @@ def test_constraint_supplement_does_not_delete_existing_hard_filters():
     w=populated_workflow(); t=w['tasks'][0]; t['conditions']['constraints']={'seat_class':'二等座'}
     newer=apply_travel_update(w,dict(update_type='change',target=dict(workflow_id=w['id'],task_ids=[t['id']],components=['train']),condition_updates={'constraints':{'departure_time_after':'12:00'}}))
     assert newer['tasks'][0]['conditions']['constraints']=={'seat_class':'二等座','departure_time_after':'12:00'}
+
+
+@pytest.mark.asyncio
+async def test_empty_change_gets_one_initial_repair_instead_of_replanning():
+    calls = []
+    async def model(messages, **kwargs):
+        calls.append(messages)
+        value = dict(response_mode='workflow', resume_workflow_id='w', agent_schedule=[],
+                     travel_update=dict(update_type='change', target={'workflow_id':'w'}, condition_updates={}))
+        if len(calls) > 1:
+            value = dict(response_mode='direct', finalization_mode='synthesize', agent_schedule=[],
+                         final_answer='想改哪一段的火车或酒店？',
+                         feedback_scope=dict(workflow_id='w', question='想改哪一段的火车或酒店？'))
+        return SimpleNamespace(text=json.dumps(value, ensure_ascii=False))
+    result = await MainAgent(model).initialize({'original_query': '刚才的安排我不满意'})
+    assert len(calls) == 2 and result['feedback_scope']['workflow_id'] == 'w'

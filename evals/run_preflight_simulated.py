@@ -32,24 +32,26 @@ def assess(case,result,run,previous=None):
     elif case in {'explain','pause','ambiguous'}:
         checks['no_external_requests']=run.external_request_count==0
         if case=='pause': checks['paused']=result.get('status')=='paused'
-        if case=='ambiguous': checks['scope_checkpoint']=(w or {}).get('checkpoint',{}).get('kind')=='feedback_scope'
+        if case=='ambiguous': checks['scope_checkpoint']=((w or {}).get('checkpoint') or {}).get('kind')=='feedback_scope'
     else:
         checks['workflow_created']=isinstance(w,dict)
         if w:
             from agents.workflow_guard import check_workflow
             checked=check_workflow(w)
             checks['valid_candidate_references']=not any(i['code'] in {'invalid_candidate_reference','stale_draft','preserved_component_changed'} for i in checked['issues'])
-            checks['one_or_three_tasks']=len(w['tasks'])==(3 if case=='multi_route' else 1)
-            checks['simulation_label']=result.get('data_mode')=='simulation'
+            checks['one_or_three_tasks']=len(w['tasks'])==(3 if case.startswith('multi_route') else 1)
+            checks['simulation_label']=case=='unknown_origin' or result.get('data_mode')=='simulation'
+            checks['model_stay_proposals']=all(not t['requires_hotel'] or t['conditions'].get('nights') or
+                (t['conditions'].get('check_in') and t['conditions'].get('check_out')) for t in w['tasks'])
+            checks['no_invented_quote_requirement']=not w['confirmed_conditions'].get('hotel_quote_required') and not any(
+                t['conditions'].get('hotel_quote_required') for t in w['tasks'])
             if case=='unknown_origin':
-                checks['partial_without_question']=result['status']=='partial' and w['checkpoint'] is None
-                checks['hotel_only']=run.external_request_count==1 and w['tasks'][0]['origin'] is None
+                checks['origin_checkpoint']=result['status']=='needs_input' and (w.get('checkpoint') or {}).get('kind')=='required_conditions'
+                checks['no_external_queries']=run.external_request_count==0 and w['tasks'][0]['origin'] is None
             else:
-                # No checkout date was supplied in single-city cases. The spec
-                # permits a partial draft rather than inventing the stay duration.
-                checks['usable_draft']=result['status'] in {'partial','completed'} and all(t.get('draft_plan') for t in w['tasks'])
+                checks['usable_draft']=result['status']=='completed' and all(t.get('draft_plan') for t in w['tasks'])
                 checks['no_personal_question']=w.get('checkpoint') is None
-                if case=='multi_route':
+                if case.startswith('multi_route'):
                     checks['completed']=result['status']=='completed'
                     checks['return_no_hotel']=w['tasks'][-1]['purpose']=='return' and not w['tasks'][-1]['requires_hotel']
             if case=='arrival_overnight':
@@ -82,11 +84,12 @@ async def evaluate(output,only=None,*,resume_memory=None,thinking=None):
            ('query_price','price',f'查{day}重庆到上海火车票价格，1人，只查火车，不规划旅程。'),
            ('preference_plan','preference','以后酒店优先全季。帮我安排重庆去上海的火车和酒店，还没确定日期。'),
            ('multi_route','multi','我从上海去北京再去杭州最后回上海。每站停留一晚，只安排火车和酒店，返程上海不用酒店，日期你提合理建议。'),
+           ('multi_route_unspecified_stay','multi-unspecified','我从上海去北京再去杭州最后回上海，帮我安排火车和酒店，没定日期和每站住几晚，请结合路线提出建议，返程上海不用酒店。'),
            ('hotel_replace','single','刚才上海那段换一家全季酒店，原来的火车和日期都别动。'),
            ('explain','single','解释为什么选这家上海酒店，不要修改或重新查询。'),
            ('ambiguous','single','刚才的安排我不满意。'),
            ('pause','single','这次上海旅行先暂停规划，不要查询。'),
-           ('supplement_origin','unknown','补充刚才去上海的方案，我从重庆出发，出发日期沿用你的建议。')]
+           ('supplement_origin','unknown','重庆')]
     if only: cases=[c for c in cases if c[0] in only]
     records=[]; previous={}
     for case,user,query in cases:

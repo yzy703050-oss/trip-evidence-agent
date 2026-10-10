@@ -40,8 +40,17 @@ def test_live_assessment_checks_preference_value_and_actual_query(monkeypatch,br
     from evals.run_preflight_simulated import assess
     monkeypatch.setattr('agents.workflow_guard.check_workflow',lambda w: {'issues':[]})
     result={'status':'partial','data_mode':'simulation','workflow':{
-        'tasks':[{'draft_plan':{'hotel_selection':{}}}], 'checkpoint':None,
+        'tasks':[{'requires_hotel':True,'conditions':{'nights':2},'draft_plan':{'hotel_selection':{}}}], 'checkpoint':None,
+        'confirmed_conditions':{},
         'results_by_query':{'hotel-query':{'domain':'hotel','parameters':{'keywords':keywords}}},
     }}
     run=SimpleNamespace(effective_preferences={'hotel_brands':brands})
     assert assess('preference_plan',result,run)['checks']['preference_updated'] is expected
+
+
+def test_live_assessment_reports_missing_scope_checkpoint_without_crashing():
+    from types import SimpleNamespace
+    from evals.run_preflight_simulated import assess
+    result = {'status': 'partial', 'workflow': {'checkpoint': None}}
+    report = assess('ambiguous', result, SimpleNamespace(external_request_count=0))
+    assert not report['passed'] and report['checks']['scope_checkpoint'] is False

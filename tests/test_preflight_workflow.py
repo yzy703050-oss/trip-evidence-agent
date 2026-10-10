@@ -29,7 +29,7 @@ class PreflightMain(WorkflowMain):
             if t['requires_hotel'] and trains and trains[0].get('arrival_at'):
                 from datetime import date, timedelta
                 day = trains[0]['arrival_at'][:10]
-                value['draft_plan']['schedule'] = dict(check_in=day, check_out=(date.fromisoformat(day)+timedelta(days=1)).isoformat())
+                value['draft_plan']['schedule'] = dict(check_in=day, check_out=(date.fromisoformat(day)+timedelta(days=t['conditions']['nights'])).isoformat())
         if value['action'] == 'ask_user':
             return dict(action='finish', status='partial', final_answer='保留结果')
         return value
@@ -46,6 +46,11 @@ class PreflightInfoModel:
 
 
 def runtime(tmp_path, tasks, confirmed=None, *, session='s'):
+    tasks = deepcopy(tasks)
+    for task in tasks:
+        if task['requires_hotel'] and not task.get('conditions', {}).get('nights'):
+            task.setdefault('conditions', {})['nights'] = 1  # Explicit fake-model proposal, not a product default.
+            task.setdefault('field_sources', {})['nights'] = 'proposal'
     r = Runtime(tmp_path, main=PreflightMain(dict(confirmed_conditions=confirmed or {}, tasks=tasks)),session=session)
     r.train = SimulatedTrainProvider(); r.hotel = SimulatedHotelProvider()
     r.info.model = PreflightInfoModel()
@@ -54,17 +59,16 @@ def runtime(tmp_path, tasks, confirmed=None, *, session='s'):
 
 
 @pytest.mark.asyncio
-async def test_missing_origin_still_answers_and_queries_independent_later_leg(tmp_path):
+async def test_missing_origin_pauses_before_all_legs(tmp_path):
     r = runtime(tmp_path, [dict(origin=None, destination='上海', requires_hotel=True, conditions={}),
                           dict(origin='上海', destination='杭州', requires_hotel=False, conditions={'departure_date':'2026-10-20'})])
     result = await r.turn('我要去上海然后杭州，安排一下')
-    assert result['status'] == 'partial'
-    assert result['workflow']['checkpoint'] is None
-    assert len(r.hotel.calls) == 1 and len(r.train.calls) == 1
-    assert all(t['status'] == 'draft' for t in result['workflow']['tasks'])
+    assert result['status'] == 'needs_input'
+    assert result['workflow']['checkpoint']['kind'] == 'required_conditions'
+    assert not r.hotel.calls and not r.train.calls
+    assert [t['status'] for t in result['workflow']['tasks']] == ['needs_input', 'pending']
     assert result['workflow']['tasks'][0]['conditions']['departure_date'] == '2026-10-17'
     assert 'origin' in result['missing_fields']
-    assert result['data_mode'] == 'simulation'
 
 
 @pytest.mark.asyncio
@@ -91,18 +95,18 @@ async def test_early_personal_question_or_partial_gets_feedback_to_query_availab
         async def step(self,context):
             if not self.asked:
                 self.asked=True
-                if first_action=='finish': return dict(action='finish',status='partial',final_answer='缺出发地')
-                return dict(action='ask_user',question='从哪里出发？',reason='缺起点',
+                if first_action=='finish': return dict(action='finish',status='partial',final_answer='缺预算')
+                return dict(action='ask_user',question='预算多少？',reason='缺预算',
                             affected_task_ids=[context['current_task']['id']],suggested_changes=[])
             if context['current_task']['status']=='pending':
                 assert context['action_feedback']['code']=='available_queries_required'
             return await super().step(context)
-    r=runtime(tmp_path,[dict(origin=None,destination='上海',requires_hotel=True,conditions={})])
+    r=runtime(tmp_path,[dict(origin='重庆',destination='上海',requires_hotel=True,conditions={})])
     r.main=EarlyStopMain(r.main.p)
     r.harness.main_agent=r.main
     result=await r.turn('我要去上海玩，安排一下')
-    assert result['status']=='partial' and result['workflow']['checkpoint'] is None
-    assert len(r.hotel.calls)==1 and not r.train.calls
+    assert result['status']=='completed' and result['workflow']['checkpoint'] is None
+    assert len(r.hotel.calls)==1 and len(r.train.calls)==1
     assert result['workflow']['tasks'][0]['draft_plan']['hotel_selection']
 
 
@@ -134,24 +138,25 @@ async def test_default_date_can_try_next_two_days_without_changing_user_date(tmp
 
 
 @pytest.mark.asyncio
-async def test_initial_personal_field_question_is_blocked(tmp_path):
+async def test_required_origin_question_is_saved_without_calling_step(tmp_path):
     class Ask(PreflightMain):
         async def step(self,c):
             return dict(action='ask_user',question='你从哪里出发？',reason='缺出发地',affected_task_ids=[c['current_task']['id']],suggested_changes=[])
     r=runtime(tmp_path,[dict(origin=None,destination='上海',requires_hotel=True,conditions={})])
     r.main=Ask(r.main.p); r.harness.main_agent=r.main
     result=await r.turn('我要去上海')
-    assert result['status']=='partial' and result['workflow']['checkpoint'] is None
+    assert result['status']=='needs_input' and result['workflow']['checkpoint']['missing_fields']==['origin']
+    assert not r.hotel.calls and not r.train.calls
 
 
 @pytest.mark.asyncio
 async def test_resuming_partial_with_saved_query_does_not_require_query_again(tmp_path):
-    r=runtime(tmp_path,[dict(origin=None,destination='上海',requires_hotel=True,conditions={})])
+    r=runtime(tmp_path,[dict(origin='重庆',destination='上海',requires_hotel=True,conditions={'constraints':{'hotel_max_nightly_cny':500}})])
     first=await r.turn('我要去上海')
     assert first['workflow']['tasks'][0]['draft_plan']['hotel_selection']
     r.main.resume={'id':first['workflow_id'],'update':{'task_updates':[]}}
     async def keep_partial(context):
-        return dict(action='finish',status='partial',final_answer='已有酒店推荐，出发地仍未知')
+        return dict(action='finish',status='partial',final_answer='已有酒店推荐，预算尚无法核实')
     r.main.step=keep_partial
     result=await r.turn('先保留现有部分方案')
     assert result['stop_reason']=='model_partial' and len(r.hotel.calls)==1

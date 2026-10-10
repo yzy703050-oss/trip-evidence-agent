@@ -64,7 +64,9 @@ async def test_resume_second_task_preserves_first_and_reuses_unchanged_places(tm
 @pytest.mark.asyncio
 async def test_missing_date_can_still_query_hotel_places(tmp_path):
     p = proposal(); p['confirmed_conditions'] = {}
-    for task in p['tasks']: task['conditions'] = {}; task['field_sources'] = {}
+    for task in p['tasks']:
+        task['conditions'] = {'nights': 2} if task['requires_hotel'] else {}
+        task['field_sources'] = {'nights': 'proposal'} if task['requires_hotel'] else {}
     r = Runtime(tmp_path, main=WorkflowMain(p)); result = await r.turn()
     assert r.hotel.calls and r.train.calls
     assert result['status'] == 'partial'

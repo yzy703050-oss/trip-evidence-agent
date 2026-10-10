@@ -100,6 +100,8 @@ def validate_plan(value: dict) -> dict:
             target=update.get('target',{})
             if not isinstance(target,dict) or target.get('workflow_id')!=plan.get('resume_workflow_id'):
                 raise ValueError('update target differs from resume target')
+            if update['update_type'] == 'change' and not update.get('condition_updates'):
+                raise ValueError('change needs explicit changed conditions; unclear dissatisfaction requires a direct feedback_scope question, not empty change')
     if plan.get('feedback_scope') is not None:
         scope=plan['feedback_scope']
         if mode!='direct' or not isinstance(scope,dict) or not all(isinstance(scope.get(k),str) and scope[k].strip() for k in ('workflow_id','question')):

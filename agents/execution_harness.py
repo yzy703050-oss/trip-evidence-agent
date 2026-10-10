@@ -134,12 +134,12 @@ class ExecutionHarness:
                 if decision['response_mode'] == 'workflow' and not decision.get('resume_workflow_id'):
                     from agents.workflow_contracts import create_workflow
                     try:
-                        create_workflow(decision['workflow_proposal'], context)
+                        create_workflow(decision['workflow_proposal'], context, require_stay_proposals=True)
                     except (ValueError, TypeError, ArithmeticError) as exc:
                         repair = getattr(self.main_agent, 'repair_proposal', None)
                         if repair is None: raise
                         decision['workflow_proposal'] = await repair(context, decision['workflow_proposal'], str(exc))
-                        create_workflow(decision['workflow_proposal'], context)
+                        create_workflow(decision['workflow_proposal'], context, require_stay_proposals=True)
             decision['agent_schedule'] = business_schedule(decision['agent_schedule'])
         except Exception:
             return self._error('invalid_plan', run)
@@ -224,12 +224,18 @@ class ExecutionHarness:
                     raise WorkflowConflictError('checkpoint revision changed')
                 if decision.get('travel_update'):
                     from agents.travel_updates import apply_travel_update
-                    workflow = apply_travel_update(workflow,decision['travel_update'])
+                    from agents.workflow_contracts import validate_quote_requirement
+                    validate_quote_requirement(decision['travel_update'].get('condition_updates', {}), context)
+                    workflow = apply_travel_update(workflow,decision['travel_update'], context=context)
                 else:
+                    from agents.workflow_contracts import validate_quote_requirement
+                    validate_quote_requirement(decision.get('workflow_update', {}).get('confirmed_conditions', {}), context)
+                    for update in decision.get('workflow_update', {}).get('task_updates', []):
+                        validate_quote_requirement(update.get('conditions', {}), context)
                     workflow = apply_user_update(workflow, decision.get('workflow_update', {}))
                 workflow = self.memory_manager.workflow_store.save(workflow, expected_revision=workflow['revision'])
             else:
-                workflow = create_workflow(decision['workflow_proposal'], context)
+                workflow = create_workflow(decision['workflow_proposal'], context, require_stay_proposals=True)
                 if self.memory_manager:
                     workflow = self.memory_manager.workflow_store.save(workflow, expected_revision=None)
             workflow['effective_preferences'] = deepcopy(run.effective_preferences)

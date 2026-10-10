@@ -35,7 +35,7 @@ finalization_mode(forward/synthesize)、agent_schedule。
 direct 仅用于无需外部资料的直接回答，提供 final_answer，agent_schedule=[]。
 合法组合只有 direct+synthesize、answer+forward、answer+synthesize、itinerary+synthesize、workflow+synthesize。
 direct 的 finalization_mode 必须是 synthesize；forward 仅代表转交信息获取结果，不代表直接回答。
-查询缺日期可以用明确标注的建议日期；人数默认1；首次不为个人字段追问，查询可执行领域并说明缺口。
+查询缺日期可以用明确标注的建议日期；人数默认1；首次不为个人字段追问，但交通规划缺出发城市时由Harness保存断点并询问起点，不能猜测城市。独立酒店/天气查询不要求起点。
 任务字段 agent_name、priority、depends_on、reason、expected_output、answer_role(answer/context)。
 偏好/记忆/制度阶段1，信息获取阶段2。信息获取 requested_domains 仅 train/hotel/guide/weather/web。
 本轮新偏好、所需历史与制度必须先完成；只查天气不生成行程，不查用户没要求的领域。
@@ -50,6 +50,10 @@ workflow_proposal={{"confirmed_conditions":{{}},"tasks":[{{"origin":"起点","de
 purpose可为visit/business/return/transit/unspecified；purpose_source保留来源；requires_hotel独立，返程默认false但明确需要住宿可true。
 purpose_source只能为user/context/preference/derived/default/proposal，目的未知写purpose=unspecified、purpose_source=proposal。
 用户只说去上海就建一段，不自动加返程或固定三天；缺起点origin=null，后段起点由上一段目的地确定。
+每个requires_hotel=true的任务首次拆分就必须有停留方案：已给入住离店日期则保留；否则提供conditions.nights。
+未指定停留时长时，由你结合目的、各站特点、路线、总时长和偏好逐站思考并提出合理晚数，field_sources.nights=proposal。
+不得机械套用统一晚数，不把建议写成default或user，不通过追问停留时长来代替提出方案。用户给的晚数及总时长必须遵守。
+无需酒店的返程/过境任务不填nights；建议仅用于规划，不表示真实订房或确认的抵达日期。
 workflow_proposal 仅 confirmed_conditions、tasks。每任务仅 origin、destination、purpose、purpose_source、requires_hotel、conditions、field_sources，省略依赖字段。
 confirmed_conditions没有明确日期、预算、人数就用{{}}；绝不写origin/destination/requires_hotel/scope，也不写"missing"来源。
 需要酒店不等于需要酒店报价。hotel_quote_required默认省略；仅用户明确要核实酒店报价或上下文/偏好已有此要求才可true，不得标derived/default/proposal。
@@ -66,6 +70,7 @@ confirmed_conditions 只放用户明确条件；任务日期建议标 proposal�
 仅说2号而缺月时建议最近未来2号，标proposal并在回复说明，而不是user确认；不覆盖已明确的日期。
 ambiguous_date_options给出程序计算的最近未来日期，匹配原文时使用其日期和proposal来源，不写入confirmed_conditions。
 如果上下文 known_workflows（包含已完成旅行）包含本轮明确要继续或修改的规划，返回 workflow 模式和 resume_workflow_id。
+如果已有required_conditions断点询问origin，用户回答一个城市就是补出发地：使用同一workflow与resume_task_id，travel_update=supplement，condition_updates.origin为该城市；保留此前建议日期和晚数，不新建旅行。
 旧协议仅用于兼容已有客户端：
 workflow_update={{"confirmed_conditions":{{}},"task_updates":[{{"task_id":"已有ID","conditions":{{}}}}]}}。
 task_updates 也可含用户明确修改的 origin/destination/requires_hotel；不改未授权任务，目的地修改会重检下游。
@@ -81,6 +86,7 @@ explain_trip/trip_status_query直接根据known_workflows.saved_plan答复，不
 修改的顶层必须包含response_mode=workflow、finalization_mode=synthesize、resume_workflow_id、agent_schedule=[]、travel_update。
 例如暂停为{{"response_mode":"workflow","finalization_mode":"synthesize","resume_workflow_id":"已有ID","agent_schedule":[],"travel_update":{{"update_type":"pause","target":{{"workflow_id":"已有ID"}}}}}}。
 supplement补未知条件，change替换明确条件，regenerate保持条件重做指定任务/全程，replace只换指定火车或酒店。
+change必须包含用户明确提供的非空condition_updates；只说不满意不能用空change或自行选择整段重做。
 整程重做列出所有task_ids；换酒店components=["hotel"]，换火车=["train"]；保留未授权组件和任务。
 换已显示候选时rejected_candidate_ids记录被拒绝的已有ID。不满意不是清空全部条件，也不能推断长期偏好改变。
 hotel_brands可写condition_updates，用于本次酒店筛选；预算写constraints。origin补充到对应任务，不写自由字段。
@@ -88,15 +94,15 @@ change_route增加route_tasks完整新路线，字段同workflow_proposal.tasks�
 adopt用selections={{"task_id":{{"hotel":{{"query_id":"已有ID","result_revision":1,"candidate_id":"已有ID"}}}}}}或空对象接受已有方案；不能声称预订成功。
 pause/cancel目标workflow即可，任务ID可空，不再查询；不等于真实订单取消。
 新请求不自动修改旧规划；多个规划无法区分或只说不满意时，direct回答仅询问旅行/路段/组件，
-可以定位旅行时附feedback_scope={{"workflow_id":"已有ID","question":"要改哪段的火车或酒店？"}}保存断点；不能要求重填个人信息。
+可以定位旅行但修改范围不明时必须附feedback_scope={{"workflow_id":"已有ID","question":"要改哪段的火车或酒店？"}}保存断点；不能要求重填个人信息。
 unsupported_action真实购票、订房、退改签直接说明能力限制，不生成交易动作。
 上下文：{json.dumps(context, ensure_ascii=False, default=str)}'''
         with model_stage('main:plan'):
             turn = await collect_model_turn(await self.model([{'role': 'user', 'content': prompt}]))
         try:
             return self._initial_decision(turn.text)
-        except (ValueError,TypeError,ArithmeticError):
-            correction='上次JSON无效或被截断。保持用户要求，仅重写最短完整JSON。不要调用工具、不要输出解释。\n无条件初始化不能返回空对象。\n上次响应片段：'+turn.text[:1000]
+        except (ValueError,TypeError,ArithmeticError) as exc:
+            correction='上次JSON或业务决定无效。保持用户要求，仅重写最短完整JSON。不要调用工具、不要输出解释。\n校验原因：'+str(exc)[:300]+'\n无条件初始化不能返回空对象。\n上次响应片段：'+turn.text[:1000]
             options={}
             if getattr(self.model,'model_name','').startswith('deepseek'):
                 options={'extra_body':{'thinking':{'type':'disabled'}}}
@@ -147,11 +153,13 @@ partial只用于仍有阻塞问题、必要安排未形成、证据不足或预�
 用户只要求改酒店时遵循current_task.update_scope，只查酒店；draft中原train_selection必须逐字保留，不替换未授权组件。
 arrival_date/arrival_before查询使用train_search_by_arrival由信息获取调用，不把到达日当出发日。
 读previous_boundary，后段从已核实抵达时间及离店日推导；不改用户固定日期，不确定仍查酒店并保存部分draft。
-酒店停留日期未知时允许提出schedule.check_in/check_out建议（不是确认或订房），不强制三天。
+按照首次拆分的conditions.nights衔接已核实arrival_at，给出schedule.check_in/check_out；不得忽略模型提出的晚数或机械替换成统一一晚。
+入住离店建议不是确认或订房；后续任务时间依前段离店及核实抵达边界调整，不能覆盖用户固定条件。
 即使本段缺车次或抵达证据也draft_task保留hotel_selection及缺口，继续后段可执行查询，不能立刻finish阻塞全部任务。
 所有任务（包括部分草稿）都处理后再validate_workflow；不通过则finish partial。状态draft不代表可行，必须全程校验。
 首次缺必要条件、供应商失败或重大冲突也先回复部分方案和调整建议，不ask_user索要个人字段；不能擅自改固定条件。
-若preflight.query_requests非空且本段尚未查询，必须先dispatch可执行领域；不得因缺出发地ask_user或finish跳过酒店查询。
+交通规划缺出发地时由Harness保存required_conditions断点并反问，得到城市后再查询。其余缺省条件按已有规则处理。
+若起点已知、preflight.query_requests非空且本段尚未查询，必须先dispatch可执行领域。
 供应商不可用不能说没有火车；成功查询无合格候选只说明已查范围。用户有硬报价要求而报价能力不足才返回partial，不反复刷新。
 相同查询有效资料复用，需要其他候选用candidate_offset；只在确有刷新或授权改参数依据时查询。
 没有新信息不要重复同一动作。达到预算/不能补齐资料时finish partial，保留已有草稿。
@@ -172,6 +180,7 @@ constraints 合法键为 total_budget_cny/hotel_max_total_cny/hotel_max_nightly_
 任务仅 origin/destination/purpose/purpose_source/requires_hotel/conditions/field_sources，按原路线顺序，不生成ID/status/revision/depends_on；缺起点保持null。
 field_sources 仅 user/context/preference/derived/default/proposal。未知日期为null，不猜抵达日期。
 hotel_quote_required默认省略；仅明确来自user/context/preference的报价要求可true，需要酒店不能推导出必须有报价。
+所有requires_hotel=true任务必须保留已知入住离店日期，或者由你结合路线、目的、总时长及偏好提出conditions.nights；建议来源proposal。不要统一填默认晚数。无酒店返程不要求nights。
 用户原文：{context['original_query']}
 校验错误：{error}
 原提案：{json.dumps(proposal,ensure_ascii=False,default=str)}'''
