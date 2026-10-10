@@ -15,7 +15,7 @@ from agents.contracts import RunState,RunLimits
 from agents.execution_harness import ExecutionHarness
 from agents.lazy_agent_registry import LazyAgentRegistry
 from agents.main_agent import MainAgent
-from config import LLM_CONFIG,RUN_LIMITS
+from config import LLM_CONFIG,RUN_LIMITS,get_model_generate_kwargs
 from context.memory_manager import MemoryManager
 from context.telemetry import MeteredModel
 from evals.latency import summarize_latency
@@ -94,10 +94,7 @@ async def evaluate(output,only=None,*,resume_memory=None,thinking=None):
         memory=MemoryManager('simulated-'+user,case,storage_path=str(resume_memory or output/'memory'))
         known=memory.get_known_workflows()
         if user not in previous and known: previous[user]={'workflow_id':known[0]['id'],'workflow':known[0]}
-        generate={'temperature':LLM_CONFIG.get('temperature',.7),'max_tokens':LLM_CONFIG.get('max_tokens',2000)}
-        if thinking:
-            generate['extra_body']={'thinking':{'type':'disabled' if thinking=='disabled' else 'enabled'}}
-            if thinking!='disabled': generate['reasoning_effort']=thinking
+        generate=get_model_generate_kwargs(thinking=thinking)
         raw=OpenAIChatModel(model_name=LLM_CONFIG['model_name'],api_key=LLM_CONFIG['api_key'],
             client_kwargs={'base_url':LLM_CONFIG['base_url'],'timeout':60.0},
             generate_kwargs=generate)
@@ -120,7 +117,7 @@ async def evaluate(output,only=None,*,resume_memory=None,thinking=None):
         record=dict(case=case,query=query,status=result.get('status'),stop_reason=result.get('stop_reason'),
             assessment=assess(case,result,run,previous.get(user)),
             latency=summarize_latency(calls,run.tool_requests,total_ms=elapsed,external_requests=run.external_request_count),
-            source_mode='real_llm_simulated_travel',thinking_mode=thinking or 'provider_default',trace_path=str(memory.session_store.session_dir))
+            source_mode='real_llm_simulated_travel',thinking_mode=thinking or LLM_CONFIG['thinking_mode'],trace_path=str(memory.session_store.session_dir))
         (output/(case+'.json')).write_text(json.dumps(dict(record=record,result=result,model_responses=responses),ensure_ascii=False,indent=2),encoding='utf-8')
         records.append(record)
         (output/'report.json').write_text(json.dumps(records,ensure_ascii=False,indent=2),encoding='utf-8')
@@ -138,7 +135,7 @@ def main():
     parser.add_argument('--output',type=Path,default=ROOT/'data'/'evals'/('preflight-simulated-'+datetime.now().strftime('%Y%m%d-%H%M%S')))
     parser.add_argument('--cases',nargs='*')
     parser.add_argument('--resume-memory',type=Path)
-    parser.add_argument('--thinking',choices=['disabled','low','high'],help='Comparison only; omission uses unchanged product/provider defaults')
+    parser.add_argument('--thinking',choices=['disabled','low','high'],help='Comparison override; omission uses product default disabled')
     args=parser.parse_args()
     records=asyncio.run(evaluate(args.output,args.cases,resume_memory=args.resume_memory,thinking=args.thinking))
     raise SystemExit(0 if records and all(r['assessment']['passed'] for r in records) else 1)

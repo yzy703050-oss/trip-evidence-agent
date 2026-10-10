@@ -42,6 +42,7 @@ def write_report():
                              *[stages.get(s,{}).get('total_ms',0)/1000 for s in ('main:plan','main:step','agent:information_query')],
                              timing['tool_service_sum_ms'],timing['external_requests']])
     lines=['# 规划补全与真实模型耗时测评（2026-10-10）','',
+           '本报告保留默认关闭推理之前的历史记录。当前运行已按用户要求默认关闭推理，最新结果见[关闭推理默认配置测评](2026-10-10-thinking-off-default-evaluation.md)。','',
            '模型为当前配置的 deepseek-flash；主流程使用供应商默认思考模式。火车、酒店使用显式注入的 simulation Provider，车次、价格、余票、酒店名称和地址均为测试数据。生产入口没有模拟回退。',
            '',f"最终默认配置测评：{sum(r['assessment']['passed'] for r in records)}/{len(records)}；P01–P33可执行测试证据：{sum(s['passed'] for s in coverage.values())}/33。",'',
            f'完整自动化回归：{passed_tests}项通过，{skipped_tests}项旧在线脚本跳过；原有DashScope弃用告警1条。跳过的在线脚本不计入通过数。','',

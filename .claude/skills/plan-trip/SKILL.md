@@ -22,6 +22,8 @@ travel_conditions 和 domain_results。首次缺用户条件返回已有部分�
 每段只安排火车和住宿，不生成 activities、景点、天气或市内通勤时间。
 候选选择引用 query_id/result_revision/candidate_id；requires_hotel=false时酒店引用为null，详情由程序重建。
 一段草稿不等于全程成功，后段可能要求重检前段；所有当前版本草稿经 validate_workflow 才能完成。
+当前版本workflow.status=completed且validation.valid=true时直接finish completed，不反复校验。completed是规划建议完成，不是预订或用户日期确认。
+建议日期、模拟来源、酒店地点价格库存未知须披露；无硬报价或预算要求且仅有blocking=false提示时，不应因此返回partial。阻塞缺口仍返回partial。
 抵达日期只采用可靠证据，未知保持 null；拟入住/离店日期与用户固定日期、推导、提案分开。
 后段边界可靠时可以推导日期或提出带来源的建议，不修改固定条件。未知边界仍查询可执行酒店，不盲猜交通。
 首次缺个人条件或重大冲突先返回部分方案和调整建议，不ask_user索要必填。只有用户要修改但目标范围不明才询问旅行/任务/组件。

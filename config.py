@@ -38,7 +38,20 @@ LLM_CONFIG = {
     "output_usd_per_million": settings.llm_output_usd_per_1m_tokens,
     "temperature": 0.7,
     "max_tokens": 8192,
+    "thinking_mode": "disabled",
 }
+
+
+def get_model_generate_kwargs(config=None, *, thinking=None):
+    """Keep runtime and evaluation generation options consistent."""
+    cfg=LLM_CONFIG if config is None else config
+    options={'temperature':cfg.get('temperature',0.7),'max_tokens':cfg.get('max_tokens',2000)}
+    if cfg.get('model_name','').startswith('deepseek'):
+        mode=thinking or cfg.get('thinking_mode','disabled')
+        if mode not in {'disabled','low','high'}: raise ValueError('invalid thinking mode')
+        options['extra_body']={'thinking':{'type':'disabled' if mode=='disabled' else 'enabled'}}
+        if mode!='disabled': options['reasoning_effort']=mode
+    return options
 
 # System Configuration
 SYSTEM_CONFIG = {

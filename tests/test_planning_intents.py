@@ -8,6 +8,16 @@ from agents.workflow_guard import check_workflow
 from workflow_support import populated_workflow
 
 
+def test_model_cannot_derive_a_hotel_quote_requirement_from_requiring_a_hotel():
+    from agents.workflow_contracts import create_workflow
+    value={'confirmed_conditions':{},'tasks':[{'origin':'上海','destination':'北京','requires_hotel':True,
+        'conditions':{'hotel_quote_required':True},'field_sources':{'hotel_quote_required':'derived'}}]}
+    with pytest.raises(ValueError,match='hotel quote requirement'):
+        create_workflow(value,{'original_query':'只安排火车和酒店推荐'})
+    value['tasks'][0]['field_sources']['hotel_quote_required']='user'
+    assert create_workflow(value,{})['tasks'][0]['conditions']['hotel_quote_required'] is True
+
+
 @pytest.mark.asyncio
 async def test_prompt_has_all_feedback_intents_and_answer_first_rule():
     calls=[]

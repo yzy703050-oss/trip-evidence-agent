@@ -30,7 +30,7 @@ from travel_data.plan_guard import guard_itinerary
 # 导入系统组件
 from agentscope.model import OpenAIChatModel
 from config_agentscope import init_agentscope
-from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, get_settings
+from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, get_settings, get_model_generate_kwargs
 from travel_data.juhe_train import JuheTrainProvider
 from travel_data.amap_hotel import AmapHotelProvider
 from context.memory_manager import MemoryManager
@@ -110,10 +110,7 @@ class TripEvidenceCLI:
                     "base_url": LLM_CONFIG["base_url"],
                     "timeout": float(timeout_sec),
                 },
-                generate_kwargs={
-                    "temperature": LLM_CONFIG.get("temperature", 0.7),
-                    "max_tokens": LLM_CONFIG.get("max_tokens", 2000),
-                },
+                generate_kwargs=get_model_generate_kwargs(),
             )
 
             # 初始化记忆管理器（传入LLM模型用于总结）

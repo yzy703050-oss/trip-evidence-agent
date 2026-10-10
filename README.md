@@ -86,6 +86,10 @@ Copy-Item .env.example .env
 
 在本地 `.env` 至少配置 `LLM_API_KEY`、`LLM_BASE_URL` 和 `LLM_MODEL`。CLI 会调用真实模型。不要提交 `.env`。
 
+当前DeepSeek模型默认显式关闭推理模式：`extra_body={"thinking":{"type":"disabled"}}`。
+CLI、健康检查和真实测评使用统一生成参数，共享模型的主Agent、子Agent及记忆压缩继承此配置。
+工具调用和Agent循环照常运行；默认关闭后的验证与耗时见[测评报告](docs/evals/2026-10-10-thinking-off-default-evaluation.md)。
+
 ```powershell
 python cli.py
 ```
@@ -119,7 +123,7 @@ python -m evals.run_preflight_simulated --output data/evals/preflight-new-run
 ```
 
 输出逐用例响应、模型调用记录和分阶段耗时 CSV；模拟数据明确标注来源，生产入口不会自动回退到模拟。
-当前测评及延迟分析见 [规划补全测评报告](docs/evals/2026-10-10-planning-preflight-evaluation.md)。
+当前默认关闭推理的测评见[测评报告](docs/evals/2026-10-10-thinking-off-default-evaluation.md)；此前默认开启推理的记录见[历史规划补全测评](docs/evals/2026-10-10-planning-preflight-evaluation.md)。
 
 真实 EDD 会检查计划与实际 Agent 调用是否一致、执行是否成功、答案关键事实、RAG 来源与依据、跨会话回忆、行程约束，并记录延迟、模型调用量及 token。先用 CLI 完成相应会话，再用对应 case 对已保存的日志评分：
 

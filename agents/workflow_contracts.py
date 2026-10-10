@@ -138,6 +138,8 @@ def create_workflow(proposal, context, *, workflow_id=None):
             if source=='missing' and row.get(key,conditions.get(key)) is None: field_sources.pop(key)
         if any(v not in SOURCES for v in field_sources.values()):
             raise ValueError('invalid field source')
+        if conditions.get('hotel_quote_required') is True and field_sources.get('hotel_quote_required') in {'derived','default','proposal'}:
+            raise ValueError('hotel quote requirement must come from explicit user, context or preference; needing a hotel does not require a quote')
         if index == 0 and not conditions.get('departure_date') and confirmed.get('start_date'):
             conditions['departure_date'] = confirmed['start_date']
             field_sources['departure_date'] = 'derived'

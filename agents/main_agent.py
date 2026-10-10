@@ -52,6 +52,7 @@ purpose_source只能为user/context/preference/derived/default/proposal，目的
 用户只说去上海就建一段，不自动加返程或固定三天；缺起点origin=null，后段起点由上一段目的地确定。
 workflow_proposal 仅 confirmed_conditions、tasks。每任务仅 origin、destination、purpose、purpose_source、requires_hotel、conditions、field_sources，省略依赖字段。
 confirmed_conditions没有明确日期、预算、人数就用{{}}；绝不写origin/destination/requires_hotel/scope，也不写"missing"来源。
+需要酒店不等于需要酒店报价。hotel_quote_required默认省略；仅用户明确要核实酒店报价或上下文/偏好已有此要求才可true，不得标derived/default/proposal。
 条件仅 start_date/end_date/departure_date/arrival_date/arrival_before/check_in/check_out/passengers/guests/nights/flexible_dates/hotel_quote_required/hotel_keywords/constraints。
 预算必须写在 constraints：total_budget_cny 全程总预算；hotel_max_total_cny/hotel_max_nightly_cny/train_max_total_cny 分项限制。
 席别写 constraints.seat_class；不要写 budget、travelers、hotel_needs、date_flexibility 等自由字段。
@@ -133,6 +134,10 @@ draft_plan={{"task_revision":1,"train_selection":{{"query_id":"已有查询ID","
 "hotel_selection":null,"schedule":{{"departure_at":null,"arrival_at":null,"check_in":null,"check_out":null,"next_departure_not_before":null}},
 "unverified_requirements":[]}}。酒店引用同样用query_id/result_revision/candidate_id，可加kind。
 任务查询返回后形成 draft；所有草稿齐全后 validate_workflow，通过程序校验才 finish completed。
+若workflow.status=completed且workflow.validation.valid=true，当前版本已完成校验：直接finish completed，不重复validate_workflow。
+completed表示用户要求范围内的规划建议完成，不代表订票订房、用户确认日期或全程费用已核实。
+日期建议标proposal、来源标simulation、酒店地点无价格或库存只需在答复披露；没有硬报价/预算要求且程序仅有blocking=false提示时，这些不构成partial理由。
+partial只用于仍有阻塞问题、必要安排未形成、证据不足或预算上限耗尽，不能把非阻塞提示升级成缺项。
 工具事实只引用已有结果。未知抵达日期不能靠时钟猜次日；酒店地点不提供房价或库存。
 若供应商只有到达时刻，候选 arrival_at 均为 null，同一接口不能补出日期；保留草稿并 finish partial，不为同一证据缺口反复查不同候选。
 用户批准调整计划不能替代供应商抵达日期证据，不询问用户是否同意把推测日期当作已核实事实。
@@ -146,7 +151,8 @@ arrival_date/arrival_before查询使用train_search_by_arrival由信息获取调
 即使本段缺车次或抵达证据也draft_task保留hotel_selection及缺口，继续后段可执行查询，不能立刻finish阻塞全部任务。
 所有任务（包括部分草稿）都处理后再validate_workflow；不通过则finish partial。状态draft不代表可行，必须全程校验。
 首次缺必要条件、供应商失败或重大冲突也先回复部分方案和调整建议，不ask_user索要个人字段；不能擅自改固定条件。
-供应商不可用不能说没有火车；成功查询无合格候选只说明已查范围。报价能力不足返回partial，不反复刷新。
+若preflight.query_requests非空且本段尚未查询，必须先dispatch可执行领域；不得因缺出发地ask_user或finish跳过酒店查询。
+供应商不可用不能说没有火车；成功查询无合格候选只说明已查范围。用户有硬报价要求而报价能力不足才返回partial，不反复刷新。
 相同查询有效资料复用，需要其他候选用candidate_offset；只在确有刷新或授权改参数依据时查询。
 没有新信息不要重复同一动作。达到预算/不能补齐资料时finish partial，保留已有草稿。
 本轮只安排交通住宿，不生成活动或天气攻略查询。
@@ -165,6 +171,7 @@ constraints 合法键为 total_budget_cny/hotel_max_total_cny/hotel_max_nightly_
 范围说明仍保留在用户原文，不丢弃或修改用户真实预算、日期和人数；全程预算用total_budget_cny。
 任务仅 origin/destination/purpose/purpose_source/requires_hotel/conditions/field_sources，按原路线顺序，不生成ID/status/revision/depends_on；缺起点保持null。
 field_sources 仅 user/context/preference/derived/default/proposal。未知日期为null，不猜抵达日期。
+hotel_quote_required默认省略；仅明确来自user/context/preference的报价要求可true，需要酒店不能推导出必须有报价。
 用户原文：{context['original_query']}
 校验错误：{error}
 原提案：{json.dumps(proposal,ensure_ascii=False,default=str)}'''

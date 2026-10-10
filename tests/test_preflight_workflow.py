@@ -83,6 +83,29 @@ async def test_arrival_preflight_returns_bound_evidence_and_completes(tmp_path):
     assert '模拟' in result['final_answer']
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('first_action',['ask_user','finish'])
+async def test_early_personal_question_or_partial_gets_feedback_to_query_available_hotel(tmp_path,first_action):
+    class EarlyStopMain(PreflightMain):
+        asked=False
+        async def step(self,context):
+            if not self.asked:
+                self.asked=True
+                if first_action=='finish': return dict(action='finish',status='partial',final_answer='缺出发地')
+                return dict(action='ask_user',question='从哪里出发？',reason='缺起点',
+                            affected_task_ids=[context['current_task']['id']],suggested_changes=[])
+            if context['current_task']['status']=='pending':
+                assert context['action_feedback']['code']=='available_queries_required'
+            return await super().step(context)
+    r=runtime(tmp_path,[dict(origin=None,destination='上海',requires_hotel=True,conditions={})])
+    r.main=EarlyStopMain(r.main.p)
+    r.harness.main_agent=r.main
+    result=await r.turn('我要去上海玩，安排一下')
+    assert result['status']=='partial' and result['workflow']['checkpoint'] is None
+    assert len(r.hotel.calls)==1 and not r.train.calls
+    assert result['workflow']['tasks'][0]['draft_plan']['hotel_selection']
+
+
 def test_rejected_candidates_are_removed_from_view_and_cannot_be_selected():
     w = populated_workflow(); t=w['tasks'][0]; row=w['results_by_query'][t['query_ids'][0]]
     bad = row['items'][0]['id']; t['rejected_candidates']={'train':[bad]}
@@ -119,3 +142,16 @@ async def test_initial_personal_field_question_is_blocked(tmp_path):
     r.main=Ask(r.main.p); r.harness.main_agent=r.main
     result=await r.turn('我要去上海')
     assert result['status']=='partial' and result['workflow']['checkpoint'] is None
+
+
+@pytest.mark.asyncio
+async def test_resuming_partial_with_saved_query_does_not_require_query_again(tmp_path):
+    r=runtime(tmp_path,[dict(origin=None,destination='上海',requires_hotel=True,conditions={})])
+    first=await r.turn('我要去上海')
+    assert first['workflow']['tasks'][0]['draft_plan']['hotel_selection']
+    r.main.resume={'id':first['workflow_id'],'update':{'task_updates':[]}}
+    async def keep_partial(context):
+        return dict(action='finish',status='partial',final_answer='已有酒店推荐，出发地仍未知')
+    r.main.step=keep_partial
+    result=await r.turn('先保留现有部分方案')
+    assert result['stop_reason']=='model_partial' and len(r.hotel.calls)==1

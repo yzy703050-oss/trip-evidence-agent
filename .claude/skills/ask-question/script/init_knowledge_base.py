@@ -14,7 +14,7 @@ project_root = current_dir.parent.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from config import LLM_CONFIG
+from config import LLM_CONFIG, get_model_generate_kwargs
 from agentscope.model import OpenAIChatModel
 
 # 动态加载同目录下的 agent.py
@@ -191,10 +191,7 @@ def main():
             client_kwargs={
                 "base_url": LLM_CONFIG["base_url"],
             },
-            generate_kwargs={
-                "temperature": LLM_CONFIG.get("temperature", 0.7),
-                "max_tokens": LLM_CONFIG.get("max_tokens", 2000),
-            },
+            generate_kwargs=get_model_generate_kwargs(),
         )
         print("✓ 模型创建成功")
         print()

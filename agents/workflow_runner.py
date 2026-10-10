@@ -150,6 +150,11 @@ class WorkflowRunner:
             self.seen.add(signature)
             feedback = None
             name = action['action']
+            premature_stop=(name=='ask_user' and not self.context.get('allow_scope_question')) or (name=='finish' and action['status']=='partial')
+            if premature_stop and not task.get('query_ids') and not self.counts.get(task['id'],0) and context['preflight']['query_requests'] and self.run_state.workflow_tool_budget>0:
+                feedback={'code':'available_queries_required','message':'首次缺个人条件不能跳过可执行查询；先dispatch当前段可执行领域，再保存部分草稿。',
+                          'query_requests':deepcopy(context['preflight']['query_requests'])}
+                continue
             if name == 'dispatch':
                 if self.counts.get(task['id'], 0) >= self.limits.info_executions_per_task:
                     return self._stop('partial', 'task_information_limit', '当前段已达到资料查询上限。')
