@@ -2,7 +2,7 @@ import json
 from types import SimpleNamespace
 import pytest
 from agents.main_agent import MainAgent
-from agents.orchestration_agent import OrchestrationAgent
+from agents.execution_harness import ExecutionHarness
 from agents.contracts import RunState
 from context.memory_manager import MemoryManager
 from context.telemetry import MeteredModel
@@ -22,7 +22,7 @@ async def test_four_purpose_direct_decisions_do_not_query(kind, query, answer):
         return SimpleNamespace(text=json.dumps(dict(response_mode='direct', agent_schedule=[],
             intents=[{'type': kind}], final_answer=answer), ensure_ascii=False))
     run = RunState('direct')
-    result = await OrchestrationAgent(main_agent=MainAgent(model), agent_registry={}).run_turn(
+    result = await ExecutionHarness(main_agent=MainAgent(model), agent_registry={}).run_turn(
         {'original_query': query}, run)
     assert result['status'] == 'ok' and result['final_answer'] == answer
     assert len(calls) == 1 and run.external_request_count == 0
@@ -45,7 +45,7 @@ async def test_real_runtime_measures_actual_main_and_info_calls(tmp_path, itiner
         value = answers.pop(0)
         return SimpleNamespace(content=value) if isinstance(value, list) else SimpleNamespace(text=json.dumps(value, ensure_ascii=False))
     model = MeteredModel(raw, memory.session_store.append_run)
-    harness = OrchestrationAgent(main_agent=MainAgent(model),
+    harness = ExecutionHarness(main_agent=MainAgent(model),
         agent_registry={'information_query': info_class()(model=model, tool_executor=ToolExecutor({}, Public()), memory_manager=memory)}, memory_manager=memory)
     result = await harness.run_turn({'original_query': '规划北京行程' if itinerary else '北京明天天气'}, RunState(memory.start_turn('query')))
     calls = [r for r in memory.session_store.read_runs() if r['type'] == 'model_call']
@@ -70,7 +70,7 @@ async def test_financial_forwarding_rebuilds_display_from_real_offers():
                 'input': {'city': '北京', 'check_in': '2026-10-10', 'check_out': '2026-10-11', 'guests': 1}}])
         return SimpleNamespace(text='{"summary":"只需299999元，已预订","domain_results":{"hotel":{"items":[{"price":"299999"}]}}}')
     main = Main([{'agent_name': 'information_query', 'requested_domains': ['hotel']}])
-    harness = OrchestrationAgent(main_agent=main, agent_registry={'information_query': info_class()(model=model,
+    harness = ExecutionHarness(main_agent=main, agent_registry={'information_query': info_class()(model=model,
         tool_executor=ToolExecutor({'hotel_search': Provider()}))})
     result = await harness.run_turn({'original_query': '查询北京酒店'}, RunState('a'))
     assert result['finalization_method'] == 'forward'

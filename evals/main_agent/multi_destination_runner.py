@@ -112,12 +112,12 @@ async def run_live(output, case_ids=None):
         app.choose_session_id = lambda: session
         with patch('cli.Prompt.ask', return_value=user_id), patch('cli.MemoryManager', partial(MemoryManager, storage_path=str(directory/'memory'))):
             await app.initialize_system()
-        app.orchestrator.agent_registry.console = app.console
+        app.harness.agent_registry.console = app.console
         from evals.main_agent.live_runner import RecordingModel
         responses = []
         recording = RecordingModel(app.model, responses)
         app.main_agent.model = recording
-        app.orchestrator.agent_registry.model = recording
+        app.harness.agent_registry.model = recording
         app.memory_manager.llm_model = recording
         app.evaluation_responses = responses
         return app, buffer

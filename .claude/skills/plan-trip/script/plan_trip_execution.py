@@ -9,7 +9,7 @@ from cli import TripEvidenceCLI
 
 async def plan_trip(user_query: str, app=None):
     app = app or TripEvidenceCLI()
-    if app.orchestrator is None:
+    if app.harness is None:
         await app.initialize_system()
     await app.process_query(user_query)
     return app.last_result
