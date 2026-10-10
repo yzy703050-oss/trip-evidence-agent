@@ -25,7 +25,7 @@ from rich.layout import Layout
 from rich.live import Live
 from rich.text import Text
 import json
-from travel_data.plan_guard import guard_itinerary
+from utils.response_renderer import finalize_business_result
 
 # 导入系统组件
 from agentscope.model import OpenAIChatModel
@@ -98,6 +98,14 @@ class TripEvidenceCLI:
 
         self.session_id = self.choose_session_id()
 
+        # First use of a local identity requires an explicit residence, before any model work.
+        self.memory_manager = MemoryManager(
+            user_id=self.user_id,
+            session_id=self.session_id,
+            llm_model=None,
+        )
+        self.ensure_home_location()
+
         with self.console.status("初始化中...", spinner="dots"):
             # 初始化AgentScope
             init_agentscope()
@@ -114,12 +122,6 @@ class TripEvidenceCLI:
                 generate_kwargs=get_model_generate_kwargs(),
             )
 
-            # 初始化记忆管理器（传入LLM模型用于总结）
-            self.memory_manager = MemoryManager(
-                user_id=self.user_id,
-                session_id=self.session_id,
-                llm_model=None
-            )
             self.model = MeteredModel(
                 raw_model,
                 self.memory_manager.session_store.append_run,
@@ -163,6 +165,20 @@ class TripEvidenceCLI:
             )
 
         self.console.print(f"✓ 就绪 (用户: {self.user_id}, 会话: {self.session_id}) - 输入 help 查看帮助\n", style="green")
+
+    def ensure_home_location(self) -> str:
+        """Collect a required, user-owned residence once for each local identity."""
+        memory = self.memory_manager.long_term
+        existing = memory.get_preference("home_location")
+        if isinstance(existing, str) and existing.strip():
+            return existing.strip()
+        while True:
+            city = Prompt.ask("你通常长期住在哪座城市？（必须填写）", console=self.console).strip()
+            if city:
+                memory.set_user_preference("home_location", city)
+                self.console.print(f"已记住你的长期居住城市是{city}，以后可以修改。", markup=False)
+                return city
+            self.console.print("长期居住城市必须填写，请输入城市名称。", markup=False)
 
     def choose_session_id(self, storage_path: str = "data/memory") -> str:
         """An empty answer creates a session; an existing ID resumes it."""
@@ -293,55 +309,11 @@ class TripEvidenceCLI:
             self.console.print(f"🤖 调用智能体: {', '.join(agents_called)}", style="dim")
 
     def _display_results(self, result_data: dict):
-        from travel_data.result_guard import guard_domain_result
-        from agents.itinerary_module import guard_final_itinerary
+        """Display the complete final_answer; the Harness owns business assembly."""
         self.console.print()
-        if result_data.get('final_answer'):
-            self.console.print(result_data['final_answer'], markup=False)
-        if result_data.get('missing_fields'):
-            self.console.print('需要补充：' + ', '.join(result_data['missing_fields']), markup=False)
-        if result_data.get('workflow'):
-            checked = result_data.get('validated_plan', {})
-            for task in checked.get('reconstructed_tasks', []):
-                self.console.print(f"{task['origin']} → {task['destination']}（{task['task_id']}）", markup=False)
-                self.console.print(json.dumps(task['schedule'], ensure_ascii=False), markup=False)
-                if task.get('train'):
-                    item = task['train']; source = item.get('source') or {}
-                    self.console.print(f"火车 {item.get('train_number')} / {item.get('seat_class')} / 单人票价 {item.get('price_cny')} 元 / {item.get('availability')}", markup=False)
-                    self.console.print(f"{source.get('provider')} {source.get('url')} {source.get('fetched_at')}", markup=False)
-                    if item.get('needs_revalidation'): self.console.print('此前取得的价格和库存，需要重新核实。', markup=False)
-                if task.get('hotel'):
-                    item = task['hotel']; source = item.get('source') or {}
-                    self.console.print(f"酒店 {item.get('hotel_name')} / {item.get('address', '')}", markup=False)
-                    if item.get('kind') == 'hotel_place':
-                        self.console.print('酒店地点参考；房价、空房和入住规则未知。', markup=False)
-                    else:
-                        self.console.print(f"住宿报价 {item.get('stay_total_cny')} 元 / {item.get('availability')}", markup=False)
-                    self.console.print(f"{source.get('provider')} {source.get('url')} {source.get('fetched_at')}", markup=False)
-                    if item.get('needs_revalidation'): self.console.print('此前取得的报价和库存，需要重新核实。', markup=False)
-            budget = checked.get('budget', {})
-            self.console.print(f"已知费用合计：{budget.get('known_subtotal_cny', '未知')} 元；全程费用核实：{budget.get('verified', False)}", markup=False)
-            for gap in result_data.get('gaps', []):
-                self.console.print(gap.get('message', str(gap)) if isinstance(gap, dict) else str(gap), markup=False)
-            self.console.print(f"规划状态：{result_data['status']}；停止原因：{result_data.get('stop_reason')}", markup=False)
-            return
-        domains = result_data.get('domain_results', {})
-        for domain, raw in domains.items():
-            data = guard_domain_result(domain, raw)
-            if domain in ('train', 'hotel', 'guide'):
-                self._display_sourced_result({'train': 'train_search', 'hotel': 'hotel_search', 'guide': 'travel_guide'}[domain], data)
-            else:
-                source = data.get('source') or {}
-                self.console.print(f"{source.get('provider', '')} {source.get('url', '')} {source.get('fetched_at', '')}", markup=False)
-                if domain == 'web':
-                    for item in data.get('items', []):
-                        self.console.print(f"{item.get('title', '')}: {item.get('snippet', '')} {item.get('url', '')}", markup=False)
-        if result_data.get('itinerary'):
-            plan = guard_final_itinerary(result_data['itinerary'], domains, result_data.get('travel_conditions'))
-            self.console.print(json.dumps(plan['itinerary'], ensure_ascii=False, indent=2), markup=False)
-            self._display_sourced_plan(plan)
-        if result_data.get('status') == 'error':
-            self.console.print('本轮未能完成请求。', style='yellow')
+        answer = result_data.get("final_answer")
+        self.console.print(answer if isinstance(answer, str) and answer.strip()
+                           else "本轮暂未取得可展示的回复，请稍后重试。", markup=False)
         self.console.print()
 
     async def _get_long_term_summary(self, user_input: str = "") -> str:
@@ -360,11 +332,14 @@ class TripEvidenceCLI:
         # 1. 用户偏好信息（始终加载）
         prefs = self.memory_manager.long_term.get_preference()
         if prefs:
-            pref_lines = ["【用户背景信息】（来自长期记忆，可用于推断缺失信息）"]
+            pref_lines = ["【用户背景信息】（来自长期记忆）"]
 
             # 遍历所有偏好，全部加载
             for pref_key, pref_value in prefs.items():
                 if pref_value:  # 只添加有值的偏好
+                    if pref_key == "home_location":
+                        pref_lines.append(f"• 长期居住城市：{pref_value}；这是背景信息，不代表本次出发地。")
+                        continue
                     # 如果是列表，用逗号连接
                     if isinstance(pref_value, list):
                         pref_lines.append(f"• {pref_key}: {', '.join(pref_value)}")
@@ -418,41 +393,9 @@ class TripEvidenceCLI:
         return "\n".join(summary_parts) if summary_parts else ""
 
     def _display_sourced_result(self, name: str, data: dict):
-        status = data.get("status", "error")
-        labels = {"ok": "查询完成", "partial": "部分完成", "needs_input": "需补充条件",
-                  "unavailable": "数据服务不可用", "error": "查询失败"}
-        self.console.print(f"{self._get_agent_display_name(name)}: {labels.get(status, '未知状态')} ({status})", markup=False)
-        for key, label in (("message", "说明"), ("missing_fields", "缺失条件")):
-            if data.get(key):
-                self.console.print(f"{label}: {data[key]}", markup=False)
-        source = data.get("source") or {}
-        self.console.print(f"来源: {source.get('provider', '未提供')} {source.get('url') or ''} 查询时间: {data.get('fetched_at') or source.get('fetched_at') or '未知'}", markup=False)
-        rows = [{"agent_name": name, "data": data}]
-        if status in {"ok", "partial"}:
-            if not data.get("items"):
-                self.console.print("查询完成，未返回候选项；无法确认库存。", markup=False)
-            for item in data.get("items", []):
-                if not isinstance(item, dict):
-                    continue
-                kind = "train" if name == "train_search" else "hotel"
-                checked = guard_itinerary({f"selected_{kind}_id": item.get("id")}, rows)
-                offer = checked.get(f"selected_{kind}") if name != "travel_guide" else None
-                if offer:
-                    self.console.print(json.dumps(offer, ensure_ascii=False), markup=False)
-            if name == "travel_guide":
-                for fact in guard_itinerary({}, rows)["guide_facts"]:
-                    self.console.print(json.dumps(fact, ensure_ascii=False), markup=False)
-
-    def _display_sourced_plan(self, data: dict):
-        for kind in ("train", "hotel"):
-            if data.get(f"selected_{kind}"):
-                self.console.print(json.dumps(data[f"selected_{kind}"], ensure_ascii=False), markup=False)
-        for fact in data.get("guide_facts", []):
-            self.console.print(json.dumps(fact, ensure_ascii=False), markup=False)
-        budget = data["budget"]
-        self.console.print(f"已知费用小计: {budget['known_subtotal_cny']} CNY", markup=False)
-        if budget["missing_categories"]:
-            self.console.print(f"未报价类别: {', '.join(budget['missing_categories'])}；完整预算尚未核实。", markup=False)
+        domain = {"train_search": "train", "hotel_search": "hotel", "travel_guide": "guide"}[name]
+        result = finalize_business_result({"domain_results": {domain: data}})
+        self._display_results(result)
 
     def _get_agent_display_name(self, agent_name: str) -> str:
         """获取智能体的显示名称"""

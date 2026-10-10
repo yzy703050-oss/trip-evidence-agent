@@ -548,7 +548,11 @@ python cli.py
 python cli.py health
 ```
 
-输入user_id，选择session_id恢复或回车新建。支持help、status、history、preferences、health、clear、exit，以及自然语言请求。
+输入user_id，选择session_id恢复或回车新建。首次使用本地用户身份时，必须主动填写长期居住城市；空白会继续询问，缺少城市的旧用户补填一次，已填用户不重复询问。城市作为`home_location`保存到该用户的长期记忆，来源为用户，跨会话保留且不会被Agent自动覆盖。用`preferences set home_location 杭州`修改。长期居住城市是背景信息，本次出发地仍以用户明确说明的城市为准，临时出差地点不会覆盖居住城市。
+
+支持help、status、history、preferences、health、clear、exit，以及自然语言请求。
+
+最终业务返回仍是 JSON。Harness 在返回前统一生成完整自然语言 `final_answer`，保留模型回复的含义，并根据已校验资料补齐车次、出发和抵达时间、席别、单人票价、查询时余票及来源链接/时间；酒店地点结果会明确“这是酒店地点参考，房价、空房和入住规则尚未核实”。行程日期、未报价项目和重新核实要求也包含在该字段。CLI 只显示 `final_answer`，不根据其他结构化字段追加内容，也不直接打印JSON或内部状态码。其他字段仍供工作流、事实校验和诊断使用，最终组装不增加模型调用。
 
 ### 本地RAG
 

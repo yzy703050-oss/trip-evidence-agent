@@ -8,6 +8,7 @@ from agents.contracts import validate_plan, validate_feedback
 from agents.itinerary_module import guard_final_itinerary
 from context.telemetry import model_stage, model_scope
 from travel_data.result_guard import guard_information_result, grounded_answer, valid_source
+from utils.response_renderer import finalize_business_result
 
 
 def merge_preference_updates(current, changes):
@@ -102,7 +103,7 @@ class ExecutionHarness:
     async def run_turn(self, context, run):
         from config import WORKFLOW_LIMITS
         try:
-            return await asyncio.wait_for(self._run_turn(context,run),timeout=WORKFLOW_LIMITS['turn_timeout'])
+            result = await asyncio.wait_for(self._run_turn(context,run),timeout=WORKFLOW_LIMITS['turn_timeout'])
         except asyncio.TimeoutError:
             result={**self._error('turn_timeout',run),'status':'partial','stop_reason':'turn_timeout',
                     'final_answer':'本轮时间上限已到，已有结果已保留，可以继续修改。'}
@@ -110,9 +111,9 @@ class ExecutionHarness:
                 from context.workflow_store import WorkflowConflictError
                 w=deepcopy(run.workflow); w.update(status='partial',stop_reason='turn_timeout')
                 try: w=self.memory_manager.workflow_store.save(w,expected_revision=w['revision'])
-                except (OSError,WorkflowConflictError): return self._error('workflow_save_failed',run)
+                except (OSError,WorkflowConflictError): return finalize_business_result(self._error('workflow_save_failed',run))
                 result.update(finalization_method='workflow',workflow=w,workflow_id=w['id'],workflow_revision=w['revision'])
-            return result
+        return finalize_business_result(result)
 
     async def _run_turn(self, context, run):
         context = deepcopy(context)

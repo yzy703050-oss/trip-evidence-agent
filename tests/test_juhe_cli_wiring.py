@@ -12,6 +12,7 @@ import cli as cli_module
 from config import Settings
 from travel_data.juhe_train import JuheTrainProvider
 from travel_data.providers import UnavailableProvider
+from utils.response_renderer import finalize_business_result
 
 KEY = 'offline-cli-test-key'
 NOW = datetime(2026, 10, 9, 9, tzinfo=timezone(timedelta(hours=8)))
@@ -22,7 +23,10 @@ def initialize(monkeypatch, key):
     monkeypatch.setattr(cli_module, 'get_settings', lambda: Settings(_env_file=None, juhe_train_api_key=key), raising=False)
     monkeypatch.setattr(cli_module, 'init_agentscope', lambda: None)
     monkeypatch.setattr(cli_module, 'OpenAIChatModel', lambda **kwargs: object())
-    monkeypatch.setattr(cli_module, 'MemoryManager', lambda **kwargs: SimpleNamespace(session_store=SimpleNamespace(append_run=lambda record: None)))
+    monkeypatch.setattr(cli_module, 'MemoryManager', lambda **kwargs: SimpleNamespace(
+        session_store=SimpleNamespace(append_run=lambda record: None),
+        long_term=SimpleNamespace(get_preference=lambda key: '上海'),
+    ))
     monkeypatch.setattr(cli_module, 'MeteredModel', lambda *args, **kwargs: object())
     monkeypatch.setattr(cli_module, 'MainAgent', lambda **kwargs: object())
     monkeypatch.setattr(cli_module, 'ExecutionHarness', lambda **kwargs: SimpleNamespace(**kwargs))
@@ -63,8 +67,8 @@ def test_empty_key_keeps_train_unavailable(monkeypatch, key):
     from agents.contracts import RunState
     result = asyncio.run(agent.execute('train_search', {'origin': '北京南', 'destination': '苏州北', 'departure_date': '2026-10-09'}, RunState('a'), call_id='1'))
     assert result['status'] == 'unavailable'
-    app._display_results({'domain_results': {'train': result}})
-    assert 'unavailable' in output.getvalue()
+    app._display_results(finalize_business_result({'domain_results': {'train': result}}))
+    assert '服务暂时不可用' in output.getvalue()
 
 
 def test_startup_injects_juhe_and_agent_cli_show_sourced_quote(monkeypatch, caplog):
@@ -93,9 +97,9 @@ def test_startup_injects_juhe_and_agent_cli_show_sourced_quote(monkeypatch, capl
     assert result['status'] == 'ok'
     assert len(calls) == 1
     assert calls[0][1]['data']['key'] == KEY
-    app._display_results({'domain_results': {'train': result}})
+    app._display_results(finalize_business_result({'domain_results': {'train': result}}))
     text = output.getvalue()
-    for expected in ['G25', '二等座', '627.50', 'available', '聚合数据', 'https://www.juhe.cn/docs/api/id/817', '2026-10-09T09:00:00+08:00']:
+    for expected in ['G25', '二等座', '627.50', '查询时有票', '聚合数据', 'https://www.juhe.cn/docs/api/id/817', '2026-10-09T09:00:00+08:00']:
         assert expected in text
     assert KEY not in text + caplog.text + json.dumps(result)
 

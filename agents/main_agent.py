@@ -38,6 +38,7 @@ direct 仅用于无需外部资料的直接回答，提供 final_answer，agent_
 合法组合只有 direct+synthesize、answer+forward、answer+synthesize、itinerary+synthesize、workflow+synthesize。
 direct 的 finalization_mode 必须是 synthesize；forward 仅代表转交信息获取结果，不代表直接回答。
 查询缺日期可以用明确标注的建议日期；人数默认1；首次不为个人字段追问，但交通规划缺出发城市时由Harness保存断点并询问起点，不能猜测城市。独立酒店/天气查询不要求起点。
+长期记忆中的home_location是长期居住城市，不代表本次出发城市；起点以用户本次明确说明或已有旅行条件为准，缺失仍交由Harness追问。临时出发地或目的地不得写回home_location。
 任务字段 agent_name、priority、depends_on、reason、expected_output、answer_role(answer/context)。
 偏好/记忆/制度阶段1，信息获取阶段2。信息获取 requested_domains 仅 train/hotel/guide/weather/web。
 本轮新偏好、所需历史与制度必须先完成；只查天气不生成行程，不查用户没要求的领域。
