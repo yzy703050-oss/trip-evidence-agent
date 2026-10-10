@@ -84,3 +84,10 @@ def test_wrong_domain_forged_candidate_and_activities_are_rejected():
 def test_refresh_failure_is_not_current_validated_evidence():
     w = populated_workflow(); next(iter(w['results_by_query'].values()))['needs_revalidation'] = True
     assert check_workflow(w)['valid'] is False
+
+
+def test_global_fixed_start_date_cannot_be_silently_changed():
+    w = populated_workflow(); w['confirmed_conditions']['start_date'] = '2026-10-12'
+    checked = check_workflow(w)
+    assert not checked['valid']
+    assert 'start_date_conflict' in {i['code'] for i in checked['issues']}

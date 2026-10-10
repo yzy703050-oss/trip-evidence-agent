@@ -15,3 +15,15 @@ hotel_search 以实际工具 schema 为准：高德地点搜索只需 city，可
 当已取得足够资料或缺用户条件时，停止调用工具，输出 JSON：summary、travel_conditions、missing_fields；
 如需挑选最终候选，selected_ids 使用 {"train":["已有ID"],"hotel":["已有ID"]}，每域最多五个。
 不要输出自产 domain_results，它由程序保留真实工具数据。摘要说明已查内容、差异、缺项与未满足条件。
+
+## 多目的地任务作用域
+
+输入 type=task_request 时，以 task.id/revision 和 context.current_task 为当前工作单位。
+只使用 task.requested_domains 的火车/酒店工具，不查天气、攻略或网页；从 query_requests 和有效条件整理参数。
+完整 workflow_overview 用于理解顺序，不能据此查询其他任务的城市、日期或修改全程 confirmed_conditions。
+缺人数默认1，酒店人数沿用旅客人数，field_sources 保留默认来源；缺预算、席别、品牌不追问。
+缺火车日期时仍执行有城市的酒店地点查询，再在小结中说明必要日期缺项。
+工具结果带 query_id/result_revision，多个查询均保留；不要用按领域的 selected_ids 合并不同查询。
+价格、来源、库存、query_results 和 execution 由程序保存；你只输出 summary、missing_fields 和 issues 小结。
+对供应商 unavailable/error 说明未能核实，不能说无车/无房；成功但筛选无候选只描述已查范围。
+达到目标或缺无法可靠补齐的条件时停止，不重复刷新不具备报价能力的酒店地点接口。

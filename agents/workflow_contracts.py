@@ -88,6 +88,10 @@ def create_workflow(proposal, context, *, workflow_id=None):
         field_sources = row.get('field_sources', {})
         if not isinstance(field_sources, dict) or any(v not in SOURCES for v in field_sources.values()):
             raise ValueError('invalid field source')
+        field_sources = deepcopy(field_sources)
+        if index == 0 and not conditions.get('departure_date') and confirmed.get('start_date'):
+            conditions['departure_date'] = confirmed['start_date']
+            field_sources['departure_date'] = 'derived'
         tasks.append(dict(id=identifier('task'), revision=1, status='pending',
                           origin=row['origin'], destination=row['destination'],
                           requires_hotel=row['requires_hotel'], depends_on=[tasks[-1]['id']] if tasks else [],

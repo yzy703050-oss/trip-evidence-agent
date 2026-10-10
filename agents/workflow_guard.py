@@ -156,6 +156,12 @@ def check_workflow(workflow):
         except (ValueError, TypeError, KeyError):
             missing.append({'task_id': task['id'], 'category': 'unverified'})
     subtotal = sum((Decimal(line['amount_cny']) for line in lines), Decimal('0'))
+    start = workflow['confirmed_conditions'].get('start_date')
+    if start and plans and plans[0]['schedule']['departure_at'] and datetime.fromisoformat(plans[0]['schedule']['departure_at']).date().isoformat() != start:
+        issues.append(issue('start_date_conflict', [workflow['tasks'][0]['id']], '首段出发日期与用户确认的起始日期冲突。'))
+    end = workflow['confirmed_conditions'].get('end_date')
+    if end and plans and plans[-1]['schedule']['arrival_at'] and datetime.fromisoformat(plans[-1]['schedule']['arrival_at']).date().isoformat() > end:
+        issues.append(issue('end_date_conflict', [workflow['tasks'][-1]['id']], '最后一段抵达日期超过用户可用日期。'))
     maximum = workflow['confirmed_conditions'].get('constraints', {}).get('total_budget_cny')
     if maximum is not None:
         if missing: issues.append(issue('total_budget_unknown', [t['id'] for t in workflow['tasks']], '全程费用有未知部分，不能验证预算。'))

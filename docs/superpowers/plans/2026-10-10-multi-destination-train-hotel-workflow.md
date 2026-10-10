@@ -183,7 +183,7 @@ def test_stale_writer_cannot_overwrite(tmp_path, workflow):
 - `model_scope(**ids)` ContextVar 上下文管理器：turn_id/workflow_id/task_id/task_revision/message_id；MeteredModel 保留现有 stage/usage 字段并追加关联信息。
 - 最终 envelope：原有 status/final_answer/agent_results 保留，追加 workflow_id/workflow_revision/workflow/stop_reason/gaps；工作流结果不走旧 daily_plans guard。
 
-- [ ] **RED：** 写可控 Main+真实 Info.run+离线 Provider 的三段/五段链路测试，观察 action、保存事件、实际调用计数。测试首段 draft 后继续第二段、全程 check 后才 completed、偏好先于查询且只执行一次。
+- [x] **RED：** 写可控 Main+真实 Info.run+离线 Provider 的三段/五段链路测试，观察 action、保存事件、实际调用计数。测试首段 draft 后继续第二段、全程 check 后才 completed、偏好先于查询且只执行一次。
 
 ```python
 @pytest.mark.asyncio
@@ -196,15 +196,15 @@ async def test_all_drafts_still_require_global_check(workflow_runtime):
     assert workflow_runtime.queried_domains == {"train", "hotel"}
 ```
 
-- [ ] **RED 验证：** `& '..\..\.venv\Scripts\python.exe' -m pytest tests/test_workflow_runner.py tests/test_workflow_main.py tests/test_workflow_cli.py -q`。
-- [ ] **接入初始分支：** 扩展 validate_plan；前置偏好/记忆/制度继续旧调度且仅一次；workflow 模式不把信息获取合并成一次全局调用，直接交 Runner。单项、旧 itinerary 响应与已有 fake Main.plan 测试兼容。
-- [ ] **实现动作循环：** dispatch 保存可信 task_result；draft_task 检查引用与单段衔接，保存 draft；ask_user 原子保存 checkpoint 后返回；validate_workflow 回传 guard；finish 仅在当前校验通过才 completed，否则反馈或有依据 partial。拒绝旧版本异步结果覆盖。
-- [ ] **实现恢复：** 用户修改 task_001 从该段开始，下游重检；修改 task_002 保留 task_001 查询。新回合资源重置、跨回合审计保留；缓存引用可读并标 fetched_at，价格库存需要重确认时明确标记。
-- [ ] **实现防重复：** 记录动作/参数/任务版本/观察签名；没有新观察的重复动作停为 partial。未配置服务/酒店报价能力不足不盲重试；有明确瞬时失败依据最多额外重试一次，计入原预算。调用前预留预算，超时保存已有结果，不重跑整轮。
-- [ ] **实现 Msg/统计/展示：** Harness 附加公共关联字段与 in_reply_to；Info 汇总真实计数；模型 scope 使用 ContextVar 防止并行混串。CLI 直接展示/保存同一已校验工作流结果，不第二次删日期。
-- [ ] **更新 Skill：** 在现有指南添加 workflow 作用域分支，不全局删除旧天气/攻略能力；新行程指南只写交通住宿。若需要改 Skill，先读取 writing-skills 技能再编辑。
-- [ ] **补足失败测试并 GREEN：** 固定日期冲突→checkpoint→用户确认恢复、返程空结果 vs unavailable、缺日期仍查地点、模型非法 action/候选不触发 API、达到预算/无进展保留草稿、保存失败不重放收费查询、RAG 原协议兼容。上述命令及原 main/info/CLI 回归通过。
-- [ ] **记录并提交：** 暂存本任务文件，`git commit -m "feat: run main-agent travel task loops with checkpoints"`。
+- [x] **RED 验证：** `& '..\..\.venv\Scripts\python.exe' -m pytest tests/test_workflow_runner.py tests/test_workflow_main.py tests/test_workflow_cli.py -q`。
+- [x] **接入初始分支：** 扩展 validate_plan；前置偏好/记忆/制度继续旧调度且仅一次；workflow 模式不把信息获取合并成一次全局调用，直接交 Runner。单项、旧 itinerary 响应与已有 fake Main.plan 测试兼容。
+- [x] **实现动作循环：** dispatch 保存可信 task_result；draft_task 检查引用与单段衔接，保存 draft；ask_user 原子保存 checkpoint 后返回；validate_workflow 回传 guard；finish 仅在当前校验通过才 completed，否则反馈或有依据 partial。拒绝旧版本异步结果覆盖。
+- [x] **实现恢复：** 用户修改 task_001 从该段开始，下游重检；修改 task_002 保留 task_001 查询。新回合资源重置、跨回合审计保留；缓存引用可读并标 fetched_at，价格库存需要重确认时明确标记。
+- [x] **实现防重复：** 记录动作/参数/任务版本/观察签名；没有新观察的重复动作停为 partial。未配置服务/酒店报价能力不足不盲重试；有明确瞬时失败依据最多额外重试一次，计入原预算。调用前预留预算，超时保存已有结果，不重跑整轮。
+- [x] **实现 Msg/统计/展示：** Harness 附加公共关联字段与 in_reply_to；Info 汇总真实计数；模型 scope 使用 ContextVar 防止并行混串。CLI 直接展示/保存同一已校验工作流结果，不第二次删日期。
+- [x] **更新 Skill：** 在现有指南添加 workflow 作用域分支，不全局删除旧天气/攻略能力；新行程指南只写交通住宿。若需要改 Skill，先读取 writing-skills 技能再编辑。
+- [x] **补足失败测试并 GREEN：** 固定日期冲突→checkpoint→用户确认恢复、返程空结果 vs unavailable、缺日期仍查地点、模型非法 action/候选不触发 API、达到预算/无进展保留草稿、保存失败不重放收费查询、RAG 原协议兼容。上述命令及原 main/info/CLI 回归通过。
+- [x] **记录并提交：** 暂存本任务文件，`git commit -m "feat: run main-agent travel task loops with checkpoints"`。
 
 验收映射：S01–S03、S06–S11、S13–S22。
 

@@ -73,11 +73,16 @@ def validate_plan(value: dict) -> dict:
     plan = deepcopy(value)
     mode = plan.setdefault('response_mode', 'answer')
     finish = plan.setdefault('finalization_mode', 'synthesize')
-    if mode not in {'direct', 'answer', 'itinerary'} or finish not in {'forward', 'synthesize'}:
+    if mode not in {'direct', 'answer', 'itinerary', 'workflow'} or finish not in {'forward', 'synthesize'}:
         raise ValueError('invalid response mode')
     if finish == 'forward' and mode != 'answer':
         raise ValueError('only information answers can be forwarded')
     rows = plan.setdefault('agent_schedule', [])
+    if mode == 'workflow':
+        if not isinstance(plan.get('workflow_proposal'), dict) and not isinstance(plan.get('resume_workflow_id'), str):
+            raise ValueError('workflow needs a proposal or resume target')
+        if any(isinstance(r, dict) and r.get('agent_name') == 'information_query' for r in rows):
+            raise ValueError('workflow queries are task-scoped, not preflight agents')
     if not isinstance(rows, list) or (mode == 'direct' and rows):
         raise ValueError('invalid schedule')
     names = set()

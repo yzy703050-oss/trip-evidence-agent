@@ -6,7 +6,7 @@ import json
 from agentscope.message import Msg
 from agents.contracts import validate_plan, validate_feedback
 from agents.itinerary_module import guard_final_itinerary
-from context.telemetry import model_stage
+from context.telemetry import model_stage, model_scope
 from travel_data.result_guard import guard_information_result, grounded_answer, valid_source
 
 
@@ -103,7 +103,12 @@ class ExecutionHarness:
         context = deepcopy(context)
         context['effective_preferences'] = deepcopy(run.effective_preferences)
         try:
-            decision = validate_plan(await self.main_agent.plan(context))
+            if self.memory_manager:
+                context['active_workflows'] = [{k: deepcopy(v) for k, v in w.items() if k not in {'results_by_query', 'candidate_cache'}}
+                                               for w in self.memory_manager.get_active_workflows()]
+            initial = getattr(self.main_agent, 'initialize', self.main_agent.plan if hasattr(self.main_agent, 'plan') else None)
+            with model_scope(turn_id=run.turn_id):
+                decision = validate_plan(await initial(context))
             decision['agent_schedule'] = business_schedule(decision['agent_schedule'])
         except Exception:
             return self._error('invalid_plan', run)
@@ -136,7 +141,9 @@ class ExecutionHarness:
                     self.memory_manager.record_agent_stage(task['agent_name'], task['priority'], result, run.turn_id)
                 done.add(task['agent_name'])
                 remaining.remove(task)
-        if can_forward_answer(decision, info, run):
+        if decision['response_mode'] == 'workflow':
+            result = await self._run_workflow(decision, context, run)
+        elif can_forward_answer(decision, info, run):
             result = build_forward_result(info, run)
         else:
             result = await self._finalize(context, run, info)
@@ -155,6 +162,37 @@ class ExecutionHarness:
             if confirmations:
                 result['final_answer'] = '\n'.join(confirmations + [result['final_answer']])
         return result
+
+    async def _run_workflow(self, decision, context, run):
+        from agents.workflow_contracts import create_workflow, apply_user_update
+        from agents.workflow_runner import WorkflowRunner, WorkflowLimits
+        from context.workflow_store import WorkflowConflictError
+        try:
+            workflow_id = decision.get('resume_workflow_id')
+            if workflow_id:
+                if self.memory_manager is None: raise ValueError('resume needs storage')
+                workflow = self.memory_manager.workflow_store.load(workflow_id)
+                if workflow is None: raise ValueError('unknown resume workflow')
+                checkpoint = workflow.get('checkpoint')
+                if checkpoint and checkpoint.get('expected_workflow_revision') != workflow['revision']:
+                    raise WorkflowConflictError('checkpoint revision changed')
+                workflow = apply_user_update(workflow, decision.get('workflow_update', {}))
+                workflow = self.memory_manager.workflow_store.save(workflow, expected_revision=workflow['revision'])
+            else:
+                workflow = create_workflow(decision['workflow_proposal'], context)
+                if self.memory_manager:
+                    workflow = self.memory_manager.workflow_store.save(workflow, expected_revision=None)
+            workflow['effective_preferences'] = deepcopy(run.effective_preferences)
+            from config import WORKFLOW_LIMITS
+            runner = WorkflowRunner(self.main_agent, self.agent_registry['information_query'], self.memory_manager,
+                                    limits=WorkflowLimits(**WORKFLOW_LIMITS), emit=self.emit)
+            return await runner.run(context, run, workflow)
+        except WorkflowConflictError:
+            return {**self._error('workflow_revision_conflict', run), 'stop_reason': 'workflow_revision_conflict'}
+        except OSError:
+            return {**self._error('workflow_save_failed', run), 'stop_reason': 'workflow_save_failed'}
+        except (ValueError, TypeError, KeyError):
+            return {**self._error('invalid_workflow_proposal', run), 'stop_reason': 'invalid_workflow_proposal'}
 
     async def _execute(self, task, context, run):
         name = task['agent_name']
@@ -270,6 +308,13 @@ class ExecutionHarness:
             if value != old.get(key):
                 memory.save_preference(key, value)
         plan = result.get('itinerary', {})
+        if result.get('finalization_method') == 'workflow' and result.get('status') == 'completed':
+            workflow = result['workflow']
+            memory.save_trip_history({'workflow_id': workflow['id'], 'workflow_revision': workflow['revision'],
+                'record_kind': 'planned_itinerary', 'origin': workflow['tasks'][0]['origin'],
+                'destination': workflow['tasks'][-1]['destination'], 'start_date': workflow['confirmed_conditions'].get('start_date'),
+                'end_date': workflow['confirmed_conditions'].get('end_date'), 'turn_id': run.turn_id,
+                'itinerary': deepcopy(result['validated_plan']), 'summary': result['final_answer']})
         if plan.get('planning_complete') is True and result['status'] in {'ok', 'partial'}:
             conditions = run.travel_conditions
             memory.save_trip_history({

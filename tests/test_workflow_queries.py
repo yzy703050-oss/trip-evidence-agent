@@ -115,3 +115,15 @@ def test_juhe_does_not_invent_arrival_day():
     item = data.items[0]
     assert item['departure_at'] == '2026-10-09T18:04:00+08:00'
     assert item['arrival_at'] is None
+
+
+@pytest.mark.asyncio
+async def test_tool_inherits_confirmed_constraints_in_query_record():
+    w = workflow(); w['confirmed_conditions']['constraints'] = {'seat_class': '一等座'}
+    t = w['tasks'][0]
+    from workflow_runtime import OfflineProvider
+    provider = OfflineProvider('train'); run = RunState('turn', workflow=w, current_task_id=t['id'])
+    await ToolExecutor({'train_search': provider}).execute('train_search', train_result(t)['query'], run, call_id='t')
+    row = next(iter(w['results_by_query'].values()))
+    assert row['constraints'] == {'seat_class': '一等座'}
+    assert query_views(w, t['id'])[0]['items'] == []

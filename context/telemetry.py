@@ -11,6 +11,16 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 _stage: ContextVar[str] = ContextVar("v0_model_stage", default="unspecified")
+_scope: ContextVar[dict] = ContextVar('workflow_model_scope', default={})
+
+
+@contextmanager
+def model_scope(**ids):
+    token = _scope.set({**_scope.get(), **ids})
+    try:
+        yield
+    finally:
+        _scope.reset(token)
 
 
 @contextmanager
@@ -76,6 +86,7 @@ class MeteredModel:
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                     "estimated_cost_usd": cost,
+                    **_scope.get(),
                 }
             )
         except Exception:

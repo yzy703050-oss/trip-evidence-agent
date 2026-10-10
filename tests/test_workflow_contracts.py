@@ -80,3 +80,10 @@ def test_unknown_dates_do_not_silently_become_today():
     w = create_workflow(p, {'current_time': '2026-10-10T10:00:00+08:00'})
     assert w['confirmed_conditions'].get('start_date') is None
     assert w['tasks'][0]['conditions'].get('departure_date') is None
+
+
+def test_first_departure_can_inherit_explicit_start_date():
+    p = proposal(); p['tasks'][0]['conditions'].pop('departure_date')
+    w = create_workflow(p, {})
+    assert w['tasks'][0]['conditions']['departure_date'] == '2026-10-11'
+    assert w['tasks'][0]['field_sources']['departure_date'] == 'derived'

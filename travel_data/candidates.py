@@ -28,11 +28,15 @@ class CandidateStore:
 
     def restore(self, snapshot):
         from agents.workflow_queries import as_result
-        self.cache = {key: as_result({**value, 'parameters': value['query']}) for key, value in snapshot.items()}
+        self.cache = {key: as_result({**value, 'parameters': value['query']}) for key, value in snapshot.items()
+                      if value.get('status') in {'ok', 'partial'}}
         self.locks = {}
 
 
 def query_cache_key(domain: str, query: dict) -> str:
+    if domain == 'hotel' and query.get('search_kind') == 'hotel_place':
+        # Place facts do not depend on party size or proposed stay dates.
+        query = {k: v for k, v in query.items() if k not in {'guests', 'check_in', 'check_out'}}
     return domain + ':' + json.dumps(query, sort_keys=True, ensure_ascii=False)
 
 

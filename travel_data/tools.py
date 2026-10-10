@@ -53,6 +53,12 @@ class ToolExecutor:
             arguments = deepcopy(arguments) if isinstance(arguments, dict) else arguments
             invalid = domain not in {'train', 'hotel'} or not isinstance(arguments, dict)
             if not invalid:
+                fixed_constraints = {k: v for k, v in effective.get('constraints', {}).items() if k != 'total_budget_cny'}
+                local_constraints = arguments.get('constraints', {})
+                if not isinstance(local_constraints, dict) or any(k in fixed_constraints and v != fixed_constraints[k] for k, v in local_constraints.items()):
+                    invalid = True
+                else:
+                    arguments['constraints'] = {**fixed_constraints, **local_constraints}
                 if domain == 'train':
                     invalid |= arguments.get('origin') != task['origin'] or arguments.get('destination') != task['destination']
                     fixed = task['conditions'].get('departure_date')
@@ -81,6 +87,7 @@ class ToolExecutor:
             raw = run.candidates.cache.get(query_cache_key(domain, parameters)) if run.candidates else None
             if raw is not None and result['status'] in {'ok', 'partial'}:
                 full = raw.to_dict()
+                full['query'] = parameters
             row = record_query(run.workflow, run.current_task_id, parameters,
                                arguments.get('constraints', {}), full, metadata,
                                domain=domain, refresh=arguments.get('refresh') is True)
@@ -162,7 +169,14 @@ class ToolExecutor:
                         data.missing_fields, data.source, data.fetched_at, checked.get('message'))
                 except Exception:
                     return AgentDataResult('error', query, [], [], None, None, '数据查询失败或超时。')
-            raw, cached = await run.candidates.get_or_fetch(key, request, refresh=arguments.get('refresh') is True)
+            existing = run.candidates.cache.get(key)
+            if run.workflow is not None and existing is not None and existing.status in {'unavailable', 'error'}:
+                # No reliable transient-failure evidence: do not repeat the same failed request.
+                raw, cached = existing, True
+            else:
+                raw, cached = await run.candidates.get_or_fetch(key, request, refresh=arguments.get('refresh') is True)
+            if cached and query.get('search_kind') == 'hotel_place' and raw.query != query:
+                raw = AgentDataResult(raw.status, query, raw.items, raw.missing_fields, raw.source, raw.fetched_at, raw.message)
             result = guard_domain_result(domain, candidate_view(raw, limit=run.limits.candidate_limit,
                 offset=offset, constraints=constraints, preferences=run.effective_preferences))
         except (ValueError, TypeError, ArithmeticError):
