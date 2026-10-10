@@ -4,6 +4,23 @@ from copy import deepcopy
 from agents.workflow_contracts import create_workflow, task_by_id, validate_conditions
 
 
+def _condition_update_type(tasks: list[dict], conditions: dict, task_fields: dict,
+                           confirmed_conditions: dict) -> str:
+    """Classify explicit writes against effective saved values, not model labels."""
+    for task in tasks:
+        old = {key: value for key, value in confirmed_conditions.items() if value is not None}
+        for key, value in task['conditions'].items():
+            if value is not None:
+                old[key] = ({**old.get(key, {}), **value} if key == 'constraints' else value)
+        for key, value in conditions.items():
+            pairs = ((old.get(key, {}).get(leaf), new) for leaf, new in value.items()) if key == 'constraints' else [(old.get(key), value)]
+            if any(previous is not None and new is not None and previous != new for previous, new in pairs):
+                return 'change'
+        if any(task.get(key) is not None and task[key] != value for key, value in task_fields.items()):
+            return 'change'
+    return 'supplement'
+
+
 def _rebind(workflow, task, domains):
     for query_id in task.get('query_ids', []):
         row = workflow['results_by_query'][query_id]
@@ -25,6 +42,9 @@ def apply_travel_update(workflow, update, *, context=None):
     w['last_update'] = deepcopy(update)
     if kind in {'pause', 'cancel'}:
         w.update(status='paused' if kind == 'pause' else 'cancelled', stop_reason=kind)
+        if w.get('checkpoint'):
+            # Harness persists this stop as the next CAS revision, retaining the question.
+            w['checkpoint']['expected_workflow_revision'] = w['revision'] + 1
         return w
     if kind == 'change_route':
         route_context = deepcopy(context) if context is not None else {}
@@ -84,6 +104,9 @@ def apply_travel_update(workflow, update, *, context=None):
         changes['hotel_keywords'] = ' '.join(brands)
     route_changes = {k: changes.pop(k) for k in ('origin', 'destination', 'requires_hotel', 'purpose') if k in changes}
     conditions = validate_conditions(changes)
+    if kind in {'supplement', 'change'}:
+        kind = _condition_update_type(selected, conditions, route_changes, w['confirmed_conditions'])
+        w['last_update']['update_type'] = kind
     changed_domains = set(components) & {'train', 'hotel'}
     timing = bool({'departure_date', 'arrival_date', 'arrival_before', 'check_in', 'check_out', 'nights', 'start_date', 'end_date'} & set(conditions))
     if 'origin' in route_changes: changed_domains.add('train')

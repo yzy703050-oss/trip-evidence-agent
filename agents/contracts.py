@@ -6,6 +6,7 @@ from decimal import Decimal
 import re
 
 AGENTS = {'preference', 'memory_query', 'rag_knowledge', 'information_query'}
+INTENT_TYPES = frozenset({'ask', 'plan', 'update', 'control'})
 DOMAINS = {'train', 'hotel', 'guide', 'weather', 'web'}
 FILTER_KEYS = {'hotel_max_total_cny', 'hotel_max_nightly_cny', 'train_max_total_cny',
                'seat_class', 'departure_time_after', 'departure_time_before', 'available_only'}
@@ -67,6 +68,37 @@ class RunState:
     current_task_id: str | None = None
     query_records: dict = field(default_factory=dict)
     workflow_tool_budget: int | None = None
+
+
+def normalize_intents(plan: dict) -> list[dict]:
+    """Keep purposes small; sources and executable actions live in their own fields."""
+    intents = plan.get('intents', [])
+    if not isinstance(intents, list):
+        raise ValueError('intents must be a list')
+    if intents:
+        kinds = []
+        for item in intents:
+            if not isinstance(item, dict) or not isinstance(item.get('type'), str) or item['type'] not in INTENT_TYPES:
+                raise ValueError('invalid intent type')
+            kinds.append(item['type'])
+    else:
+        kinds = []
+        names = {row['agent_name'] for row in plan.get('agent_schedule', [])}
+        if 'preference' in names:
+            kinds.append('update')
+        update = plan.get('travel_update')
+        if plan.get('feedback_scope'):
+            kinds.append('update')
+        elif update:
+            kinds.append('control' if update['update_type'] in {'adopt', 'pause', 'cancel'} else 'update')
+        elif plan.get('workflow_proposal') is not None or plan['response_mode'] == 'itinerary':
+            kinds.append('plan')
+        elif plan.get('resume_workflow_id'):
+            legacy = plan.get('workflow_update') or {}
+            kinds.append('update' if legacy.get('confirmed_conditions') or legacy.get('task_updates') else 'control')
+        elif names - {'preference'} or not kinds:
+            kinds.append('ask')
+    return [{'type': kind} for kind in dict.fromkeys(kinds)]
 
 
 def validate_plan(value: dict) -> dict:
@@ -138,6 +170,7 @@ def validate_plan(value: dict) -> dict:
         done.update(ready)
     if mode == 'direct' and not isinstance(plan.get('final_answer'), str):
         raise ValueError('direct response needs an answer')
+    plan['intents'] = normalize_intents(plan)
     return plan
 
 
