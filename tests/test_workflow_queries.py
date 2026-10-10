@@ -82,7 +82,7 @@ async def test_workflow_info_only_executes_train_hotel_and_does_not_mutate_confi
                                         {'type': 'tool_use', 'id': 'b', 'name': 'weather_query', 'input': {'city': '北京'}}]),
                SimpleNamespace(text='{"summary":"本段火车已查询","execution":{"tool_calls":999},"query_results":[{"fake":true}]}')]
     async def model(messages, **kwargs):
-        assert {s['function']['name'] for s in kwargs['tools']} == {'train_search'}
+        assert {s['function']['name'] for s in kwargs['tools']} == {'train_search', 'train_search_by_arrival'}
         return answers.pop(0)
     run = RunState('turn', workflow=w, current_task_id=t['id'])
     run.travel_conditions = deepcopy(w['confirmed_conditions'])

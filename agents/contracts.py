@@ -58,6 +58,8 @@ class RunState:
     feedback_round: int = 0
     tool_requests: list = field(default_factory=list)
     external_requests_started: bool = False
+    external_request_count: int = 0
+    external_requests_by_task: dict = field(default_factory=dict)
     candidates: object = None
     info_executions: int = 0
     tool_record_seq: int = 0

@@ -13,15 +13,18 @@ from travel_data.result_guard import guard_domain_result
 from agents.contracts import validate_constraints
 
 TOOL_DOMAINS = {'train_search': 'train', 'hotel_search': 'hotel', 'travel_guide': 'guide',
-                'weather_query': 'weather', 'web_search': 'web'}
+                'weather_query': 'weather', 'web_search': 'web', 'train_search_by_arrival': 'train'}
 PARAMETERS = {
     'train_search': {'origin': 'string', 'destination': 'string', 'departure_date': 'string', 'passengers': 'integer'},
+    'train_search_by_arrival': {'origin': 'string', 'destination': 'string', 'arrival_date': 'string',
+                              'arrival_before': 'string', 'departure_date': 'string', 'passengers': 'integer'},
     'hotel_search': {'city': 'string', 'keywords': 'string', 'check_in': 'string', 'check_out': 'string', 'guests': 'integer'},
     'travel_guide': {'destination': 'string', 'visit_dates': 'array'},
     'weather_query': {'city': 'string', 'date': ['string', 'null']},
     'web_search': {'query': 'string'},
 }
 REQUIRED = {'train_search': ['origin', 'destination', 'departure_date'],
+            'train_search_by_arrival': ['origin', 'destination', 'arrival_date'],
             'hotel_search': ['city', 'check_in', 'check_out', 'guests'],
             'travel_guide': ['destination'], 'weather_query': ['city'], 'web_search': ['query']}
 
@@ -62,7 +65,12 @@ class ToolExecutor:
                 if domain == 'train':
                     invalid |= arguments.get('origin') != task['origin'] or arguments.get('destination') != task['destination']
                     fixed = task['conditions'].get('departure_date')
+                    if fixed: arguments.setdefault('departure_date', fixed)
                     invalid |= bool(fixed and arguments.get('departure_date') != fixed)
+                    for key in ('arrival_date', 'arrival_before'):
+                        if effective.get(key):
+                            invalid |= bool(arguments.get(key) and arguments[key] != effective[key])
+                            if name == 'train_search_by_arrival': arguments.setdefault(key, effective[key])
                     arguments.setdefault('passengers', effective['passengers'])
                     invalid |= arguments['passengers'] != effective['passengers']
                 else:
@@ -127,8 +135,26 @@ class ToolExecutor:
             if 'refresh' in arguments and type(arguments['refresh']) is not bool:
                 raise ValueError('invalid refresh')
             if domain in {'train', 'hotel', 'guide'}:
-                provider = self.providers.get(name) or UnavailableProvider()
-                if domain == 'hotel' and getattr(provider, 'hotel_places', False) is True:
+                provider = self.providers.get('train_search' if name == 'train_search_by_arrival' else name) or UnavailableProvider()
+                if name == 'train_search_by_arrival':
+                    from travel_data.arrival_search import arrival_parameters, search_by_arrival
+                    query = arrival_parameters(arguments)
+                    typed, missing = None, []
+                    arrival_used = [0]
+                    def count_arrival_request():
+                        if run.workflow is not None:
+                            used = run.external_requests_by_task.get(run.current_task_id, 0)
+                            if used >= 10: return False
+                            if arrival_used[0]:
+                                if run.workflow_tool_budget is not None and run.workflow_tool_budget <= 0: return False
+                                if run.workflow_tool_budget is not None: run.workflow_tool_budget -= 1
+                            run.external_requests_by_task[run.current_task_id] = used+1
+                        arrival_used[0] += 1
+                        run.external_request_count += 1
+                        return True
+                    fetch = lambda: search_by_arrival(provider, {**arguments, 'constraints': constraints},
+                                                      request_budget=3, on_request=count_arrival_request)
+                elif domain == 'hotel' and getattr(provider, 'hotel_places', False) is True:
                     typed, missing = make_hotel_place_query(arguments)
                 else:
                     typed, missing = make_query(domain, arguments)
@@ -136,8 +162,9 @@ class ToolExecutor:
                     result = failure('needs_input', missing)
                     run.domain_results[domain] = result
                     return result
-                query = typed.to_dict()
-                fetch = lambda: provider.search(typed)
+                if name != 'train_search_by_arrival':
+                    query = typed.to_dict()
+                    fetch = lambda: provider.search(typed)
             else:
                 missing = [key for key in REQUIRED[name] if not isinstance(arguments.get(key), str) or not arguments[key].strip()]
                 if missing:
@@ -161,6 +188,12 @@ class ToolExecutor:
             async def request():
                 run.external_requests_started = True
                 try:
+                    if name != 'train_search_by_arrival':
+                        if run.workflow is not None:
+                            used = run.external_requests_by_task.get(run.current_task_id, 0)
+                            if used >= 10: return AgentDataResult('partial', query, [], [], None, None, '当前任务外部查询预算已用尽。')
+                            run.external_requests_by_task[run.current_task_id] = used+1
+                        run.external_request_count += 1
                     data = await asyncio.wait_for(fetch(), run.limits.tool_timeout)
                     if not isinstance(data, AgentDataResult):
                         raise TypeError('provider result type')

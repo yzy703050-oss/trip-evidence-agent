@@ -46,7 +46,7 @@ def candidate_view(result, *, limit, offset, constraints, preferences):
         from travel_data.hotel_places import hotel_place_view
         return hotel_place_view(value, limit=limit, offset=offset,
                                 constraints=constraints, preferences=preferences)
-    kind = 'train' if 'departure_date' in value['query'] else 'hotel' if 'check_in' in value['query'] else None
+    kind = 'train' if 'departure_date' in value['query'] or value['query'].get('search_kind') == 'train_arrival' else 'hotel' if 'check_in' in value['query'] else None
     if not kind:
         return value
     items = []
