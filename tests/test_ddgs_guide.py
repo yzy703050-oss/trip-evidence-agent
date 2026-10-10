@@ -109,7 +109,7 @@ def test_cli_startup_wires_guide_without_api_key(monkeypatch):
     from test_juhe_cli_wiring import initialize
     from travel_data.ddgs_guide import DDGSGuideProvider
     app, output = initialize(monkeypatch, '')
-    executor = app.orchestrator.agent_registry['information_query'].tool_executor
+    executor = app.harness.agent_registry['information_query'].tool_executor
     guide = executor.providers['travel_guide']
     assert isinstance(guide, DDGSGuideProvider)
     guide.text_search = lambda query: [{'title': '北京攻略', 'href': URL}]
@@ -120,7 +120,7 @@ def test_cli_startup_wires_guide_without_api_key(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_guide_link_survives_info_agent_and_forwarded_answer():
-    from agents.orchestration_agent import OrchestrationAgent
+    from agents.execution_harness import ExecutionHarness
     from test_information_agent_loop import info_class
     from test_main_harness import Main
     calls = []
@@ -133,7 +133,7 @@ async def test_guide_link_survives_info_agent_and_forwarded_answer():
     main = Main([{'agent_name': 'information_query', 'priority': 2, 'requested_domains': ['guide']}])
     info = info_class()(model=model, tool_executor=ToolExecutor({'travel_guide': provider(
         lambda query: [{'title': '北京攻略', 'href': URL}])}))
-    result = await OrchestrationAgent(main_agent=main, agent_registry={'information_query': info}).run_turn(
+    result = await ExecutionHarness(main_agent=main, agent_registry={'information_query': info}).run_turn(
         {'original_query': '给我北京旅游攻略链接'}, RunState('guide'))
     assert len(result['domain_results']['guide']['items']) == 1
     assert URL in result['final_answer']

@@ -41,7 +41,7 @@ from utils.circuit_breaker import CircuitBreaker, CircuitOpenError
 from utils.llm_resilience import run_health_check as check_llm_health
 from agents.main_agent import MainAgent
 from agents.contracts import RunState, RunLimits
-from agents.orchestration_agent import OrchestrationAgent
+from agents.execution_harness import ExecutionHarness
 # 移除其他智能体的导入，改用懒加载
 
 
@@ -54,7 +54,7 @@ class TripEvidenceCLI:
         self.user_id = None
         self.session_id = None
         self.memory_manager = None
-        self.orchestrator = None
+        self.harness = None
         self.main_agent = None
         self.last_result = None
         self.model = None
@@ -147,9 +147,8 @@ class TripEvidenceCLI:
             # 预先加载关键智能体（可选，利用 preload）
             # lazy_registry.preload("memory_query", "preference")
 
-            # 初始化协调器
-            self.orchestrator = OrchestrationAgent(
-                name="OrchestrationAgent",
+            # 初始化执行 Harness
+            self.harness = ExecutionHarness(
                 main_agent=self.main_agent,
                 agent_registry=lazy_registry,
                 memory_manager=self.memory_manager
@@ -253,7 +252,7 @@ class TripEvidenceCLI:
         self.current_run = run
         try:
             with self.console.status("思考中...", spinner='dots'):
-                result = await self.orchestrator.run_turn(context, run)
+                result = await self.harness.run_turn(context, run)
             if self.circuit_breaker:
                 if result['status'] == 'error': self.circuit_breaker.record_failure()
                 else: self.circuit_breaker.record_success()

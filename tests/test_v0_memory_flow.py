@@ -7,7 +7,7 @@ import pytest
 from agentscope.message import Msg
 from rich.console import Console
 
-from agents.orchestration_agent import OrchestrationAgent
+from agents.execution_harness import ExecutionHarness
 from cli import TripEvidenceCLI
 from context.long_term_memory import LongTermMemory
 from context.memory_manager import MemoryManager
@@ -79,7 +79,7 @@ async def test_cli_records_user_before_main_and_one_final(tmp_path):
             assert [e['role'] for e in memory.session_store.read_events()] == ['user']
             assert context['original_query'] == 'hello'
             return {'response_mode': 'direct', 'agent_schedule': [], 'final_answer': 'hello'}
-    app.orchestrator = OrchestrationAgent(main_agent=Main(), memory_manager=memory)
+    app.harness = ExecutionHarness(main_agent=Main(), agent_registry={}, memory_manager=memory)
     assert await app.process_query('hello')
     events = memory.session_store.read_events()
     assert [e['role'] for e in events] == ['user', 'assistant']
@@ -95,7 +95,7 @@ async def test_bad_main_returns_safe_error_and_records_real_user(tmp_path):
     app.memory_manager = memory
     class Main:
         async def plan(self, context): return 'not json'
-    app.orchestrator = OrchestrationAgent(main_agent=Main(), memory_manager=memory)
+    app.harness = ExecutionHarness(main_agent=Main(), agent_registry={}, memory_manager=memory)
     assert await app.process_query('hello') is False
     events = memory.session_store.read_events()
     assert events[0]['role'] == 'user'
@@ -119,7 +119,7 @@ async def test_direct_child_is_stage_not_tool_and_receives_summary(tmp_path):
             observed.append(json.loads(msg.content)['context'])
             await metered([{'role': 'user', 'content': 'history'}])
             return Msg('child', '{"answer":"history"}', 'assistant')
-    harness = OrchestrationAgent(main_agent=Main([{'agent_name': 'memory_query'}], mode='synthesize'),
+    harness = ExecutionHarness(main_agent=Main([{'agent_name': 'memory_query'}], mode='synthesize'),
         agent_registry={'memory_query': Child()}, memory_manager=memory)
     await harness.run_turn({'original_query': 'query', 'session_summary': 'older summary', 'recent_messages': []}, RunState(turn_id))
     events = memory.session_store.read_events()

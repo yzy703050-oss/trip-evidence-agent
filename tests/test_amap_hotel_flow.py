@@ -170,7 +170,7 @@ def test_cli_startup_registers_configured_hotel_provider_in_the_information_agen
         lambda *a, **kw: Response({"status": "1", "infocode": "10000", "pois": [poi()]}),
     )
     app, output = initialize(monkeypatch, "")
-    tool = app.orchestrator.agent_registry["information_query"].tool_executor
+    tool = app.harness.agent_registry["information_query"].tool_executor
     result = asyncio.run(
         tool.execute("hotel_search", {"city": "上海"}, RunState("startup"), call_id="a")
     )

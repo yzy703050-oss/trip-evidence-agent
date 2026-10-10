@@ -78,7 +78,7 @@
 
 `ExecutionHarness` 与 `WorkflowRunner` 负责依赖执行、工具参数和修改范围检查、身份和版本管理、缓存、草稿、断点、保存、超时与结果校验。
 
-Harness 自身没有独立的模型判断。代码中的 `OrchestrationAgent` 是 Harness 的兼容包装类，类名不表示额外的 LLM 编排层。
+Harness 自身没有独立的模型判断。CLI 直接实例化 `ExecutionHarness`，通过 `app.harness.run_turn(context, run)` 执行；主 Agent 负责模型决策。
 
 ### 兼容入口与历史遗留
 
@@ -86,13 +86,13 @@ Harness 自身没有独立的模型判断。代码中的 `OrchestrationAgent` �
 
 | 项目 | 当前状态 |
 | --- | --- |
-| `OrchestrationAgent`类 | 保留旧名称的有效入口；CLI仍实例化它并调用继承自`ExecutionHarness`的`run_turn`，没有第二套独立编排引擎 |
-| 原`OrchestrationAgent.reply(...)` | 已移除；当前CLI入口是`run_turn(context, run)` |
+| `ExecutionHarness`类 | 当前执行入口，可从 `agents` 或 `agents.execution_harness` 导入；CLI、独立规划入口与评测均使用 `app.harness` |
+| 旧 `OrchestrationAgent` 包装类和 `normalize_schedule` 别名 | 已移除；旧导入改为 `ExecutionHarness`，调度函数直接使用 `business_schedule`，不保留另一套兼容入口 |
 | `workflow_update`消息 | 仍支持旧更新结构；新设计主要使用带修改类型和目标范围的`travel_update` |
 | `event-collection / train-search / hotel-search / travel-guide`旧Skill目录 | 指南文件仍保留，对应`script/agent.py`已移除；当前业务注册器不把它们作为独立子Agent调度 |
 | `plan-trip/SKILL.md` | 主Agent仍读取的规划指南，不是独立行程规划子Agent |
 
-当前主入口为`CLI → OrchestrationAgent → ExecutionHarness`，再分流到普通查询或`WorkflowRunner`旅行循环。保留兼容名称不表示它已废弃，保留旧目录也不表示相应旧Agent仍参与执行。本次说明只记录现状，未删除兼容协议或旧指南。
+当前主入口为 `CLI → ExecutionHarness`，再分流到普通查询或 `WorkflowRunner` 旅行循环。旧包装文件 `agents/orchestration_agent.py` 已删除；历史设计、计划与评测记录中的旧名称描述当时实现。旧消息协议和指南目录仍按上表保留。
 
 ### 执行规则与运行组件
 
@@ -106,7 +106,7 @@ Harness 自身没有独立的模型判断。代码中的 `OrchestrationAgent` �
 | 入口熔断 | `CircuitBreaker`，在 CLI 请求入口检查、Harness 返回后记成功或失败 | 连续失败后暂停接收业务请求，等待恢复试探 |
 | 旅行循环 | `WorkflowRunner`，由 `ExecutionHarness` 创建 | 执行有界决策循环、保存任务状态和检查全程安排 |
 
-这些组件共同构成运行层；懒加载和入口熔断没有直接写在 `OrchestrationAgent` 包装类中。详细行为见下文“Skill 与子 Agent 加载”和“熔断与健康检查”。
+这些组件共同构成运行层；CLI 接入懒加载和入口熔断，`ExecutionHarness` 负责执行调度。详细行为见下文“Skill 与子 Agent 加载”和“熔断与健康检查”。
 
 ### 信息获取的工具
 
