@@ -10,7 +10,7 @@
 
 **Spec:** [唯一正式设计](../specs/2026-10-09-multi-destination-train-hotel-workflow-design.md)，特别是第 5–12 节契约与 S01–S22 验收场景。本仓库没有初始化 OpenSpec，不创建第二套 proposal/specs/tasks；本计划只展开实施细节。
 
-日期：2026-10-10。实施基线：`024faa6`，分支 `codex/information-acquisition-agent`。计划状态：用户已审阅确认，正在实施。执行方法沿用用户已有选择，不再询问单代理或多代理。
+日期：2026-10-10。实施基线：`024faa6`，分支 `codex/information-acquisition-agent`。计划状态：已确认并实施，整体自审与人工规格核对完成。线上能力限制见[评估报告](../../evals/2026-10-10-multi-destination-workflow-evaluation.md)。执行方法沿用用户已有选择，不再询问单代理或多代理。
 
 ## Global Constraints
 
@@ -87,7 +87,7 @@ def test_defaults_do_not_become_confirmed(route_proposal):
 
 **Interfaces:**
 - `record_query(workflow: dict, task_id: str, parameters: dict, constraints: dict, result: dict, execution: dict, *, domain: str, refresh: bool = False) -> dict`：按任务归属与规范化参数定位查询；新参数新 ID，成功刷新增版本，失败保留旧事实并记录刷新失败。
-- `query_views(workflow: dict, task_id: str, *, limit: int = 5, offset: int = 0) -> list[dict]`：读取持久化完整池，输出窗口；不发起外部请求。
+- `query_views(workflow: dict, task_id: str, *, limit: int = 5, offset: int | None = None) -> list[dict]`：读取持久化完整池，输出窗口；None 沿用当前查询的翻页位置，不发起外部请求。
 - `resolve_selection(workflow: dict, task_id: str, task_revision: int, selection: dict) -> dict`：严格按查询/版本/候选 ID 重建事实，失配抛 ValueError。
 - `CandidateStore.snapshot() -> dict`、`CandidateStore.restore(snapshot: dict) -> None`：保存/恢复完整 AgentDataResult、来源与取得时间。
 - `TrainOffer` 追加可选 `departure_at / arrival_at / time_evidence`，默认未知，保留已有位置参数兼容。出发日期绑定查询；抵达只从明确日偏移或已核实耗时构造。
@@ -177,7 +177,7 @@ def test_stale_writer_cannot_overwrite(tmp_path, workflow):
 
 **Interfaces:**
 - `MainAgent.initialize(context: dict) -> dict`：一次初始决策，保留旧模式并新增 workflow+synthesize 和 workflow_proposal。`plan` 作为兼容别名；Harness 不再额外调用 plan 后又 initialize。
-- `MainAgent.step(context: dict) -> dict`：返回已校验五类动作；context 包含第 8.4 节各项，完整任务概览加当前候选窗口。
+- `MainAgent.step(context: dict) -> dict`：解析五类动作 JSON；Runner 在副作用之前执行 validate_action 并反馈有限修正。context 包含第 8.4 节各项，完整任务概览加当前候选窗口。
 - `WorkflowRunner(main_agent, info_agent, memory_manager, *, limits, emit=None)`；`run(context: dict, run: RunState, workflow: dict) -> dict`：主循环、回合预算和持久化。
 - 恢复仍经 initialize(context)：输入活动快照、checkpoint、原文和本轮答复，输出恢复目标与用户字段更新提案；由 apply_user_update 校验后进入 step。不能靠自由文本直接替换已确认字段；多规划无明确目标返回选择问题。
 - `model_scope(**ids)` ContextVar 上下文管理器：turn_id/workflow_id/task_id/task_revision/message_id；MeteredModel 保留现有 stage/usage 字段并追加关联信息。
@@ -214,13 +214,13 @@ async def test_all_drafts_still_require_global_check(workflow_runtime):
 
 **Interfaces:** 新 runner 提供 `python -m evals.main_agent.multi_destination_runner --offline` 及 `--live --output <path>`，复用 CLI 初始化、实际 Harness/Info/Provider，不创建另一套评估编排。offline 使用可控模型/供应商；live 输出逐案例状态、失败阶段、调用数量、workflow/task/query ID、stop_reason、引用核查及脱敏日志路径。
 
-- [ ] **RED：** 写评估断言测试，确保 completed 缺全程验证/任务版本失配/存在虚构 hotel_price 时评估失败；needs_input 因缺关键日期为预期暂停，不能冒充外部查询成功。
-- [ ] **RED 验证：** `& '..\..\.venv\Scripts\python.exe' -m pytest tests/test_workflow_evals.py -q`。
-- [ ] **实现并 GREEN：** 构造 S01–S22 案例和证据检查器，同一命令通过，`--offline` 全部符合指定场景预期。
-- [ ] **全量检查：** `& '..\..\.venv\Scripts\python.exe' -m pytest -q`，要求无新增失败；读取 skip 原因。`git diff --check` 无错误。核对冻结 RAG 和非本次文件没有改动。
-- [ ] **真实评估：** 使用已有配置运行 --live，日期按当前北京时间生成且落在 Juhe 查询窗口。至少覆盖三段、五段、修改第二段/恢复、hotel_place 能力不足及单项查询回归。实际供应商不支持可靠抵达日期时记录 partial 或 needs_input 的真实原因，不修改事实为完成，不用模拟报价冒充线上结果。
-- [ ] **整体自审及规格审核：** 对 S01–S22 逐条列测试/运行证据；检查前置角色一次执行、状态转换、候选事实、预算、时间、断点保存失败、版本并发、输出一致性和 API 脱敏。发现缺陷先 RED 修复后复测。
-- [ ] **文档与提交：** 写明通过数、跳过/限制、live 实际结果及调用链；`git commit -m "test: verify multi-destination workflow and recovery"`。无 OpenSpec verify/archive 可运行，报告人工核对结果，不声称使用了这些工作流。
+- [x] **RED：** 写评估断言测试，确保 completed 缺全程验证/任务版本失配/存在虚构 hotel_price 时评估失败；needs_input 因缺关键日期为预期暂停，不能冒充外部查询成功。
+- [x] **RED 验证：** `& '..\..\.venv\Scripts\python.exe' -m pytest tests/test_workflow_evals.py -q`。
+- [x] **实现并 GREEN：** 构造 S01–S22 案例和证据检查器，同一命令通过，`--offline` 全部符合指定场景预期。
+- [x] **全量检查：** `& '..\..\.venv\Scripts\python.exe' -m pytest -q`，要求无新增失败；读取 skip 原因。`git diff --check` 无错误。核对冻结 RAG 和非本次文件没有改动。
+- [x] **真实评估：** 使用已有配置运行 --live，日期按当前北京时间生成且落在 Juhe 查询窗口。至少覆盖三段、五段、修改第二段/恢复、hotel_place 能力不足及单项查询回归。实际供应商不支持可靠抵达日期时记录 partial 或 needs_input 的真实原因，不修改事实为完成，不用模拟报价冒充线上结果。
+- [x] **整体自审及规格审核：** 对 S01–S22 逐条列测试/运行证据；检查前置角色一次执行、状态转换、候选事实、预算、时间、断点保存失败、版本并发、输出一致性和 API 脱敏。发现缺陷先 RED 修复后复测。
+- [x] **文档与提交：** 写明通过数、跳过/限制、live 实际结果及调用链；`git commit -m "test: verify multi-destination workflow and recovery"`。无 OpenSpec verify/archive 可运行，报告人工核对结果，不声称使用了这些工作流。
 
 完成条件：任务 1–6 有代码与实际验证证据，S01–S22 均有可追溯覆盖；无重要规格偏差和失败测试。线上能力限制如实报告，并区分实现通过与具体行程不能完成。
 
@@ -232,4 +232,11 @@ async def test_all_drafts_still_require_global_check(workflow_runtime):
 | 技术复核 | 已完成 | 当前代码仍为 plan→分派→finalize；domain_results 单领域保存；无独立 workflow store；本计划按这些接口接入 |
 | 计划自审 | 已完成 | 第 1–13 节设计职责及 S01–S22 均映射到上述任务；沿用单代理，不新增 JSON 模式或 RAG 改造 |
 | 用户计划审阅 | 已确认 | 2026-10-10：确认计划，开始实施；单代理 |
-| Task 1–6 | 未实施 | 不用基线通过数代表新增工作流已实现 |
+| Task 1 | 已完成 | `817b162`；全量 288 passed / 3 skipped |
+| Task 2 | 已完成 | `6204379`；全量 295 passed / 3 skipped |
+| Task 3 | 已完成 | `fd1fda8`；全量 304 passed / 3 skipped |
+| Task 4 | 已完成 | `6ed9455`；全量 314 passed / 3 skipped；Windows 跨进程 CAS |
+| Task 5 | 已完成 | `55fbc57`；全量 336 passed / 3 skipped |
+| Task 6 | 已完成验证 | 最终 355 passed / 3 skipped；81 项验收测试与 S01–S22 全通过；六例线上契约/边界检查通过，完整多段 completed 未覆盖 |
+| 整体自审与人工规格核对 | 已完成 | 见评估报告：日期、晚数、城市名称、候选窗口、过期证据、并发恢复及模型动作修正均有测试证据 |
+| 分支收尾 | 保留当前分支 | 按用户选择在当前分支本地提交，未请求合并、推送或 PR |

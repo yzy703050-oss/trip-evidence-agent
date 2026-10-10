@@ -2,6 +2,7 @@
 import asyncio
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import datetime
 import json
 import math
 
@@ -20,11 +21,13 @@ class WorkflowLimits:
     main_extra_steps: int = 4
     tools_per_task: int = 10
     turn_timeout: float = 600.0
+    evidence_max_age_seconds: float = 3600.0
 
     def __post_init__(self):
         for name in ('info_executions_per_task', 'main_steps_per_task', 'main_extra_steps', 'tools_per_task'):
             if type(getattr(self, name)) is not int or getattr(self, name) < 1: raise ValueError('invalid workflow limit')
         if not math.isfinite(self.turn_timeout) or self.turn_timeout <= 0: raise ValueError('invalid workflow timeout')
+        if not math.isfinite(self.evidence_max_age_seconds) or self.evidence_max_age_seconds <= 0: raise ValueError('invalid evidence age')
 
 
 class WorkflowRunner:
@@ -37,9 +40,18 @@ class WorkflowRunner:
         self.latest, self.last_message_id = None, None
         self.counts, self.seen = {}, set()
         self.main_calls = 0
+        self.invalid_actions = 0
         run.workflow = self.w
         run.candidates = CandidateStore()
         run.candidates.restore(self.w.get('candidate_cache', {}))
+        now = datetime.fromisoformat(context['current_time']) if context.get('current_time') else None
+        if now:
+            for row in self.w['results_by_query'].values():
+                if row['parameters'].get('search_kind') == 'hotel_place' or not row.get('fetched_at'): continue
+                if (now-datetime.fromisoformat(row['fetched_at'])).total_seconds() > self.limits.evidence_max_age_seconds:
+                    row['needs_revalidation'] = True
+                    from travel_data.candidates import query_cache_key
+                    run.candidates.cache.pop(query_cache_key(row['domain'], row['parameters']), None)
         run.workflow_tool_budget = len(self.w['tasks']) * self.limits.tools_per_task
         try:
             return await asyncio.wait_for(self._loop(), timeout=self.limits.turn_timeout)
@@ -104,9 +116,16 @@ class WorkflowRunner:
             self.run_state.current_task_id = task['id']
             try:
                 with model_scope(turn_id=self.run_state.turn_id, workflow_id=self.w['id'], task_id=task['id'], task_revision=task['revision']):
-                    action = validate_action(await self.main.step(context), self.w)
-            except (ValueError, KeyError, TypeError, ArithmeticError):
-                return self._stop('error', 'invalid_workflow_action', '主 Agent 返回的动作无效，外部查询未继续。')
+                    raw_action = await self.main.step(context)
+                self._message({'type': 'main_decision_received', 'decision': raw_action}, task_id=task['id'])
+                action = validate_action(raw_action, self.w)
+            except (ValueError, KeyError, TypeError, ArithmeticError) as exc:
+                self.invalid_actions += 1
+                if self.invalid_actions > 1:
+                    return self._stop('error', 'invalid_workflow_action', '主 Agent 返回的动作无效，外部查询未继续。')
+                feedback = {'code': 'invalid_workflow_action', 'message': str(exc)[:300],
+                            'allowed_actions': ['dispatch', 'draft_task', 'ask_user', 'validate_workflow', 'finish']}
+                continue
             self._message({'type': 'main_action', 'action': action}, task_id=task['id'])
             # Ignore explanatory prose when deciding whether a decision makes progress.
             progress_action = {k: v for k, v in action.items() if k not in {'summary', 'final_answer', 'reason', 'analysis', 'goal'}}
@@ -156,7 +175,8 @@ class WorkflowRunner:
                     pending = next((t for t in self.w['tasks'] if t['status'] == 'pending'), None)
                     if pending:
                         self.w['current_task_id'] = pending['id']
-                        if self.w['confirmed_conditions'].get('flexible_dates') and not pending['conditions'].get('departure_date'):
+                        pending_effective, _ = effective_conditions(self.w['confirmed_conditions'], pending['conditions'], {})
+                        if pending_effective.get('flexible_dates') and not pending['conditions'].get('departure_date'):
                             boundary = checked['reconstructed_plan']['schedule']['next_departure_not_before']
                             if boundary:
                                 # Preserve day precision; never invent a checkout hour.

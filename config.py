@@ -66,4 +66,4 @@ RESILIENCE_CONFIG = {
 
 RUN_LIMITS = dict(info_model_calls=6, info_tool_calls=10, feedback_rounds=1, tool_timeout=30.0, candidate_limit=5)
 WORKFLOW_LIMITS = dict(info_executions_per_task=3, main_steps_per_task=4, main_extra_steps=4,
-                       tools_per_task=10, turn_timeout=600.0)
+                       tools_per_task=10, turn_timeout=600.0, evidence_max_age_seconds=3600.0)

@@ -1,0 +1,443 @@
+{
+  "full_regression": {
+    "passed": 355,
+    "skipped": 3,
+    "warnings": 1
+  },
+  "offline": {
+    "mode": "offline",
+    "test_exit_code": 0,
+    "test_count": 81,
+    "scenarios": {
+      "S01": {
+        "passed": true,
+        "tests": [
+          "test_three_and_five_tasks_have_drafts_then_global_validation[None]",
+          "test_three_and_five_tasks_have_drafts_then_global_validation[cities1]"
+        ]
+      },
+      "S02": {
+        "passed": true,
+        "tests": [
+          "test_three_and_five_tasks_have_drafts_then_global_validation[None]",
+          "test_three_and_five_tasks_have_drafts_then_global_validation[cities1]"
+        ]
+      },
+      "S03": {
+        "passed": true,
+        "tests": [
+          "test_three_and_five_tasks_have_drafts_then_global_validation[None]",
+          "test_three_and_five_tasks_have_drafts_then_global_validation[cities1]",
+          "test_model_cannot_finish_without_check_or_spin_forever"
+        ]
+      },
+      "S04": {
+        "passed": true,
+        "tests": [
+          "test_queries_do_not_overwrite_the_route_and_five_is_only_a_view"
+        ]
+      },
+      "S05": {
+        "passed": true,
+        "tests": [
+          "test_verified_cross_day_cannot_check_in_before_arrival",
+          "test_unknown_arrival_day_cannot_be_invented_in_draft"
+        ]
+      },
+      "S06": {
+        "passed": true,
+        "tests": [
+          "test_later_departure_cannot_precede_previous_stay",
+          "test_unknown_arrival_pauses_with_persisted_checkpoint"
+        ]
+      },
+      "S07": {
+        "passed": true,
+        "tests": [
+          "test_global_party_change_is_confirmed_but_default_was_not",
+          "test_party_update_reuses_place_facts_not_old_train_pricing"
+        ]
+      },
+      "S08": {
+        "passed": true,
+        "tests": [
+          "test_resume_second_task_preserves_first_and_reuses_unchanged_places"
+        ]
+      },
+      "S09": {
+        "passed": true,
+        "tests": [
+          "test_restart_preserves_candidates_and_checkpoint",
+          "test_resume_second_task_preserves_first_and_reuses_unchanged_places"
+        ]
+      },
+      "S10": {
+        "passed": true,
+        "tests": [
+          "test_return_empty_success_is_distinct_from_unavailable"
+        ]
+      },
+      "S11": {
+        "passed": true,
+        "tests": [
+          "test_return_unavailable_is_not_claimed_as_no_trains",
+          "test_unavailable_provider_cannot_be_refreshed_repeatedly"
+        ]
+      },
+      "S12": {
+        "passed": true,
+        "tests": [
+          "test_hotel_place_cannot_verify_hard_budget",
+          "test_decimal_budget_includes_every_train_and_hotel"
+        ]
+      },
+      "S13": {
+        "passed": true,
+        "tests": [
+          "test_revision_change_invalidates_global_check",
+          "test_cli_displays_the_same_validated_route_without_old_guard"
+        ]
+      },
+      "S14": {
+        "passed": true,
+        "tests": [
+          "test_invalid_action_cannot_start_provider",
+          "test_selection_requires_matching_task_query_revision_and_id"
+        ]
+      },
+      "S15": {
+        "passed": true,
+        "tests": [
+          "test_tool_budget_is_cumulative_across_tasks",
+          "test_model_cannot_finish_without_check_or_spin_forever"
+        ]
+      },
+      "S16": {
+        "passed": true,
+        "tests": [
+          "test_workflow_info_only_executes_train_hotel_and_does_not_mutate_confirmed",
+          "test_step_has_full_task_overview_and_no_activities_guide"
+        ]
+      },
+      "S17": {
+        "passed": true,
+        "tests": [
+          "test_preference_runs_once_before_first_workflow_query",
+          "test_real_runtime_measures_actual_main_and_info_calls[False]",
+          "test_real_runtime_measures_actual_main_and_info_calls[True]"
+        ]
+      },
+      "S18": {
+        "passed": true,
+        "tests": [
+          "test_defaults_are_not_confirmed_and_three_tasks_have_stable_dependencies"
+        ]
+      },
+      "S19": {
+        "passed": true,
+        "tests": [
+          "test_conditions_merge_without_overwriting_input_or_forcing_brand"
+        ]
+      },
+      "S20": {
+        "passed": true,
+        "tests": [
+          "test_first_departure_can_inherit_explicit_start_date",
+          "test_global_fixed_start_date_cannot_be_silently_changed"
+        ]
+      },
+      "S21": {
+        "passed": true,
+        "tests": [
+          "test_missing_date_can_still_query_hotel_places"
+        ]
+      },
+      "S22": {
+        "passed": true,
+        "tests": [
+          "test_party_update_reuses_place_facts_not_old_train_pricing"
+        ]
+      }
+    },
+    "passed": true
+  },
+  "live": {
+    "records": [
+      {
+        "id": "three_return",
+        "query": "2026-10-11从上海出发，到北京住1晚，再到杭州住1晚，最后回上海。只安排火车和酒店地点推荐，1人，不要求酒店报价或空房验证。后段日期可根据前段可靠时间灵活安排，不需要天气攻略。",
+        "evaluation": {
+          "passed": true,
+          "checks": {
+            "response_not_error": true,
+            "workflow_created": true,
+            "task_count": true,
+            "only_train_hotel": true,
+            "no_activity_output": true,
+            "place_quotes_not_invented": true
+          },
+          "planning_complete": false,
+          "external_query_verified": true,
+          "status": "partial",
+          "stop_reason": "model_partial"
+        },
+        "model_calls": 7,
+        "tool_calls": 2,
+        "external_requests": 2,
+        "workflow_id": "workflow_56e2d917bdd24d47abb649b97dadc6c1",
+        "task_versions": [
+          [
+            "task_ccb3535b539f48caa4a9e4efdf384687",
+            1,
+            "draft"
+          ],
+          [
+            "task_8ed7513309bc4834b212b4418f52009c",
+            1,
+            "pending"
+          ],
+          [
+            "task_2da32c8059494ec29073da856473a6e3",
+            1,
+            "pending"
+          ]
+        ],
+        "result_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-113737\\three_return.json",
+        "trace_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-113737\\memory\\workflow-live-20261010-113737-three_return\\sessions\\three_return"
+      },
+      {
+        "id": "five_return",
+        "query": "2026-10-11从重庆出发，依次上海、苏州、杭州、北京，每城住1晚，然后回重庆。1人，只安排火车与酒店地点，日期可灵活衔接，不要求酒店房价或空房验证，不安排活动天气。",
+        "evaluation": {
+          "passed": true,
+          "checks": {
+            "response_not_error": true,
+            "workflow_created": true,
+            "task_count": true,
+            "only_train_hotel": true,
+            "no_activity_output": true,
+            "place_quotes_not_invented": true
+          },
+          "planning_complete": false,
+          "external_query_verified": true,
+          "status": "partial",
+          "stop_reason": "model_partial"
+        },
+        "model_calls": 6,
+        "tool_calls": 2,
+        "external_requests": 2,
+        "workflow_id": "workflow_c5b457020bdf475582b4e48b693ce0a6",
+        "task_versions": [
+          [
+            "task_557b38513daf4b38986c0cbaa6f67b07",
+            1,
+            "draft"
+          ],
+          [
+            "task_9502825909d641839ea357bc9fe1d6b4",
+            1,
+            "pending"
+          ],
+          [
+            "task_8d658c481e58409cbb940fb22f0cb1d5",
+            1,
+            "pending"
+          ],
+          [
+            "task_ead1dd790a9046789f63b48f7be76630",
+            1,
+            "pending"
+          ],
+          [
+            "task_d72c5f35bc8e4234ab102addd55cb99f",
+            1,
+            "pending"
+          ]
+        ],
+        "result_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-113737\\five_return.json",
+        "trace_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-113737\\memory\\workflow-live-20261010-113737-five_return\\sessions\\five_return"
+      },
+      {
+        "id": "resume_second",
+        "query": "继续工作流 workflow_56e2d917bdd24d47abb649b97dadc6c1，仅修改第二段：北京到杭州的出发日期改为2026-10-13，在杭州住1晚，然后回上海，保留第一段要求。",
+        "evaluation": {
+          "passed": true,
+          "checks": {
+            "response_not_error": true,
+            "workflow_created": true,
+            "task_count": true,
+            "only_train_hotel": true,
+            "no_activity_output": true,
+            "place_quotes_not_invented": true,
+            "same_workflow_resumed": true
+          },
+          "planning_complete": false,
+          "external_query_verified": true,
+          "status": "partial",
+          "stop_reason": "model_partial"
+        },
+        "model_calls": 6,
+        "tool_calls": 2,
+        "external_requests": 2,
+        "workflow_id": "workflow_56e2d917bdd24d47abb649b97dadc6c1",
+        "task_versions": [
+          [
+            "task_ccb3535b539f48caa4a9e4efdf384687",
+            1,
+            "draft"
+          ],
+          [
+            "task_8ed7513309bc4834b212b4418f52009c",
+            2,
+            "draft"
+          ],
+          [
+            "task_2da32c8059494ec29073da856473a6e3",
+            2,
+            "pending"
+          ]
+        ],
+        "result_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-113737\\resume_second.json",
+        "trace_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-113737\\memory\\workflow-live-20261010-113737-three_return\\sessions\\three_return"
+      },
+      {
+        "id": "hotel_budget",
+        "query": "2026-10-11上海去北京住1晚，再杭州住1晚，最后回上海。只安排火车和酒店。1人，全程火车住宿总预算1000元，必须核实房价及空房。",
+        "evaluation": {
+          "passed": true,
+          "checks": {
+            "response_not_error": true,
+            "workflow_created": true,
+            "task_count": true,
+            "only_train_hotel": true,
+            "no_activity_output": true,
+            "place_quotes_not_invented": true
+          },
+          "planning_complete": false,
+          "external_query_verified": true,
+          "status": "partial",
+          "stop_reason": "model_partial"
+        },
+        "model_calls": 9,
+        "tool_calls": 3,
+        "external_requests": 2,
+        "workflow_id": "workflow_fdef977be58e431eb3c0caa8d0627e72",
+        "task_versions": [
+          [
+            "task_07e1d7d640d24025a2862a98790a22e2",
+            1,
+            "draft"
+          ],
+          [
+            "task_0c99948b88a241279ee7179aafa8ac05",
+            1,
+            "pending"
+          ],
+          [
+            "task_1910b6b711744be297d8375efb9b2392",
+            1,
+            "pending"
+          ]
+        ],
+        "result_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-112737\\hotel_budget.json",
+        "trace_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-112737\\memory\\workflow-live-20261010-112737-hotel_budget\\sessions\\hotel_budget"
+      },
+      {
+        "id": "train_single",
+        "query": "查2026-10-11上海到北京的火车，1人，最多给5个候选。",
+        "evaluation": {
+          "passed": true,
+          "checks": {
+            "response_not_error": true
+          },
+          "planning_complete": false,
+          "external_query_verified": false,
+          "status": "unavailable",
+          "stop_reason": null
+        },
+        "model_calls": 4,
+        "tool_calls": 1,
+        "external_requests": 1,
+        "workflow_id": null,
+        "task_versions": [],
+        "result_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-113737\\train_single.json",
+        "trace_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-113737\\memory\\workflow-live-20261010-113737-train_single\\sessions\\train_single"
+      },
+      {
+        "id": "hotel_single",
+        "query": "找几家北京汉庭酒店的地点和地址，不查询房价或空房。",
+        "evaluation": {
+          "passed": true,
+          "checks": {
+            "response_not_error": true
+          },
+          "planning_complete": false,
+          "external_query_verified": true,
+          "status": "ok",
+          "stop_reason": null
+        },
+        "model_calls": 4,
+        "tool_calls": 1,
+        "external_requests": 1,
+        "workflow_id": null,
+        "task_versions": [],
+        "result_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-112737\\hotel_single.json",
+        "trace_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-112737\\memory\\workflow-live-20261010-112737-hotel_single\\sessions\\hotel_single"
+      }
+    ],
+    "contract_checks_passed": true,
+    "completed_workflows": 0,
+    "source_reports": [
+      "data/evals/2026-10-10-workflow-live-final.json",
+      "data/evals/2026-10-10-workflow-live-confirmation.json"
+    ],
+    "selection": "Latest affected-case confirmations plus unchanged hotel cases from prior full run"
+  },
+  "prior_successful_train_evidence": [
+    {
+      "id": "three_return",
+      "query": "2026-10-11从上海出发，到北京住1晚，再到杭州住1晚，最后回上海。只安排火车和酒店地点推荐，1人，不要求酒店报价或空房验证。后段日期可根据前段可靠时间灵活安排，不需要天气攻略。",
+      "evaluation": {
+        "passed": true,
+        "checks": {
+          "response_not_error": true,
+          "workflow_created": true,
+          "task_count": true,
+          "only_train_hotel": true,
+          "no_activity_output": true,
+          "place_quotes_not_invented": true,
+          "checkpoint_saved": true
+        },
+        "planning_complete": false,
+        "external_query_verified": true,
+        "status": "needs_input",
+        "stop_reason": "user_input_required"
+      },
+      "model_calls": 16,
+      "tool_calls": 6,
+      "external_requests": 2,
+      "workflow_id": "workflow_83a64a03be534f1495fde7d47b799d18",
+      "task_versions": [
+        [
+          "task_75a23acb688d41eab67c92ce983465eb",
+          1,
+          "needs_input"
+        ],
+        [
+          "task_4ed67ed9d1ee46f6bcf0a5cde8911f8a",
+          1,
+          "needs_input"
+        ],
+        [
+          "task_371f04b055e74d279e13ba8ed1d11686",
+          1,
+          "needs_input"
+        ]
+      ],
+      "result_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-112737\\three_return.json",
+      "trace_path": "G:\\简历项目\\居丽叶简历项目6：差旅出行助手\\.superpowers\\trip-evidence-agent\\data\\evals\\workflow-live-20261010-112737\\memory\\workflow-live-20261010-112737-three_return\\sessions\\three_return"
+    }
+  ],
+  "prior_failed_run_retained": true,
+  "spec_audit": "Manual S01-S22 audit; no OpenSpec initialization or verify/archive workflow"
+}

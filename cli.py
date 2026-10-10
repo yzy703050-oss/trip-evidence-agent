@@ -311,6 +311,7 @@ class TripEvidenceCLI:
                     item = task['train']; source = item.get('source') or {}
                     self.console.print(f"火车 {item.get('train_number')} / {item.get('seat_class')} / 单人票价 {item.get('price_cny')} 元 / {item.get('availability')}", markup=False)
                     self.console.print(f"{source.get('provider')} {source.get('url')} {source.get('fetched_at')}", markup=False)
+                    if item.get('needs_revalidation'): self.console.print('此前取得的价格和库存，需要重新核实。', markup=False)
                 if task.get('hotel'):
                     item = task['hotel']; source = item.get('source') or {}
                     self.console.print(f"酒店 {item.get('hotel_name')} / {item.get('address', '')}", markup=False)
@@ -319,6 +320,7 @@ class TripEvidenceCLI:
                     else:
                         self.console.print(f"住宿报价 {item.get('stay_total_cny')} 元 / {item.get('availability')}", markup=False)
                     self.console.print(f"{source.get('provider')} {source.get('url')} {source.get('fetched_at')}", markup=False)
+                    if item.get('needs_revalidation'): self.console.print('此前取得的报价和库存，需要重新核实。', markup=False)
             budget = checked.get('budget', {})
             self.console.print(f"已知费用合计：{budget.get('known_subtotal_cny', '未知')} 元；全程费用核实：{budget.get('verified', False)}", markup=False)
             for gap in result_data.get('gaps', []):

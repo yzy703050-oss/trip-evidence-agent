@@ -18,6 +18,7 @@ def record_query(workflow, task_id, parameters, constraints, result, execution, 
     good = checked.get('status') in {'ok', 'partial'}
     if previous:
         row = deepcopy(previous)
+        refresh = refresh or bool(previous.get('needs_revalidation')) or (good and checked.get('fetched_at') != previous.get('fetched_at'))
         if row['task_revision'] != task['revision'] or refresh:
             row.setdefault('history', []).append({k: deepcopy(v) for k, v in previous.items() if k != 'history'})
         if refresh and not good and previous.get('items'):
@@ -50,15 +51,15 @@ def as_result(row):
                            source, fetched, row.get('message'))
 
 
-def query_views(workflow, task_id, *, limit=5, offset=0):
-    if type(limit) is not int or limit < 1 or type(offset) is not int or offset < 0:
+def query_views(workflow, task_id, *, limit=5, offset=None):
+    if type(limit) is not int or limit < 1 or (offset is not None and (type(offset) is not int or offset < 0)):
         raise ValueError('invalid candidate window')
     task = task_by_id(workflow, task_id)
     views = []
     for query_id in task['query_ids']:
         row = workflow['results_by_query'][query_id]
         if row['task_revision'] != task['revision']: continue
-        view = candidate_view(as_result(row), limit=limit, offset=offset, constraints=row['constraints'],
+        view = candidate_view(as_result(row), limit=limit, offset=row.get('view_offset', 0) if offset is None else offset, constraints=row['constraints'],
                               preferences=workflow.get('effective_preferences', {}))
         views.append({**deepcopy(row), 'history': [], 'items': view['items'],
                       'candidate_total': view.get('candidate_total', len(row['items']))})

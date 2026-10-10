@@ -109,11 +109,21 @@ class ExecutionHarness:
             initial = getattr(self.main_agent, 'initialize', self.main_agent.plan if hasattr(self.main_agent, 'plan') else None)
             with model_scope(turn_id=run.turn_id):
                 decision = validate_plan(await initial(context))
+                if decision['response_mode'] == 'workflow' and not decision.get('resume_workflow_id'):
+                    from agents.workflow_contracts import create_workflow
+                    try:
+                        create_workflow(decision['workflow_proposal'], context)
+                    except (ValueError, TypeError, ArithmeticError) as exc:
+                        repair = getattr(self.main_agent, 'repair_proposal', None)
+                        if repair is None: raise
+                        decision['workflow_proposal'] = await repair(context, decision['workflow_proposal'], str(exc))
+                        create_workflow(decision['workflow_proposal'], context)
             decision['agent_schedule'] = business_schedule(decision['agent_schedule'])
         except Exception:
             return self._error('invalid_plan', run)
         if self.memory_manager:
             self.memory_manager.session_store.append_run({'type': 'agent_plan', 'turn_id': run.turn_id,
+                'decision': deepcopy(decision),
                 'agents': [{'agent_name': row['agent_name'], 'priority': row['priority']} for row in decision['agent_schedule']]})
         context.update({'rewritten_query': decision.get('rewritten_query') or context['original_query'],
                         'response_mode': decision['response_mode']})
@@ -173,6 +183,9 @@ class ExecutionHarness:
                 if self.memory_manager is None: raise ValueError('resume needs storage')
                 workflow = self.memory_manager.workflow_store.load(workflow_id)
                 if workflow is None: raise ValueError('unknown resume workflow')
+                observed = next((w for w in context.get('active_workflows', []) if w['id'] == workflow_id), None)
+                if observed is None or observed['revision'] != workflow['revision']:
+                    raise WorkflowConflictError('resume decision was made against a different revision')
                 checkpoint = workflow.get('checkpoint')
                 if checkpoint and checkpoint.get('expected_workflow_revision') != workflow['revision']:
                     raise WorkflowConflictError('checkpoint revision changed')
@@ -191,7 +204,7 @@ class ExecutionHarness:
             return {**self._error('workflow_revision_conflict', run), 'stop_reason': 'workflow_revision_conflict'}
         except OSError:
             return {**self._error('workflow_save_failed', run), 'stop_reason': 'workflow_save_failed'}
-        except (ValueError, TypeError, KeyError):
+        except (ValueError, TypeError, KeyError, ArithmeticError):
             return {**self._error('invalid_workflow_proposal', run), 'stop_reason': 'invalid_workflow_proposal'}
 
     async def _execute(self, task, context, run):
@@ -202,7 +215,7 @@ class ExecutionHarness:
                 'user_preferences': deepcopy(run.effective_preferences), 'travel_conditions': deepcopy(run.travel_conditions),
                 'previous_results': deepcopy(run.results),
                 'requested_domains': task.get('requested_domains', []), 'task_goal': task.get('expected_output', '')}
-            with model_stage(f'agent:{name}'):
+            with model_scope(turn_id=run.turn_id), model_stage(f'agent:{name}'):
                 if name == 'information_query' and hasattr(agent, 'run'):
                     data = await agent.run(child_context, run)
                 else:
@@ -252,7 +265,8 @@ class ExecutionHarness:
             'travel_conditions': deepcopy(run.travel_conditions), 'domain_results': deepcopy(run.domain_results),
             'results': public_results(run.results), 'feedback_round': run.feedback_round}
         try:
-            return await self.main_agent.finalize(final_context)
+            with model_scope(turn_id=run.turn_id):
+                return await self.main_agent.finalize(final_context)
         except Exception:
             return {'action': 'error', 'error_code': 'final_model_error'}
 

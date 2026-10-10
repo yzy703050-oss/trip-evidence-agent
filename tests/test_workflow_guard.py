@@ -25,6 +25,34 @@ def test_hotel_place_cannot_verify_hard_budget():
     assert 'hotel_price_unknown' in {i['code'] for i in checked['issues']}
 
 
+def test_provider_city_suffix_does_not_reject_same_city_place():
+    w = populated_workflow(); task = w['tasks'][0]
+    hotel = w['results_by_query'][task['draft_plan']['hotel_selection']['query_id']]
+    hotel['items'][0]['city'] = '北京市'
+    assert check_task(w, task['id'], task['draft_plan'])['valid'] is True
+    hotel['items'][0]['city'] = '杭州市'
+    assert check_task(w, task['id'], task['draft_plan'])['valid'] is False
+
+
+def test_proposed_stay_dates_can_change_but_confirmed_dates_are_preserved():
+    w = populated_workflow(); task = w['tasks'][0]
+    task['draft_plan']['schedule'].update(check_in='2026-10-12', check_out='2026-10-14')
+    task['field_sources'].update(check_in='proposal', check_out='proposal')
+    checked = check_task(w, task['id'], task['draft_plan'])
+    assert checked['valid'] is True
+    assert checked['reconstructed_plan']['schedule']['check_in'] == '2026-10-12'
+    task['field_sources'].update(check_in='user', check_out='user')
+    assert check_task(w, task['id'], task['draft_plan'])['reconstructed_plan']['schedule']['check_in'] == '2026-10-11'
+
+
+def test_stay_length_must_match_requested_nights():
+    w = populated_workflow(); task = w['tasks'][0]
+    task['conditions']['nights'] = 1
+    checked = check_task(w, task['id'], task['draft_plan'])
+    assert checked['valid'] is False
+    assert 'stay_nights_mismatch' in {i['code'] for i in checked['issues']}
+
+
 def test_decimal_budget_includes_every_train_and_hotel():
     w = populated_workflow(quoted=True)
     w['confirmed_conditions']['constraints'] = {'total_budget_cny': '699.99'}

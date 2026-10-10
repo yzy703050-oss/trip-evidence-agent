@@ -17,6 +17,10 @@ async def test_three_and_five_tasks_have_drafts_then_global_validation(tmp_path,
     assert 'validate_workflow' in r.main.actions
     assert all(t['status'] == 'validated' for t in result['workflow']['tasks'])
     assert r.main.contexts[2]['workflow']['tasks'][0]['status'] == 'draft'
+    for context in r.main.contexts:
+        child = context.get('latest_child_result') or {}
+        assert all(len(row['items']) <= 5 for row in child.get('query_results', []))
+    assert max(len(row['items']) for row in result['workflow']['results_by_query'].values()) == 8
     assert r.main.initial_calls == 1
     assert 'activities' not in str(result['workflow']['tasks'])
     assert r.memory.workflow_store.load(result['workflow_id']) == result['workflow']
@@ -199,3 +203,86 @@ async def test_party_update_reuses_place_facts_not_old_train_pricing(tmp_path):
     assert len(restarted.train.calls) == 3
     assert all(q['passengers'] == 3 for q in restarted.train.calls)
     assert result['validated_plan']['budget']['known_subtotal_cny'] == '900'
+
+
+@pytest.mark.asyncio
+async def test_return_empty_success_is_distinct_from_unavailable(tmp_path):
+    r = Runtime(tmp_path); original = r.train.search
+    async def search(query):
+        result = await original(query)
+        if query.destination == '上海': result.items.clear()
+        return result
+    r.train.search = search
+    result = await r.turn()
+    rows = [q for q in result['workflow']['results_by_query'].values() if q['domain'] == 'train']
+    assert rows[-1]['status'] == 'ok' and rows[-1]['items'] == []
+    assert result['status'] == 'needs_input'
+    assert result['workflow']['checkpoint']['question']
+
+
+@pytest.mark.asyncio
+async def test_resume_decision_cannot_apply_to_a_newer_revision(tmp_path):
+    r = Runtime(tmp_path); first = await r.turn()
+    restarted = Runtime(tmp_path)
+    original = restarted.main.initialize
+    restarted.main.resume = {'id': first['workflow_id'], 'update': {'confirmed_conditions': {'passengers': 3}}}
+    async def initialize(context):
+        decision = await original(context)
+        w = restarted.memory.workflow_store.load(first['workflow_id'])
+        restarted.memory.workflow_store.save(w, expected_revision=w['revision'])
+        return decision
+    restarted.main.initialize = initialize
+    result = await restarted.turn('实际3人')
+    assert result['status'] == 'error' and result['stop_reason'] == 'workflow_revision_conflict'
+    assert not restarted.train.calls
+    assert restarted.memory.workflow_store.load(first['workflow_id'])['confirmed_conditions'].get('passengers') is None
+
+
+@pytest.mark.asyncio
+async def test_expired_price_evidence_is_not_an_eternal_booking_guarantee(tmp_path):
+    from agents.contracts import RunState
+    from workflow_support import populated_workflow
+    class Main:
+        context = None
+        async def step(self, context):
+            self.context = context
+            return {'action': 'finish', 'status': 'partial', 'final_answer': '旧报价需要重确认'}
+    r = Runtime(tmp_path); w = r.memory.workflow_store.save(populated_workflow(), expected_revision=None)
+    main = Main(); runner = WorkflowRunner(main, r.info, r.memory)
+    result = await runner.run({'original_query': '继续', 'current_time': '2026-10-11T10:00:00+08:00'}, RunState(r.memory.start_turn('继续')), w)
+    assert main.context['relevant_results'][0]['needs_revalidation'] is True
+    assert result['validated_plan']['valid'] is False
+    assert result['validated_plan']['budget']['verified'] is False
+    assert not r.train.calls
+
+
+@pytest.mark.asyncio
+async def test_one_invalid_action_can_be_corrected_without_executing_it(tmp_path):
+    class Main(WorkflowMain):
+        attempts = 0
+        async def step(self, context):
+            self.attempts += 1
+            if self.attempts == 1: return {'action': 'dispatch', 'task_id': context['current_task']['id'], 'legacy_field': []}
+            assert context['action_feedback'] is not None or self.attempts > 2
+            return await super().step(context)
+    r = Runtime(tmp_path, main=Main()); result = await r.turn()
+    assert result['status'] == 'completed'
+    assert len(r.train.calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_invalid_proposal_gets_one_schema_repair_before_any_tools(tmp_path):
+    class Main(WorkflowMain):
+        repairs = 0
+        async def initialize(self, context):
+            value = await super().initialize(context)
+            value['workflow_proposal']['confirmed_conditions']['constraints'] = ['只查火车酒店']
+            return value
+        async def repair_proposal(self, context, value, error):
+            self.repairs += 1
+            assert not r.train.calls
+            fixed = deepcopy(value); fixed['confirmed_conditions']['constraints'] = {}
+            return fixed
+    main = Main(); r = Runtime(tmp_path, main=main)
+    result = await r.turn()
+    assert result['status'] == 'completed' and main.initial_calls == 1 and main.repairs == 1

@@ -68,7 +68,27 @@ def effective_conditions(confirmed, task_conditions, preferences):
 def create_workflow(proposal, context, *, workflow_id=None):
     if not isinstance(proposal, dict) or not isinstance(proposal.get('tasks'), list) or not proposal['tasks']:
         raise ValueError('workflow needs ordered tasks')
-    confirmed = validate_conditions(proposal.get('confirmed_conditions', {}))
+    confirmed = deepcopy(proposal.get('confirmed_conditions', {}))
+    if not isinstance(confirmed, dict): raise ValueError('invalid confirmed conditions')
+    rows = proposal['tasks']
+    if any(not isinstance(row, dict) for row in rows): raise ValueError('task proposal must be an object')
+    # These model metadata fields duplicate the route/scope, not query constraints.
+    # Check consistency before projecting onto the canonical condition contract.
+    route = [r.get('destination') for r in rows if isinstance(r, dict)]
+    if 'origin' in confirmed and confirmed.pop('origin') != rows[0].get('origin'):
+        raise ValueError('route metadata origin mismatch')
+    if 'return_to' in confirmed and confirmed.pop('return_to') != rows[-1].get('destination'):
+        raise ValueError('route metadata return mismatch')
+    if 'destinations' in confirmed:
+        destinations = confirmed.pop('destinations')
+        if destinations not in (route, route[:-1] if route and route[-1] == rows[0].get('origin') else route):
+            raise ValueError('route metadata destinations mismatch')
+    constraints = confirmed.get('constraints', {})
+    if isinstance(constraints, dict):
+        for key in ('only_train_hotel', 'no_weather', 'no_guide'):
+            if key in constraints and constraints.pop(key) is not True:
+                raise ValueError('workflow scope metadata mismatch')
+    confirmed = validate_conditions(confirmed)
     effective, sources = effective_conditions(confirmed, {}, context.get('effective_preferences', {}))
     sources.update({k: 'user' for k, v in confirmed.items() if v is not None})
     tasks = []
@@ -125,8 +145,10 @@ def validate_action(action, workflow):
         'validate_workflow': {'action', 'workflow_revision', 'analysis'},
         'finish': {'action', 'status', 'final_answer', 'gaps'},
     }
-    if name not in allowed or set(value) - allowed[name]:
-        raise ValueError('unsupported workflow action or fields')
+    if name not in allowed:
+        raise ValueError('unsupported workflow action')
+    if set(value) - allowed[name]:
+        raise ValueError(f"unsupported fields: {sorted(set(value)-allowed[name])}; allowed fields: {sorted(allowed[name])}")
     if name in {'dispatch', 'draft_task'}:
         task = task_by_id(workflow, value.get('task_id'))
         if value.get('task_revision', task['revision']) != task['revision']:
@@ -178,14 +200,31 @@ def apply_user_update(workflow, updates):
         w['confirmed_conditions'].update(global_updates)
         changed.append(0)
     for update in updates.get('task_updates', []):
-        if not isinstance(update, dict) or set(update) - {'task_id', 'conditions'}:
+        if not isinstance(update, dict) or set(update) - {'task_id', 'conditions', 'origin', 'destination', 'requires_hotel'}:
             raise ValueError('invalid task update')
         task = task_by_id(w, update.get('task_id'))
+        index = w['tasks'].index(task)
+        for key in ('origin', 'destination', 'requires_hotel'):
+            if key not in update or task[key] == update[key]: continue
+            value = update[key]
+            if key == 'requires_hotel':
+                if type(value) is not bool: raise ValueError('invalid hotel scope')
+            elif not isinstance(value, str) or not value.strip():
+                raise ValueError('invalid route update')
+            previous = task[key]; task[key] = value; changed.append(index)
+            if key == 'destination' and index+1 < len(w['tasks']) and w['tasks'][index+1]['origin'] == previous:
+                w['tasks'][index+1]['origin'] = value
         conditions = validate_conditions(update.get('conditions', {}))
+        if index == 0 and conditions.get('departure_date'):
+            if global_updates.get('start_date') and global_updates['start_date'] != conditions['departure_date']:
+                raise ValueError('first departure contradicts explicit overall start')
+            w['confirmed_conditions']['start_date'] = conditions['departure_date']
         if any(task['conditions'].get(k) != v for k, v in conditions.items()):
             task['conditions'].update(conditions)
             task['field_sources'].update({k: 'user' for k in conditions})
             changed.append(w['tasks'].index(task))
+    if any(t['origin'] == t['destination'] or (i and t['origin'] != w['tasks'][i-1]['destination']) for i, t in enumerate(w['tasks'])):
+        raise ValueError('user route updates are inconsistent')
     w['effective_conditions'], w['field_sources'] = effective_conditions(w['confirmed_conditions'], {}, {})
     w['field_sources'].update({k: 'user' for k, v in w['confirmed_conditions'].items() if v is not None})
     if changed:

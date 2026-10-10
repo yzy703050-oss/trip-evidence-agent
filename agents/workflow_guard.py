@@ -89,7 +89,7 @@ def check_task(workflow, task_id, draft):
                 if parameters.get('city') != task['destination']:
                     raise ValueError('hotel city mismatch')
                 if item.get('kind') == 'hotel_place':
-                    if item.get('city') and item['city'] != task['destination']:
+                    if item.get('city') and item['city'].removesuffix('市') != task['destination'].removesuffix('市'):
                         raise ValueError('hotel place city mismatch')
                     price_required = bool(effective.get('hotel_quote_required') or any(k.startswith('hotel_max_') for k in constraints) or 'total_budget_cny' in constraints)
                     add('hotel_price_unknown', '酒店地点不提供房价、空房或入住规则。', blocking=price_required)
@@ -105,13 +105,14 @@ def check_task(workflow, task_id, draft):
                             nights = (date.fromisoformat(item['check_out'])-date.fromisoformat(item['check_in'])).days
                             cost = amount / nights if amount is not None and k.endswith('nightly_cny') else amount
                             if cost is None or cost > Decimal(str(constraints[k])): add('hotel_budget_failed', '住宿费用不符合预算。')
-            plan[domain] = item
+            plan[domain] = {**item, **({'needs_revalidation': True} if row.get('needs_revalidation') else {})}
         except (ValueError, KeyError, TypeError, ArithmeticError, AttributeError):
             add('invalid_candidate_reference', f'{domain}候选的归属、版本、人数、日期或来源不匹配。')
     if task['requires_hotel']:
         hotel = plan['hotel'] or {}
         for key in ('check_in', 'check_out'):
-            value = task['conditions'].get(key) or schedule.get(key)
+            fixed = task.get('field_sources', {}).get(key) in {'user', 'context'}
+            value = (task['conditions'].get(key) or schedule.get(key)) if fixed else (schedule.get(key) or task['conditions'].get(key))
             if hotel.get('kind') != 'hotel_place' and hotel.get(key):
                 if value and value != hotel[key]: add('hotel_date_mismatch', '住宿安排与报价日期不匹配。')
                 value = hotel[key]
@@ -121,6 +122,8 @@ def check_task(workflow, task_id, draft):
             else: add('hotel_dates_missing', '住宿安排尚缺入住或离店日期。')
         start, end = plan['schedule']['check_in'], plan['schedule']['check_out']
         if start and end and start >= end: add('invalid_hotel_dates', '离店日期必须晚于入住日期。')
+        if start and end and effective.get('nights') and (date.fromisoformat(end)-date.fromisoformat(start)).days != effective['nights']:
+            add('stay_nights_mismatch', '住宿晚数与用户要求不一致。')
         arrival = plan['schedule']['arrival_at']
         if start and arrival and start < datetime.fromisoformat(arrival).date().isoformat():
             add('hotel_before_arrival', '入住日期早于火车实际抵达日期。')
@@ -148,8 +151,8 @@ def check_workflow(workflow):
                 issues.append(issue('departure_before_previous_checkout', [prev['id'], task['id']], '下一段在前段离店日期之前出发。'))
         try:
             effective, _ = effective_conditions(workflow['confirmed_conditions'], task['conditions'], {})
-            train = _offer(plan['train'], 'train') if plan['train'] else None
-            hotel = _offer(plan['hotel'], 'hotel') if plan['hotel'] and plan['hotel'].get('kind') != 'hotel_place' else None
+            train = _offer(plan['train'], 'train') if plan['train'] and not plan['train'].get('needs_revalidation') else None
+            hotel = _offer(plan['hotel'], 'hotel') if plan['hotel'] and plan['hotel'].get('kind') != 'hotel_place' and not plan['hotel'].get('needs_revalidation') else None
             budget = build_budget(train, hotel, effective['passengers'], {'train', 'hotel'} if task['requires_hotel'] else {'train'}).to_dict()
             lines.extend({**line, 'task_id': task['id']} for line in budget['lines'])
             missing.extend({'task_id': task['id'], 'category': category} for category in budget['missing_categories'])

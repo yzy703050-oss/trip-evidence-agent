@@ -71,7 +71,8 @@ class ToolExecutor:
                     invalid |= arguments['guests'] != effective['guests']
                     for key in ('check_in', 'check_out'):
                         fixed = task['conditions'].get(key)
-                        if fixed and key in arguments: invalid |= arguments[key] != fixed
+                        if fixed and task.get('field_sources', {}).get(key) in {'user', 'context'} and key in arguments:
+                            invalid |= arguments[key] != fixed
             if invalid:
                 return AgentDataResult('error', {}, [], [], None, None, '工具参数不属于当前任务或改变了确认条件。').to_dict()
         result = await self._execute(name, arguments, run, call_id=call_id)
@@ -92,6 +93,7 @@ class ToolExecutor:
                                arguments.get('constraints', {}), full, metadata,
                                domain=domain, refresh=arguments.get('refresh') is True)
             run.query_records[row['id']] = deepcopy(row)
+            row['view_offset'] = arguments.get('candidate_offset', 0)
             result.update(query_id=row['id'], result_revision=row['result_revision'], task_id=row['task_id'], task_revision=row['task_revision'])
             run.workflow['candidate_cache'] = run.candidates.snapshot() if run.candidates else {}
         return result

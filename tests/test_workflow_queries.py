@@ -127,3 +127,31 @@ async def test_tool_inherits_confirmed_constraints_in_query_record():
     row = next(iter(w['results_by_query'].values()))
     assert row['constraints'] == {'seat_class': '一等座'}
     assert query_views(w, t['id'])[0]['items'] == []
+
+
+@pytest.mark.asyncio
+async def test_current_window_reaches_main_without_a_new_provider_query():
+    w = workflow(); t = w['tasks'][0]
+    from workflow_runtime import OfflineProvider
+    provider = OfflineProvider('train'); run = RunState('turn', workflow=w, current_task_id=t['id'])
+    tool = ToolExecutor({'train_search': provider}); parameters = train_result(t)['query']
+    await tool.execute('train_search', parameters, run, call_id='first')
+    second = await tool.execute('train_search', {**parameters, 'candidate_offset': 5}, run, call_id='next')
+    assert len(provider.calls) == 1
+    assert query_views(w, t['id'])[0]['items'] == second['items']
+    assert len(query_views(w, t['id'])[0]['items']) == 3
+
+
+@pytest.mark.asyncio
+async def test_proposed_hotel_dates_can_change_without_changing_confirmed_dates():
+    from workflow_runtime import OfflineProvider
+    w = workflow(); task = w['tasks'][0]
+    provider = OfflineProvider('hotel'); tool = ToolExecutor({'hotel_search': provider})
+    run = RunState('turn', workflow=w, current_task_id=task['id'])
+    parameters = {'city': '北京', 'check_in': '2026-10-12', 'check_out': '2026-10-14', 'guests': 1}
+    rejected = await tool.execute('hotel_search', parameters, run, call_id='fixed')
+    assert rejected['status'] == 'error' and not provider.calls
+    task['field_sources'].update(check_in='proposal', check_out='proposal')
+    accepted = await tool.execute('hotel_search', parameters, run, call_id='proposal')
+    assert accepted['status'] == 'ok' and len(provider.calls) == 1
+    assert task['conditions']['check_in'] == '2026-10-11'

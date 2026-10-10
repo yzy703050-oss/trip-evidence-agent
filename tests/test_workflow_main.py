@@ -17,6 +17,8 @@ async def test_initialize_emits_proposal_without_duplicate_intent_call():
     decision = await main.initialize({'original_query': '上海北京杭州上海，只安排火车酒店'})
     assert decision['response_mode'] == 'workflow' and len(calls) == 1
     assert 'workflow_proposal' in calls[0][0]['content']
+    assert 'workflow 模式不要输出 rewritten_query/intents/key_entities' in calls[0][0]['content']
+    assert 'total_budget_cny' in calls[0][0]['content']
 
 
 @pytest.mark.asyncio
@@ -31,3 +33,8 @@ async def test_step_has_full_task_overview_and_no_activities_guide():
     assert all(t['id'] in prompt for t in w['tasks'])
     assert 'suggestion:city_walk' not in prompt
     assert 'draft_task' in prompt and 'validate_workflow' in prompt
+    assert '"action":"dispatch"' in prompt
+    assert '"action":"draft_task"' in prompt
+    assert 'action 必须是顶层字符串字段' in prompt
+    assert '"action":"ask_user"' in prompt and '"suggested_changes":[]' in prompt
+    assert '"action":"validate_workflow"' in prompt and '"action":"finish"' in prompt

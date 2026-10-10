@@ -87,3 +87,41 @@ def test_first_departure_can_inherit_explicit_start_date():
     w = create_workflow(p, {})
     assert w['tasks'][0]['conditions']['departure_date'] == '2026-10-11'
     assert w['tasks'][0]['field_sources']['departure_date'] == 'derived'
+
+
+def test_structured_workflow_proposal_cannot_fall_through_to_legacy_finalizer():
+    from agents.contracts import validate_plan
+    result = validate_plan({'response_mode': 'itinerary', 'finalization_mode': 'synthesize',
+                            'agent_schedule': [], 'workflow_proposal': proposal()})
+    assert result['response_mode'] == 'workflow'
+
+
+def test_explicit_destination_update_changes_only_that_task_and_downstream_origin():
+    w = workflow(); ids = [t['id'] for t in w['tasks']]
+    revised = apply_user_update(w, {'task_updates': [{'task_id': ids[1], 'destination': '苏州'}]})
+    assert revised['tasks'][0] == w['tasks'][0]
+    assert revised['tasks'][1]['destination'] == revised['tasks'][2]['origin'] == '苏州'
+    assert [t['id'] for t in revised['tasks']] == ids
+    assert [t['revision'] for t in revised['tasks']] == [1, 2, 2]
+
+
+def test_redundant_route_and_scope_metadata_is_checked_then_canonicalized():
+    p = proposal()
+    p['confirmed_conditions'].update(origin='上海', destinations=['北京', '杭州'], return_to='上海',
+                                     constraints={'only_train_hotel': True, 'no_weather': True, 'no_guide': True, 'total_budget_cny': '1000'})
+    w = create_workflow(p, {})
+    assert 'origin' not in w['confirmed_conditions']
+    assert w['confirmed_conditions']['constraints'] == {'total_budget_cny': '1000'}
+    p['confirmed_conditions']['return_to'] = '苏州'
+    with pytest.raises(ValueError): create_workflow(p, {})
+
+
+def test_explicit_first_departure_update_revises_overall_start_consistently():
+    w = workflow()
+    revised = apply_user_update(w, {'task_updates': [{'task_id': w['tasks'][0]['id'], 'conditions': {'departure_date': '2026-10-12'}}]})
+    assert revised['confirmed_conditions']['start_date'] == '2026-10-12'
+    assert all(t['revision'] == 2 and t['status'] == 'pending' for t in revised['tasks'])
+    assert [t['id'] for t in revised['tasks']] == [t['id'] for t in w['tasks']]
+    with pytest.raises(ValueError):
+        apply_user_update(w, {'confirmed_conditions': {'start_date': '2026-10-13'},
+                             'task_updates': [{'task_id': w['tasks'][0]['id'], 'conditions': {'departure_date': '2026-10-12'}}]})

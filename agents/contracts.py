@@ -72,6 +72,9 @@ def validate_plan(value: dict) -> dict:
         raise ValueError('plan must be an object')
     plan = deepcopy(value)
     mode = plan.setdefault('response_mode', 'answer')
+    if mode == 'itinerary' and (isinstance(plan.get('workflow_proposal'), dict) or isinstance(plan.get('resume_workflow_id'), str)):
+        # A structured task proposal is an unambiguous workflow signal, even with the legacy label.
+        mode = plan['response_mode'] = 'workflow'
     finish = plan.setdefault('finalization_mode', 'synthesize')
     if mode not in {'direct', 'answer', 'itinerary', 'workflow'} or finish not in {'forward', 'synthesize'}:
         raise ValueError('invalid response mode')
