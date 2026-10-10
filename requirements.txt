@@ -4,6 +4,8 @@ setuptools>=69.0.0,<82
 
 # 多智能体框架
 agentscope==1.0.16
+# AgentScope async memory requires greenlet through this extra.
+sqlalchemy[asyncio]
 mcp==1.30.0
 
 # LLM 调用
