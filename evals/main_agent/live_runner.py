@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 from agentscope.model import OpenAIChatModel
 from rich.console import Console
 from agents.main_agent import MainAgent
-from agents.orchestration_agent import OrchestrationAgent
+from agents.execution_harness import ExecutionHarness
 from agents.lazy_agent_registry import LazyAgentRegistry
 from cli import TripEvidenceCLI
 from config import LLM_CONFIG, get_settings, get_model_generate_kwargs
@@ -143,7 +143,7 @@ async def run_case(case_id, query, expected):
     app = TripEvidenceCLI()
     app.user_id, app.session_id, app.memory_manager, app.model = USER, case_id, memory, model
     app.console = console
-    app.orchestrator = OrchestrationAgent(main_agent=MainAgent(model), agent_registry=registry, memory_manager=memory)
+    app.harness = ExecutionHarness(main_agent=MainAgent(model), agent_registry=registry, memory_manager=memory)
     started = perf_counter()
     exception = None
     try:

@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 from agents.contracts import RunState
-from agents.orchestration_agent import normalize_schedule
+from agents.execution_harness import business_schedule
 from travel_data.tools import ToolExecutor
 from travel_data.contracts import AgentDataResult
 
@@ -16,7 +16,7 @@ class Provider:
 
 @pytest.mark.parametrize('priority', [float('inf'), -float('inf'), float('nan'), True])
 def test_invalid_schedule_priority_is_rejected(priority):
-    with pytest.raises(ValueError): normalize_schedule([{'agent_name': 'information_query', 'priority': priority}])
+    with pytest.raises(ValueError): business_schedule([{'agent_name': 'information_query', 'priority': priority}])
 
 
 @pytest.mark.asyncio

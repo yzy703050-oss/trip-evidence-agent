@@ -25,14 +25,14 @@ def initialize(monkeypatch, key):
     monkeypatch.setattr(cli_module, 'MemoryManager', lambda **kwargs: SimpleNamespace(session_store=SimpleNamespace(append_run=lambda record: None)))
     monkeypatch.setattr(cli_module, 'MeteredModel', lambda *args, **kwargs: object())
     monkeypatch.setattr(cli_module, 'MainAgent', lambda **kwargs: object())
-    monkeypatch.setattr(cli_module, 'OrchestrationAgent', lambda **kwargs: SimpleNamespace(**kwargs))
+    monkeypatch.setattr(cli_module, 'ExecutionHarness', lambda **kwargs: SimpleNamespace(**kwargs))
     monkeypatch.setattr(cli_module.Prompt, 'ask', lambda *args, **kwargs: 'offline-user')
     monkeypatch.setattr(cli_module.TripEvidenceCLI, 'choose_session_id', lambda self: 'offline-session')
     app = cli_module.TripEvidenceCLI()
     output = io.StringIO()
     app.console = Console(file=output, width=240, color_system=None)
     asyncio.run(app.initialize_system())
-    app.orchestrator.agent_registry.console = app.console
+    app.harness.agent_registry.console = app.console
     return app, output
 
 
@@ -57,7 +57,7 @@ def test_example_env_loads_with_optional_pricing_unset(monkeypatch):
 @pytest.mark.parametrize('key', ['', '   '])
 def test_empty_key_keeps_train_unavailable(monkeypatch, key):
     app, output = initialize(monkeypatch, key)
-    registry = app.orchestrator.agent_registry
+    registry = app.harness.agent_registry
     assert 'train_search' not in registry.providers
     agent = registry['information_query'].tool_executor
     from agents.contracts import RunState
@@ -82,7 +82,7 @@ def test_startup_injects_juhe_and_agent_cli_show_sourced_quote(monkeypatch, capl
         return Response()
     monkeypatch.setattr('travel_data.juhe_train.requests.post', post)
     app, output = initialize(monkeypatch, KEY)
-    registry = app.orchestrator.agent_registry
+    registry = app.harness.agent_registry
     provider = registry.providers.get('train_search')
     assert isinstance(provider, JuheTrainProvider)
     provider._now_fn = lambda: NOW
@@ -102,7 +102,7 @@ def test_startup_injects_juhe_and_agent_cli_show_sourced_quote(monkeypatch, capl
 @pytest.mark.asyncio
 async def test_cli_paid_train_is_not_replayed_after_stage_write_failure(tmp_path, monkeypatch):
     from agents.contracts import RunState
-    from agents.orchestration_agent import OrchestrationAgent
+    from agents.execution_harness import ExecutionHarness
     from context.memory_manager import MemoryManager
     from travel_data.tools import ToolExecutor
     from test_main_harness import Main
@@ -119,7 +119,7 @@ async def test_cli_paid_train_is_not_replayed_after_stage_write_failure(tmp_path
     memory = MemoryManager('alice', 'failure', storage_path=str(tmp_path))
     app = cli_module.TripEvidenceCLI()
     app.memory_manager = memory
-    app.orchestrator = OrchestrationAgent(main_agent=Main(), agent_registry={'information_query': Info()}, memory_manager=memory)
+    app.harness = ExecutionHarness(main_agent=Main(), agent_registry={'information_query': Info()}, memory_manager=memory)
     def fail(*args, **kwargs): raise OSError('stage write failed')
     monkeypatch.setattr(memory, 'record_agent_stage', fail)
     with pytest.raises(OSError): await app.process_query('query')
