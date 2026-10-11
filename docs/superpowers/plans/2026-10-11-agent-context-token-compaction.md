@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11、AgentScope、现有 OpenAI 兼容模型、pytest、JSON/JSONL 本地存储。
 
-**Spec:** `openspec/changes/isolate-agent-context-token-compaction/specs/agent-context-isolation/spec.md`、`specs/token-session-compaction/spec.md`；技术依据为该 change 的 `design.md`，任务状态在该 change 的 `tasks.md`。
+**Spec:** `openspec/changes/archive/2026-10-11-isolate-agent-context-token-compaction/specs/agent-context-isolation/spec.md`、`specs/token-session-compaction/spec.md`；技术依据为该 change 的 `design.md`，任务状态在该 change 的 `tasks.md`。
 
 ## Global Constraints
 
@@ -154,7 +154,7 @@ git diff --check
 - [x] 单代理模式整体自审；多子代理模式按用户选择安排规格和代码质量评审。逐项将规格、任务、代码及测试结果对照；测试豁免明确记载，不能把全量通过表述为超限已覆盖。
 - [x] 查可用 verify 工作流。若没有，报告“未运行 OpenSpec verify，已人工逐项核对”；不得把 validate 当作实现 verify。
 - [x] 非豁免任务/检查全部满足条件后更新 4.1、4.2，执行 `openspec archive isolate-agent-context-token-compaction --yes`，检查主规格和归档状态；将完成记录纳入工作分支。
-- [ ] 分支整合选择：已读取 finishing-a-development-branch，提供合并/PR/保留分支选项；用户选择后执行。本次实现、验证和归档完成。
+- [x] 分支整合选择：用户明确选择提交 PR 并合并 main；按 finishing-a-development-branch 完成测试、创建 PR、等待远端检查和合并。选择已确认，合并结果记录在 PR 中。
 
 ## 实施记录
 
@@ -169,4 +169,4 @@ Task 4：预算包装、流式最终快照、主请求重建、main/child/summar
 Task 5：最终全量663 passed/3 skipped；compileall、strict validate和差异检查通过。Ruff变更范围177项均为既有问题（基线180），各文件无新增诊断。未运行OpenSpec verify（工作流不可用），已人工逐条核对；详见 `docs/superpowers/reviews/2026-10-11-agent-context-token-compaction-verification.md`。单轮超限分段场景仍按用户要求不实测。
 整体自审修复：遥测日志失败不影响正常回复、新请求不继承上一结果元数据，两项均RED→GREEN；最终全量通过。对子任务不复制原聊天记录，但保留显式任务事实摘要并刷新最新值，兼容空recent_messages接口。
 
-归档：`openspec archive isolate-agent-context-token-compaction --yes` 成功，主规格 agent-context-isolation（3要求）和 token-session-compaction（4要求）已同步。工作分支已保存，分支整合等用户收尾选择。
+归档：`openspec archive isolate-agent-context-token-compaction --yes` 成功，主规格 agent-context-isolation（3要求）和 token-session-compaction（4要求）已同步。用户已选择提交 PR 并合并 main；提交前完整测试复跑 663 passed/3 skipped。远端 main 已是当前分支祖先；本次 PR 同时包含本地 main 尚未推送的行程复用提交。
