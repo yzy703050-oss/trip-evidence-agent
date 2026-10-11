@@ -10,14 +10,14 @@ from typing import Any
 class ShortTermMemory:
     """Keep recent turns without assuming each turn has exactly two events."""
 
-    def __init__(self, max_turns: int = 10):
+    def __init__(self, max_turns: int | None = None):
         self.max_turns = max_turns
         self.messages: list[dict[str, Any]] = []
 
     def add_event(self, event: dict[str, Any]) -> None:
         self.messages.append(dict(event))
         turns = list(dict.fromkeys(item.get("turn_id") for item in self.messages if item.get("turn_id")))
-        if len(turns) > self.max_turns:
+        if self.max_turns is not None and len(turns) > self.max_turns:
             keep = set(turns[-self.max_turns:])
             self.messages = [item for item in self.messages if item.get("turn_id") in keep]
 
@@ -42,11 +42,10 @@ class ShortTermMemory:
 
     def get_recent_context(self, n_turns: int | None = None) -> list[dict[str, Any]]:
         """Only user-facing messages are suitable for general Agent context."""
+        from agents.context_projection import project_session_message
         return [
-            item for item in self.get_events(n_turns)
-            if item.get("scope") == "session"
-            and item.get("type") == "message"
-            and item.get("role") in {"user", "assistant"}
+            view for item in self.get_events(n_turns)
+            if (view := project_session_message(item)) is not None
         ]
 
     def get_context_string(self, n_turns: int = 5) -> str:

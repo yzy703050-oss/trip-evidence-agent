@@ -14,6 +14,10 @@ _stage: ContextVar[str] = ContextVar("v0_model_stage", default="unspecified")
 _scope: ContextVar[dict] = ContextVar('workflow_model_scope', default={})
 
 
+def current_model_context():
+    return {"stage": _stage.get(), **_scope.get()}
+
+
 @contextmanager
 def model_scope(**ids):
     token = _scope.set({**_scope.get(), **ids})

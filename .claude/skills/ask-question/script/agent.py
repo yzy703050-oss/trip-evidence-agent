@@ -16,6 +16,7 @@ RAG知识库智能体 RAGKnowledgeAgent
 安装：
 pip install milvus sentence-transformers
 """
+from context.context_budget import ContextBudgetExceeded
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
 from typing import Optional, Union, List, Dict
@@ -72,7 +73,7 @@ class RAGKnowledgeAgent(AgentBase):
         if self.rag_service is not None:
             self.initialized = True
             return
-        
+
         if knowledge_base_path is None:
             # Default to local data directory in skill folder
             current_dir = Path(__file__).parent.parent
@@ -323,7 +324,7 @@ class RAGKnowledgeAgent(AgentBase):
                     extracted_query = data["context"].get("rewritten_query", "")
                 elif "rewritten_query" in data:
                     extracted_query = data.get("rewritten_query", "")
-                
+
                 # 使用提取到的 query（即使为空，也比 JSON 字符串好）
                 user_query = extracted_query
             except:
@@ -429,7 +430,7 @@ class RAGKnowledgeAgent(AgentBase):
 
                 if not answer:
                     answer = "无法生成答案"
-                
+
                 # 清理 LLM 可能输出的 JSON 格式
                 answer_str = answer.strip()
                 if answer_str.startswith("{") and answer_str.endswith("}"):
@@ -441,6 +442,8 @@ class RAGKnowledgeAgent(AgentBase):
                     except:
                         pass
 
+            except ContextBudgetExceeded:
+                raise
             except Exception as e:
                 logger.error(f"Error generating answer with LLM: {e}")
                 answer = f"知识库中找到相关信息，但生成答案时出错：{str(e)}"

@@ -5,6 +5,42 @@ from agentscope.message import Msg
 from context.memory_manager import MemoryManager
 
 
+def test_more_than_ten_small_turns_remain_visible(tmp_path):
+    memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
+    for index in range(12):
+        turn = memory.start_turn(f"q{index}")
+        memory.record_message("assistant", f"a{index}", turn, final=True)
+    reopened = MemoryManager("alice", "s1", storage_path=str(tmp_path))
+    assert len(reopened.short_term.get_recent_context()) == 24
+    assert len(reopened.get_compacted_context()["recent_messages"]) == 24
+    assert reopened.get_compacted_context()["recent_messages"][0]["content"] == "q0"
+
+
+def test_main_result_history_projects_reply_without_tool_payload(tmp_path):
+    import json
+
+    memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
+    turn = memory.start_turn("查票")
+    original = memory.record_message(
+        "assistant",
+        json.dumps(
+            {
+                "status": "completed",
+                "final_answer": "已查到车票",
+                "results": {"information_query": {"raw": "PRIVATE_TOOL_MARKER"}},
+            }
+        ),
+        turn,
+        final=True,
+        metadata={"format": "main_result"},
+    )
+    context = memory.get_compacted_context()
+    assert "PRIVATE_TOOL_MARKER" not in json.dumps(context, ensure_ascii=False)
+    assert context["recent_messages"][-1]["content"] == "已查到车票"
+    assert memory.session_store.read_events()[-1] == original
+    assert "PRIVATE_TOOL_MARKER" not in memory.get_context_for_agent()
+
+
 def test_session_resume_keeps_complete_turns_and_isolates_other_sessions(tmp_path):
     memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
     first = memory.start_turn("第一次问题")
@@ -101,9 +137,8 @@ def test_clear_context_also_drops_old_compaction_summary(tmp_path):
         turn = memory.start_turn(f"旧问题{index}" + "长" * 20)
         memory.record_message("assistant", "旧回答" + "长" * 20, turn, final=True)
     memory.compact_if_needed(
-        10,
+        80,
         summarizer=lambda _old, _events: "旧会话摘要",
-        keep_recent_turns=1,
         token_counter=lambda event: len(str(event.get("content", ""))),
     )
     assert memory.get_compacted_context()["summary"]

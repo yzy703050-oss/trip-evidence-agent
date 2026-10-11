@@ -407,4 +407,7 @@ def build_final_answer(result: dict) -> str:
 
 def finalize_business_result(result: dict) -> dict:
     """Keep the JSON envelope; make its final_answer the full public reply."""
+    if result.get("stop_reason") == "context_budget_exceeded":
+        from context.context_budget import CONTEXT_BUDGET_MESSAGE
+        return {**result, "final_answer": CONTEXT_BUDGET_MESSAGE}
     return {**result, "final_answer": build_final_answer(result)}

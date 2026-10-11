@@ -37,6 +37,7 @@ from travel_data.amap_hotel import AmapHotelProvider
 from context.memory_manager import MemoryManager
 from context.session_store import SessionStore, storage_component
 from context.telemetry import MeteredModel
+from context.context_budget import BudgetedModel, ContextBudgetExceeded  # noqa: E402
 from utils.circuit_breaker import CircuitBreaker, CircuitOpenError
 from utils.llm_resilience import run_health_check as check_llm_health
 from agents.main_agent import MainAgent
@@ -163,15 +164,20 @@ class TripEvidenceCLI:
     def _bind_session(self, session_id: str, *, raw_model=None, providers=None, memory=None) -> None:
         """Construct all session-owned components before replacing live bindings."""
         from agents.lazy_agent_registry import LazyAgentRegistry
+        from context.telemetry import MeteredModel as TelemetryModel
         memory = memory or MemoryManager(self.user_id, session_id,
                                storage_path=self.memory_manager.long_term.storage_path)
         if raw_model is None:
-            raw_model = self.model.model if isinstance(self.model, MeteredModel) else self.model
+            raw_model = self.model
+        while isinstance(raw_model, TelemetryModel | BudgetedModel):
+            raw_model = raw_model.model
         model = MeteredModel(raw_model, memory.session_store.append_run,
                              input_usd_per_million=LLM_CONFIG['input_usd_per_million'],
                              output_usd_per_million=LLM_CONFIG['output_usd_per_million'])
+        model = BudgetedModel(model, budget_tokens=SYSTEM_CONFIG['memory_context_budget_tokens'],
+                              record=memory.session_store.append_run)
         memory.llm_model = model
-        main = MainAgent(model=model)
+        main = MainAgent(model=model, memory_manager=memory)
         cache = {}
         registry = LazyAgentRegistry(model, cache, memory_manager=memory,
                                      providers=providers if providers is not None else getattr(self.harness.agent_registry, 'providers', {}))
@@ -227,6 +233,7 @@ class TripEvidenceCLI:
 
     async def process_query(self, user_input: str):
         """Measure a whole query even when a stage exits early or fails."""
+        self.last_result = None
         started = perf_counter()
         status = "incomplete"
         error = None
@@ -244,7 +251,10 @@ class TripEvidenceCLI:
                 try:
                     self.memory_manager.session_store.append_run({
                         "type": "query_run", "turn_id": self.memory_manager.current_turn_id,
-                        "status": status, "error": error,
+                        "status": ("partial" if (self.last_result or {}).get("stop_reason")
+                                   == "context_budget_exceeded" else status),
+                        "error": error,
+                        "stop_reason": (self.last_result or {}).get("stop_reason"),
                         "finalization_method": (self.last_result or {}).get("finalization_method"),
                         "latency_ms": round((perf_counter() - started) * 1000, 3),
                     })
@@ -262,22 +272,25 @@ class TripEvidenceCLI:
             except CircuitOpenError:
                 self.console.print("服务暂时不可用，请稍后再试。", style="yellow")
                 return False
-        await self.memory_manager.compact_if_needed_async(
-            token_budget=SYSTEM_CONFIG.get('memory_context_budget_tokens', 6000))
-        history = await self._get_long_term_summary(user_input, include_history=self.memory_manager.references_history(user_input))
-        snapshot = self.memory_manager.get_compacted_context(n_turns=5)
-        context = {'original_query': user_input, 'current_time': datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(),
-                   'history_summary': history, 'session_summary': snapshot['summary'],
-                   'recent_messages': [m for m in snapshot['recent_messages'] if m.get('turn_id') != turn_id]}
         run = RunState(turn_id, limits=RunLimits(**RUN_LIMITS),
                        effective_preferences=self.memory_manager.long_term.get_preference())
         self.current_run = run
         try:
+            history = await self._get_long_term_summary(
+                user_input, include_history=self.memory_manager.references_history(user_input))
+            snapshot = self.memory_manager.get_compacted_context()
+            context = {'original_query': user_input,
+                       'current_time': datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(),
+                       'history_summary': history, 'session_summary': snapshot['summary'],
+                       'recent_messages': [m for m in snapshot['recent_messages']
+                                           if m.get('turn_id') != turn_id]}
             with self.console.status("思考中...", spinner='dots'):
                 result = await self.harness.run_turn(context, run)
-            if self.circuit_breaker:
+            if self.circuit_breaker and result.get('stop_reason') != 'context_budget_exceeded':
                 if result['status'] == 'error': self.circuit_breaker.record_failure()
                 else: self.circuit_breaker.record_success()
+        except ContextBudgetExceeded as exc:
+            result = self.harness.budget_stop(run, exc)
         except Exception:
             if self.circuit_breaker: self.circuit_breaker.record_failure()
             raise

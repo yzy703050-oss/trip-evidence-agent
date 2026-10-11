@@ -6,6 +6,14 @@ from context.compaction import select_safe_prefix
 from context.memory_manager import MemoryManager
 
 
+def test_compaction_count_includes_projected_business_summary():
+    from context.compaction import estimate_tokens
+
+    event = _event(1, "old", "message", "答复", role="assistant", final=True)
+    with_facts = {**event, "result_summary": {"travel_conditions": {"constraints": "条件" * 50}}}
+    assert estimate_tokens(with_facts) > estimate_tokens(event)
+
+
 def _event(seq, turn, kind, content="x", **extra):
     return {
         "seq": seq,
@@ -31,15 +39,16 @@ def test_completed_turn_cut_keeps_recent_turn_intact():
             events,
             token_budget=10,
             token_counter=lambda event: len(event["content"]),
-            keep_recent_turns=1,
         )
         == 4
     )
 
 
-def test_active_turn_cut_uses_completed_stage_and_retains_pending_call():
+def test_active_turn_stages_never_form_session_cut():
     events = [
-        _event(1, "t1", "message", "用户的完整目标和约束", role="user"),
+        _event(-1, "old", "message", "旧" * 40, role="user"),
+        _event(0, "old", "message", "旧答" * 20, role="assistant", final=True),
+        _event(1, "t1", "message", "目标", role="user"),
         _event(
             2,
             "t1",
@@ -62,12 +71,59 @@ def test_active_turn_cut_uses_completed_stage_and_retains_pending_call():
 
     cut = select_safe_prefix(
         events,
-        token_budget=8,
+        token_budget=30,
         token_counter=lambda event: len(event["content"]),
-        keep_recent_turns=1,
     )
-    assert cut == 4
-    assert [event["seq"] for event in events if event["seq"] > cut] == [5]
+    assert cut == 0
+    assert [event["seq"] for event in events if event["seq"] > cut] == [1, 2, 3, 4, 5]
+
+
+def test_unfinished_old_turn_blocks_prefix():
+    events = [
+        _event(1, "unfinished", "message", "old" * 40, role="user"),
+        _event(2, "completed", "message", "q", role="user"),
+        _event(3, "completed", "message", "a", role="assistant", final=True),
+        _event(4, "active", "message", "q", role="user"),
+    ]
+    assert select_safe_prefix(events, 20, token_counter=lambda event: len(event["content"])) is None
+
+
+def test_legacy_mid_turn_summary_keeps_uncovered_messages(tmp_path):
+    memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
+    turn = memory.start_turn("旧目标")
+    memory.record_message("assistant", "未覆盖答复", turn, final=True)
+    memory.session_store.write_state(
+        {
+            "summary": "旧摘要",
+            "covered_through_seq": 1,
+            "checkpoint": {"goal": "旧目标", "active_turn_id": turn},
+        }
+    )
+    for index in range(12):
+        turn = memory.start_turn(f"q{index}")
+        memory.record_message("assistant", f"a{index}", turn, final=True)
+    context = MemoryManager("alice", "s1", storage_path=str(tmp_path)).get_compacted_context()
+    assert len(context["recent_messages"]) == 25
+    assert context["recent_messages"][0]["content"] == "未覆盖答复"
+    assert "旧目标" in context["summary"]
+
+
+def test_summary_failure_keeps_coverage(tmp_path):
+    memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
+    for _ in range(3):
+        turn = memory.start_turn("q" * 40)
+        memory.record_message("assistant", "a" * 40, turn, final=True)
+    original = memory.session_store.read_state()
+
+    def fail(_previous, _events):
+        raise RuntimeError("summary unavailable")
+
+    state = memory.compact_if_needed(
+        100, summarizer=fail, token_counter=lambda e: len(e["content"])
+    )
+    assert state == original
+    assert memory.session_store.read_state() == original
+    assert len(memory.get_compacted_context()["recent_messages"]) == 6
 
 
 def test_pending_tool_call_cannot_be_compacted_without_safe_boundary():
@@ -101,9 +157,8 @@ def test_compaction_persists_checkpoint_and_preserves_original_events(tmp_path):
         return "前两轮讨论了出行需求"
 
     first = memory.compact_if_needed(
-        token_budget=30,
+        token_budget=80,
         summarizer=summarize,
-        keep_recent_turns=1,
         token_counter=lambda event: len(str(event.get("content", ""))),
     )
     assert first["covered_through_seq"] == 4
@@ -118,9 +173,8 @@ def test_compaction_persists_checkpoint_and_preserves_original_events(tmp_path):
     ]
     assert (
         reopened.compact_if_needed(
-            token_budget=30,
+            token_budget=80,
             summarizer=summarize,
-            keep_recent_turns=1,
             token_counter=lambda event: len(str(event.get("content", ""))),
         )["covered_through_seq"]
         == 4
@@ -142,6 +196,6 @@ async def test_async_compaction_reads_streamed_summary_text(tmp_path):
         turn = memory.start_turn(f"问题{index}" + "长" * 20)
         memory.record_message("assistant", "回答" + "长" * 20, turn, final=True)
     state = await memory.compact_if_needed_async(
-        20, keep_recent_turns=1, token_counter=lambda event: len(str(event.get("content", "")))
+        70, token_counter=lambda event: len(str(event.get("content", "")))
     )
     assert state["summary"] == "旧对话已概括"

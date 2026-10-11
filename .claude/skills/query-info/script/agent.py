@@ -1,4 +1,5 @@
 """Information acquisition agent with validated tools and bounded follow-up."""
+from context.context_budget import ContextBudgetExceeded
 import asyncio
 from copy import deepcopy
 import json
@@ -113,6 +114,8 @@ class InformationQueryAgent(AgentBase):
                 for call, result in zip(turn.tool_calls, results):
                     messages.append(to_tool_message(call['id'], result))
                     self._record_tool(run, call, result)
+            except ContextBudgetExceeded:
+                raise
             except Exception:
                 limited = True
                 break
@@ -196,6 +199,8 @@ class InformationQueryAgent(AgentBase):
         try:
             self.memory_manager.record_tool_call([{'id': record_id, 'name': call['name'], 'arguments': call['arguments']}], run.turn_id, scope)
             self.memory_manager.record_tool_result(record_id, {**result, 'execution': deepcopy(metadata)}, run.turn_id, scope, status=result.get('status', 'error'))
+        except ContextBudgetExceeded:
+            raise
         except Exception:
             # Requests and cache remain in RunState even when logging fails.
             pass

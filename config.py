@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.deepseek.com"
     llm_input_usd_per_1m_tokens: float | None = Field(default=None, ge=0)
     llm_output_usd_per_1m_tokens: float | None = Field(default=None, ge=0)
+    memory_context_budget_tokens: int = Field(default=6000, gt=0)
 
 
 @lru_cache
@@ -55,6 +56,7 @@ def get_model_generate_kwargs(config=None, *, thinking=None):
 
 # System Configuration
 SYSTEM_CONFIG = {
+    "memory_context_budget_tokens": settings.memory_context_budget_tokens,
     "enable_llm": True,  # Set to True to use LLM (recommended), False for rule-based
     "log_level": "INFO",
     "max_retries": 3,

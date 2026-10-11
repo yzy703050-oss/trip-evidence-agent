@@ -1,0 +1,119 @@
+{
+  "model": "deepseek-flash",
+  "passed": 10,
+  "total": 10,
+  "results": [
+    {
+      "case": "same_trip",
+      "expected": {
+        "action": "reuse",
+        "workflow_id": "workflow_example_one"
+      },
+      "actual": {
+        "action": "reuse",
+        "workflow_id": "workflow_example_one",
+        "refresh": false
+      },
+      "passed": true
+    },
+    {
+      "case": "different_date",
+      "expected": {
+        "action": "new"
+      },
+      "actual": {
+        "action": "new"
+      },
+      "passed": true
+    },
+    {
+      "case": "relative_date_changed",
+      "expected": {
+        "action": "new"
+      },
+      "actual": {
+        "action": "new"
+      },
+      "passed": true
+    },
+    {
+      "case": "explicit_new_copy",
+      "expected": {
+        "action": "new"
+      },
+      "actual": {
+        "action": "new"
+      },
+      "passed": true
+    },
+    {
+      "case": "missing_date",
+      "expected": {
+        "action": "clarify"
+      },
+      "actual": {
+        "action": "clarify",
+        "question": "请确认：本次“重庆去上海”是否就是已有的10月18日这趟行程？候选1：workflow_example_one，重庆→上海，2026-10-18出发，10月18日入住、10月20日离店。若不同，请补充出发日期。"
+      },
+      "passed": true
+    },
+    {
+      "case": "duplicate_candidates",
+      "expected": {
+        "action": "clarify"
+      },
+      "actual": {
+        "action": "clarify",
+        "question": "发现两份完全相同的候选规划（均为10月18日重庆→上海，10月18日入住、10月20日离店）：1）workflow_example_one；2）workflow_example_two。请选择要复用哪一份，或说明需要新建。"
+      },
+      "passed": true
+    },
+    {
+      "case": "latest_data",
+      "expected": {
+        "action": "reuse",
+        "workflow_id": "workflow_example_one",
+        "refresh": true
+      },
+      "actual": {
+        "action": "reuse",
+        "workflow_id": "workflow_example_one",
+        "refresh": true
+      },
+      "passed": true
+    },
+    {
+      "case": "past_trip",
+      "expected": {
+        "action": "new"
+      },
+      "actual": {
+        "action": "new"
+      },
+      "passed": true
+    },
+    {
+      "case": "different_destination",
+      "expected": {
+        "action": "new"
+      },
+      "actual": {
+        "action": "new"
+      },
+      "passed": true
+    },
+    {
+      "case": "numbered_selection",
+      "expected": {
+        "action": "reuse",
+        "workflow_id": "workflow_example_one"
+      },
+      "actual": {
+        "action": "reuse",
+        "workflow_id": "workflow_example_one",
+        "refresh": false
+      },
+      "passed": true
+    }
+  ]
+}

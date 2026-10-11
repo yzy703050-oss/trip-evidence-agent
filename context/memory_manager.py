@@ -2,12 +2,14 @@
 记忆管理器 (Memory Manager)
 统一管理两层记忆，提供简单的API
 """
+from context.context_budget import ContextBudgetExceeded, budget_scope
 from typing import Dict, Any, List, Optional
 from .short_term_memory import ShortTermMemory
 from .long_term_memory import LongTermMemory
 from .session_store import SessionStore
 from .workflow_store import WorkflowStore
-from .compaction import estimate_tokens, select_safe_prefix
+from .compaction import estimate_tokens, select_safe_prefix, complete_prefix_boundaries
+from agents.context_projection import project_session_message
 import logging
 import json
 import threading
@@ -60,7 +62,7 @@ class MemoryManager:
         self.session_store = SessionStore(storage_path, user_id, session_id)
         self.workflow_store = WorkflowStore(storage_path, user_id)
         self.workflow_store.trip_memory.repair(self.workflow_store)
-        self.short_term = ShortTermMemory(max_turns=10)
+        self.short_term = ShortTermMemory()
         self._record_lock = threading.RLock()
         self._cleared_through_seq = self.session_store.read_state().get("cleared_through_seq", 0)
         for event in self.session_store.read_events():
@@ -227,69 +229,78 @@ class MemoryManager:
         self.session_store.write_state(state)
         self.short_term.clear()
 
-    def _compaction_selection(self, token_budget: int, token_counter, keep_recent_turns: int):
+    def _compaction_selection(self, token_budget: int, token_counter):
         state = self.session_store.read_state()
         covered = max(state.get("covered_through_seq", 0), state.get("cleared_through_seq", 0))
-        events = [event for event in self.session_store.read_events() if event["seq"] > covered]
-        remaining_budget = max(1, token_budget - max(0, len(state.get("summary", "")) // 2))
-        cutoff = select_safe_prefix(events, remaining_budget, token_counter=token_counter,
-                                    keep_recent_turns=keep_recent_turns)
-        selected = [event for event in events if cutoff is not None and event["seq"] <= cutoff]
-        return state, events, cutoff, selected
+        events = [view for event in self.session_store.read_events()
+                  if event["seq"] > covered and (view := project_session_message(event)) is not None]
+        summary_tokens = token_counter({"content": state.get("summary", "")}) if state.get("summary") else 0
+        cutoff = select_safe_prefix(events, token_budget - summary_tokens, token_counter=token_counter)
+        cuts = [seq for seq in complete_prefix_boundaries(events) if cutoff is not None and seq >= cutoff]
+        return state, events, cuts
 
-    def _save_compaction(self, state: Dict[str, Any], events: List[Dict[str, Any]], cutoff: int, selected: List[Dict[str, Any]], summary: str) -> Dict[str, Any]:
-        if not summary.strip():
-            return state
-        state["summary"] = summary.strip()
-        state["covered_through_seq"] = cutoff
-        if selected and events and cutoff < events[-1]["seq"] and selected[-1].get("turn_id") == events[-1].get("turn_id"):
-            latest_user = next((item for item in reversed(selected) if item.get("role") == "user" and item.get("scope") == "session"), None)
-            state["checkpoint"] = {
-                "active_turn_id": events[-1].get("turn_id"),
-                "goal": latest_user.get("content", "") if latest_user else "",
-                "completed_stages": [item.get("agent_name") for item in selected if item.get("type") == "stage_complete"],
-            }
-        else:
-            state.pop("checkpoint", None)
-        self.session_store.write_state(state)
+    def _save_compaction(self, state, cutoff, summary):
+        updated = dict(state, summary=summary.strip(), covered_through_seq=cutoff)
+        updated.pop("checkpoint", None)
+        self.session_store.write_state(updated)
+        return updated
+
+    @staticmethod
+    def _summary_fits(summary, events, cutoff, token_budget, token_counter):
+        return bool(summary.strip()) and (
+            token_counter({"content": summary}) +
+            sum(token_counter(e) for e in events if e["seq"] > cutoff) <= token_budget)
+
+    def compact_if_needed(self, token_budget: int, *, summarizer,
+                          token_counter=estimate_tokens):
+        """Only commit a complete prefix when its replacement fits the budget."""
+        state, events, cuts = self._compaction_selection(token_budget, token_counter)
+        for cutoff in cuts:
+            selected = [e for e in events if e["seq"] <= cutoff]
+            try:
+                summary = summarizer(state.get("summary", ""), selected)
+                if self._summary_fits(summary, events, cutoff, token_budget, token_counter):
+                    return self._save_compaction(state, cutoff, summary)
+            except ContextBudgetExceeded:
+                raise
+            except Exception:
+                logger.exception("Could not compact session context; raw events remain available")
+                return state
         return state
 
-    def compact_if_needed(self, token_budget: int, *, summarizer, keep_recent_turns: int = 2,
-                          token_counter=estimate_tokens) -> Dict[str, Any]:
-        """Compress a structurally selected prefix using an injected summarizer."""
-        state, events, cutoff, selected = self._compaction_selection(token_budget, token_counter, keep_recent_turns)
-        if cutoff is None:
+    async def compact_if_needed_async(self, token_budget: int, *, token_counter=estimate_tokens):
+        state, events, cuts = self._compaction_selection(token_budget, token_counter)
+        if self.llm_model is None:
             return state
-        summary = summarizer(state.get("summary", ""), selected)
-        return self._save_compaction(state, events, cutoff, selected, summary)
+        for cutoff in cuts:
+            selected = [e for e in events if e["seq"] <= cutoff]
+            prompt = (
+                "概括以下完整已完成用户轮次。保留用户目标、硬约束、已确认事实和待处理事项。"
+                "不要添加原文没有的事实。只返回简洁摘要。\n"
+                f"已有摘要：{state.get('summary', '')}\n"
+                f"待压缩主消息：{json.dumps(selected, ensure_ascii=False)}")
+            try:
+                with budget_scope("summary"):
+                    response = await self.llm_model([{"role": "user", "content": prompt}])
+                    summary = await _read_model_text(response)
+                if self._summary_fits(summary, events, cutoff, token_budget, token_counter):
+                    return self._save_compaction(state, cutoff, summary)
+            except ContextBudgetExceeded:
+                raise
+            except Exception:
+                logger.exception("Could not compact session context; raw events remain available")
+                return state
+        return state
 
-    async def compact_if_needed_async(self, token_budget: int, *, keep_recent_turns: int = 2,
-                                      token_counter=estimate_tokens) -> Dict[str, Any]:
-        """Use the configured model for free-text summary after selecting a safe cut."""
-        state, events, cutoff, selected = self._compaction_selection(token_budget, token_counter, keep_recent_turns)
-        if cutoff is None or self.llm_model is None:
-            return state
-        prompt = (
-            "概括以下已完成的对话或执行阶段。保留用户当前目标、硬约束、已确认事实、重要工具结果、"
-            "已完成的 Agent 及尚待处理事项。不要添加原文没有的事实。\n"
-            f"已有摘要：{state.get('summary', '')}\n"
-            f"待压缩事件：{json.dumps(selected, ensure_ascii=False)}\n"
-            "请给出简洁摘要："
-        )
-        try:
-            response = await self.llm_model([{"role": "user", "content": prompt}])
-            return self._save_compaction(state, events, cutoff, selected, await _read_model_text(response))
-        except Exception:
-            logger.exception("Could not compact session context; raw events remain available")
-            return state
-
-    def get_compacted_context(self, n_turns: int = 5) -> Dict[str, Any]:
+    def get_compacted_context(self, n_turns: int | None = None) -> Dict[str, Any]:
         state = self.session_store.read_state()
         covered = max(state.get("covered_through_seq", 0), state.get("cleared_through_seq", 0))
         events = [event for event in self.session_store.read_events() if event["seq"] > covered]
-        recent = ShortTermMemory(max_turns=max(10, n_turns))
+        recent = ShortTermMemory()
         for event in events:
-            recent.add_event(event)
+            projected = project_session_message(event)
+            if projected is not None:
+                recent.add_event(projected)
         summary = state.get("summary", "")
         checkpoint = state.get("checkpoint", {})
         if checkpoint.get("goal"):
@@ -311,8 +322,8 @@ class MemoryManager:
         """
         return {
             "short_term": {
-                "recent_dialogue": self.short_term.get_recent_context(5),
-                "context_string": self.short_term.get_context_string(5),
+                "recent_dialogue": self.get_compacted_context()["recent_messages"],
+                "context_string": self.short_term.get_context_string(None),
                 "statistics": self.short_term.get_statistics()
             },
             "long_term": {
@@ -353,7 +364,7 @@ class MemoryManager:
             lines.append("")
 
         # 短期记忆（当前会话）
-        context_str = self.short_term.get_context_string(3)
+        context_str = self.short_term.get_context_string(None)
         if context_str != "无历史对话":
             lines.append("【当前会话对话】")
             lines.append(context_str)
@@ -390,15 +401,19 @@ class MemoryManager:
             summary = state.get("session_summary", "")
             if not summary or state.get("session_summary_through_seq", 0) < last_seq:
                 newer = [event for event in visible if event["seq"] > state.get("session_summary_through_seq", 0)]
-                lines = [f"{event['role']}: {event.get('content', '')}" for event in newer[-max_messages:]]
+                lines = [f"{event['role']}: {event.get('content', '')}" for raw in newer[-max_messages:]
+                         if (event := project_session_message(raw)) is not None]
                 if self.llm_model:
                     prompt = (
                         "更新这段历史会话的简短摘要。保留用户偏好、已确认事实和重要约束，不要添加没有依据的信息。\n"
                         f"旧摘要：{summary}\n新增消息：{'；'.join(lines)}\n摘要："
                     )
                     try:
-                        response = await self.llm_model([{"role": "user", "content": prompt}])
-                        summary = (await _read_model_text(response)).strip()
+                        with budget_scope("summary"):
+                            response = await self.llm_model([{"role": "user", "content": prompt}])
+                            summary = (await _read_model_text(response)).strip()
+                    except ContextBudgetExceeded:
+                        raise
                     except Exception:
                         logger.exception("Could not summarize prior session %s", directory.name)
                 if not summary:
