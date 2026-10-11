@@ -331,7 +331,9 @@ def build_final_answer(result: dict) -> str:
             line for line in answer.splitlines() if _prose(line) not in grounded_lines
         )
     has_plan = bool(result.get('workflow') and (result.get('validated_plan') or {}).get('reconstructed_tasks'))
-    parts = ['这趟行程可以这样安排' if has_plan else _prose(answer), _missing(result.get("missing_fields"))]
+    intro = ('这趟行程可以这样安排' if has_plan and result.get('stop_reason') != 'workflow_reused'
+             else _prose(answer))
+    parts = [intro, _missing(result.get("missing_fields"))]
     if result.get("workflow"):
         checked = result.get("validated_plan") or {}
         for task in checked.get("reconstructed_tasks", []):
