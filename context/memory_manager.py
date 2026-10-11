@@ -74,10 +74,16 @@ class MemoryManager:
     def get_active_workflows(self):
         state = self.session_store.read_state()
         ids = state.get('active_workflow_ids', [])
-        # A new session may resume this user's unfinished workflow.
-        if not ids:
-            return self.workflow_store.list_active()
         return [value for workflow_id in ids if (value := self.workflow_store.load(workflow_id)) is not None]
+
+    @staticmethod
+    def references_history(query):
+        return any(word in query for word in ('上次', '之前', '以前', '历史', '旧行程', '继续', '恢复', '重试', '上个', '那趟', '那次', '这段', '那段', 'workflow_'))
+
+    def get_workflow_context(self, query=''):
+        if self.references_history(query):
+            return self.get_known_workflows(query=query)
+        return self.get_active_workflows()
 
     def get_known_workflows(self, query='', limit=5):
         if type(limit) is not int or limit<1: raise ValueError('invalid known workflow limit')
@@ -366,7 +372,7 @@ class MemoryManager:
         """Cache one summary per prior session and select relevant sessions."""
         from pathlib import Path
 
-        sessions_dir = Path(self.long_term.storage_path) / self.user_id / "sessions"
+        sessions_dir = self.long_term.user_dir / "sessions"
         if not sessions_dir.exists():
             return ""
         candidates = []

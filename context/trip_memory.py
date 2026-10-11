@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 class TripMemory:
     def __init__(self, root, user_id):
-        self.directory=Path(root)/storage_component(user_id)
+        from context.user_storage import resolve_user_directory
+        self.directory=resolve_user_directory(root, user_id)
         self.path=self.directory/'trip.md'
 
     def rebuild(self, workflow_store):

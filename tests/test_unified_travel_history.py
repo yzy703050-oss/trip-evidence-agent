@@ -1,3 +1,4 @@
+from context.user_storage import resolve_user_directory
 import json
 from concurrent.futures import ThreadPoolExecutor
 
@@ -17,7 +18,7 @@ def completed(memory):
 def test_new_user_and_preference_save_do_not_create_trips_file(tmp_path):
     memory = LongTermMemory("alice", str(tmp_path))
     memory.set_user_preference("home_location", "上海")
-    assert not (tmp_path / "alice" / "trips.json").exists()
+    assert not (resolve_user_directory(tmp_path, "alice") / "trips.json").exists()
 
 
 def test_completed_workflow_is_history_without_a_second_save(tmp_path):
@@ -42,6 +43,7 @@ def test_latest_completed_revision_controls_history_and_statistics(tmp_path):
     assert memory.long_term.get_frequent_destinations() == [("苏州", 1)]
     newer["status"] = "partial"
     memory.workflow_store.save(newer, expected_revision=newer["revision"])
+    memory.set_active_workflow(newer['id'])
     assert memory.long_term.get_trip_history() == []
     assert memory.get_active_workflows()[0]["id"] == newer["id"]
 
@@ -49,7 +51,7 @@ def test_latest_completed_revision_controls_history_and_statistics(tmp_path):
 def legacy_source(tmp_path, rows):
     path = tmp_path / "alice" / "trips.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"trip_history": rows}, ensure_ascii=False), encoding="utf-8")
+    path.write_text(json.dumps({"user_id": "alice", "trip_history": rows}, ensure_ascii=False), encoding="utf-8")
     return path
 
 
@@ -62,7 +64,7 @@ def test_legacy_import_is_idempotent_readonly_and_not_resumable(tmp_path):
         assert memory.long_term.get_trip_history() == rows
         assert memory.get_known_workflows() == []
         assert memory.get_active_workflows() == []
-    assert list((tmp_path / "alice" / "workflows").glob("history_*.json"))
+    assert list((resolve_user_directory(tmp_path, "alice") / "workflows").glob("history_*.json"))
     assert source.read_bytes() == before
 
 
@@ -108,7 +110,7 @@ def test_parallel_imports_and_save_keep_unique_history(tmp_path):
             pool.map(lambda _: LongTermMemory("alice", str(tmp_path)).get_trip_history(), range(2))
         )
     assert all(len(rows) == 1 for rows in histories)
-    assert len(list((tmp_path / "alice" / "workflows").glob("history_*.json"))) == 1
+    assert len(list((resolve_user_directory(tmp_path, "alice") / "workflows").glob("history_*.json"))) == 1
 
 
 def test_identical_legacy_records_without_ids_are_not_lost(tmp_path):
@@ -190,8 +192,8 @@ def test_compatibility_history_saves_use_unified_storage_and_limit(tmp_path):
     assert [r["destination"] for r in memory.get_trip_history(1)] == ["北京"]
     assert len(memory.get_trip_history(None)) == 2
     assert memory.get_statistics()["total_trips"] == 2
-    assert not (tmp_path / "alice" / "trips.json").exists()
-    assert len(list((tmp_path / "alice" / "workflows").glob("history_*.json"))) == 2
+    assert not (resolve_user_directory(tmp_path, "alice") / "trips.json").exists()
+    assert len(list((resolve_user_directory(tmp_path, "alice") / "workflows").glob("history_*.json"))) == 2
 
 
 @pytest.mark.asyncio
@@ -209,7 +211,7 @@ async def test_real_workflow_completion_never_writes_history_copy(tmp_path, monk
     row = runtime.memory.long_term.get_trip_history()[0]
     assert row["itinerary"] == result["workflow"]["validation"]
     assert row["workflow_revision"] == result["workflow_revision"]
-    assert not list((tmp_path / "alice" / "workflows").glob("history_*.json"))
+    assert not list((resolve_user_directory(tmp_path, "alice") / "workflows").glob("history_*.json"))
 
 
 def test_summary_reads_migrated_history_when_backup_is_unavailable(tmp_path):
@@ -218,7 +220,7 @@ def test_summary_reads_migrated_history_when_backup_is_unavailable(tmp_path):
     # Removing only this test fixture proves the migrated records are self-contained.
     source.unlink()
     memory.get_known_workflows()
-    assert "旧旅行概要" in (tmp_path / "alice" / "trip.md").read_text(encoding="utf-8")
+    assert "旧旅行概要" in (resolve_user_directory(tmp_path, "alice") / "trip.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio

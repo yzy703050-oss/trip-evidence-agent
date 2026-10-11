@@ -165,7 +165,7 @@ async def test_final_prose_cannot_introduce_fake_prices_or_booking(tmp_path):
     r = Runtime(tmp_path, main=Main()); result = await r.turn()
     assert result['status'] == 'completed'
     assert '299999' not in result['final_answer'] and '已预订' not in result['final_answer']
-    assert '火车' in result['final_answer'] and '酒店' in result['final_answer']
+    assert 'G0' in result['final_answer'] and '酒店' in result['final_answer']
 
 
 @pytest.mark.asyncio

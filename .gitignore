@@ -58,6 +58,7 @@ data/preferences/*.json
 
 # Local execution artifacts
 .superpowers/
+.test-tmp/
 .rag-check/
 .resume_render/
 *.mp4

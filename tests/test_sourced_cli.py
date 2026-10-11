@@ -4,7 +4,7 @@ from cli import TripEvidenceCLI
 from utils.response_renderer import finalize_business_result
 
 
-def test_domain_statuses_and_sources_are_visible():
+def test_domain_statuses_visible_sources_hidden():
     cli = TripEvidenceCLI()
     output = io.StringIO()
     cli.console = Console(file=output, width=160, color_system=None)
@@ -13,7 +13,7 @@ def test_domain_statuses_and_sources_are_visible():
     text = output.getvalue()
     assert "服务暂时不可用" in text and "需要补充条件" in text and "攻略查询失败" in text
     assert "入住日期" in text and "check_in" not in text
-    assert "authorized" in text and "2026-10-08" in text
+    assert "authorized" not in text and "2026-10-08" not in text
     assert "无票" not in text and "无房" not in text
 
 

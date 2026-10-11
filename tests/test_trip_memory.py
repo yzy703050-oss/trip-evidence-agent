@@ -1,3 +1,4 @@
+from context.user_storage import resolve_user_directory
 import json
 import pytest
 from context.memory_manager import MemoryManager
@@ -9,7 +10,7 @@ def test_partial_and_completed_are_known_across_sessions_and_summary_repairs(tmp
     m=MemoryManager('alice','one',storage_path=str(tmp_path))
     w=populated_workflow(); w['status']='partial'
     saved=m.workflow_store.save(w,expected_revision=None)
-    path=tmp_path/'alice'/'trip.md'
+    path=resolve_user_directory(tmp_path,'alice')/'trip.md'
     assert path.exists() and saved['id'] in path.read_text(encoding='utf-8')
     saved['status']='completed'
     saved=m.workflow_store.save(saved,expected_revision=saved['revision'])
@@ -25,12 +26,12 @@ def test_partial_and_completed_are_known_across_sessions_and_summary_repairs(tmp
 def test_legacy_projection_is_idempotent_and_preserves_json(tmp_path):
     source=tmp_path/'alice'/'trips.json'
     source.parent.mkdir(parents=True)
-    source.write_text(json.dumps({'trip_history':[dict(origin='重庆',destination='上海',summary='旧记录')]}),encoding='utf-8')
+    source.write_text(json.dumps({'user_id':'alice','trip_history':[dict(origin='重庆',destination='上海',summary='旧记录')]}),encoding='utf-8')
     m=MemoryManager('alice','one',storage_path=str(tmp_path))
     before=(tmp_path/'alice'/'trips.json').read_bytes()
     m.get_known_workflows(); m.get_known_workflows()
     assert (tmp_path/'alice'/'trips.json').read_bytes()==before
-    text=(tmp_path/'alice'/'trip.md').read_text(encoding='utf-8')
+    text=(resolve_user_directory(tmp_path,'alice')/'trip.md').read_text(encoding='utf-8')
     assert text.count('旧记录')==1
 
 
@@ -43,7 +44,7 @@ async def test_replanning_same_trip_does_not_duplicate_history_or_statistics(tmp
     history=r.memory.long_term.get_trip_history(20)
     assert len([x for x in history if x.get('workflow_id')==first['workflow_id']])==1
     assert r.memory.long_term.get_statistics()['total_trips']==1
-    assert (tmp_path/'alice'/'trip.md').read_text(encoding='utf-8').count('## '+first['workflow_id'])==1
+    assert (resolve_user_directory(tmp_path,'alice')/'trip.md').read_text(encoding='utf-8').count('## '+first['workflow_id'])==1
 
 
 def test_projection_failure_does_not_fail_canonical_save(tmp_path,monkeypatch):
@@ -76,7 +77,7 @@ def test_active_trips_do_not_displace_five_recent_completed_details(tmp_path):
         rows.append(w)
     projection=TripMemory(tmp_path,'alice')
     projection.rebuild(SimpleNamespace(list_all=lambda:rows,list_history=lambda:[]))
-    text=(tmp_path/'alice'/'trip.md').read_text(encoding='utf-8')
+    text=(resolve_user_directory(tmp_path,'alice')/'trip.md').read_text(encoding='utf-8')
     for index in range(11):
         section=text.split('## workflow_'+str(index)+'\n')[1].split('\n## ')[0]
         assert '详细任务见' not in section

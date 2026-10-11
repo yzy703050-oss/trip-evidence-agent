@@ -136,6 +136,8 @@ def apply_travel_update(workflow, update, *, context=None):
                 if value not in PURPOSES: raise ValueError('invalid purpose')
             old_value = task.get(key)
             task[key] = value
+            if key == 'origin':
+                task['field_sources']['origin'] = 'user'
             index = w['tasks'].index(task)
             if key == 'destination' and index+1 < len(w['tasks']) and w['tasks'][index+1]['origin'] == old_value:
                 w['tasks'][index+1]['origin'] = value

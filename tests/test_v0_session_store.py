@@ -1,3 +1,4 @@
+from context.user_storage import resolve_user_directory
 """V0 session persistence contracts; these tests never call a model."""
 
 import json
@@ -134,10 +135,10 @@ def test_legacy_user_json_migrates_once_without_deleting_source(tmp_path):
         "去北京",
         "好的",
     ]
-    assert (tmp_path / "alice" / "profile.json").exists()
-    assert not (tmp_path / "alice" / "trips.json").exists()
-    assert list((tmp_path / "alice" / "workflows").glob("history_*.json"))
-    assert (tmp_path / "alice" / "sessions" / "s1" / "events.jsonl").exists()
+    assert (resolve_user_directory(tmp_path, "alice") / "profile.json").exists()
+    assert not (resolve_user_directory(tmp_path, "alice") / "trips.json").exists()
+    assert list((resolve_user_directory(tmp_path, "alice") / "workflows").glob("history_*.json"))
+    assert (resolve_user_directory(tmp_path, "alice") / "sessions" / "s1" / "events.jsonl").exists()
     assert json.loads(old_path.read_text(encoding="utf-8")) == legacy
 
     reopened = LongTermMemory("alice", str(tmp_path))

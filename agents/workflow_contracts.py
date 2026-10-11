@@ -129,6 +129,12 @@ def create_workflow(proposal, context, *, workflow_id=None, require_stay_proposa
         if not isinstance(row.get('destination'), str) or not row['destination'].strip() or (
                 row.get('origin') is not None and (not isinstance(row['origin'], str) or not row['origin'].strip())):
             raise ValueError('task route needs cities')
+        default_origin = None
+        if index == 0 and row.get('origin') is None:
+            home = context.get('effective_preferences', {}).get('home_location')
+            if isinstance(home, str) and home.strip() and home.strip() != row['destination']:
+                default_origin = home.strip()
+                row = {**row, 'origin': default_origin}
         if row.get('origin') == row['destination'] or (tasks and row.get('origin') is not None and row['origin'] != tasks[-1]['destination']):
             raise ValueError('route is not continuous')
         if tasks and row.get('origin') is None: row = {**row, 'origin': tasks[-1]['destination']}
@@ -169,11 +175,14 @@ def create_workflow(proposal, context, *, workflow_id=None, require_stay_proposa
         if index == 0 and not conditions.get('departure_date') and confirmed.get('start_date'):
             conditions['departure_date'] = confirmed['start_date']
             field_sources['departure_date'] = 'derived'
+        task_sources = {k: field_sources.get(k, 'proposal') for k in conditions}
+        if default_origin is not None:
+            task_sources['origin'] = 'preference'
         tasks.append(dict(id=identifier('task'), revision=1, status='pending',
                           origin=row.get('origin'), destination=row['destination'],
                           purpose=purpose, purpose_source=row.get('purpose_source', 'proposal'),
                           requires_hotel=row['requires_hotel'], depends_on=[tasks[-1]['id']] if tasks else [],
-                          conditions=conditions, field_sources={k: field_sources.get(k, 'proposal') for k in conditions},
+                          conditions=conditions, field_sources=task_sources,
                           draft_plan=None, summary='', query_ids=[], issues=[]))
     return dict(id=workflow_id or identifier('workflow'), revision=1, status='running',
                 original_query=context.get('original_query', ''), confirmed_conditions=confirmed,
@@ -270,6 +279,8 @@ def apply_user_update(workflow, updates):
             elif not isinstance(value, str) or not value.strip():
                 raise ValueError('invalid route update')
             previous = task[key]; task[key] = value; changed.append(index)
+            if key == 'origin':
+                task['field_sources']['origin'] = 'user'
             if key == 'destination' and index+1 < len(w['tasks']) and w['tasks'][index+1]['origin'] == previous:
                 w['tasks'][index+1]['origin'] = value
         conditions = validate_conditions(update.get('conditions', {}))

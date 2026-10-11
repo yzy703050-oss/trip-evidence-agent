@@ -21,7 +21,7 @@ async def test_forward_records_one_final_message(tmp_path):
     assert len(finals) == 1
     assert json.loads(finals[0]['content'])['finalization_method'] == 'forward'
     assert output.getvalue().count('18～25') == 1
-    assert 'https://example.com/weather' in output.getvalue()
+    assert 'https://example.com/weather' not in output.getvalue()
     assert not any(e.get('agent_name') == 'main_finalize' for e in events)
 
 
