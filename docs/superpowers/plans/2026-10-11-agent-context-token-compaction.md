@@ -160,3 +160,4 @@ git diff --check
 
 2026-10-11：只完成 OpenSpec 初始化、正式规划与技术自审。OpenSpec strict validate 通过。尚未修改产品代码，未执行产品测试；执行方式等待用户选择。无需再次需求探索，后续计划修改必须先协调正式 OpenSpec 文档。
 2026-10-11：用户选择单代理。Task 1 RED 4 failed / GREEN 17 passed。使用短临时目录规避 Windows 路径长度限制；工作分支 codex/agent-context-token-compaction。
+Task 2：RED 4 failed，GREEN 26 passed（compaction、memory_context、cli_session_resume）；切点只允许连续完整旧轮末，摘要后核算预算再写游标。

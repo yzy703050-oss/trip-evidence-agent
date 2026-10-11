@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from typing import Any
+from agents.context_projection import project_session_message
+from context.context_budget import count_input_tokens
 
 
 def estimate_tokens(event: dict[str, Any]) -> int:
@@ -12,7 +14,24 @@ def estimate_tokens(event: dict[str, Any]) -> int:
     payload = {
         key: event.get(key) for key in ("content", "tool_calls", "name", "status") if key in event
     }
-    return max(1, len(json.dumps(payload, ensure_ascii=False)) // 2)
+    return count_input_tokens([payload]).tokens
+
+
+def complete_prefix_boundaries(events: list[dict[str, Any]]) -> list[int]:
+    """An unfinished old turn blocks every subsequent prefix boundary."""
+    visible = [view for event in events if (view := project_session_message(event)) is not None]
+    groups: list[list[dict]] = []
+    for event in visible:
+        if not groups or groups[-1][-1].get("turn_id") != event.get("turn_id"):
+            groups.append([])
+        groups[-1].append(event)
+    cuts = []
+    for group in groups[:-1]:
+        last = group[-1]
+        if not (last.get("role") == "assistant" and last.get("final")):
+            break
+        cuts.append(last["seq"])
+    return cuts
 
 
 def select_safe_prefix(
@@ -20,32 +39,12 @@ def select_safe_prefix(
     token_budget: int,
     *,
     token_counter: Callable[[dict[str, Any]], int] = estimate_tokens,
-    keep_recent_turns: int = 2,
 ) -> int | None:
     """Return the last seq to summarize, or None when no safe cut exists."""
+    events = [view for event in events if (view := project_session_message(event)) is not None]
     if not events or sum(token_counter(event) for event in events) <= token_budget:
         return None
-    turns = list(dict.fromkeys(event.get("turn_id") for event in events if event.get("turn_id")))
-    protected = set(turns[-keep_recent_turns:]) if keep_recent_turns else set()
-    pending: set[str] = set()
-    candidates: list[int] = []
-    for event in events:
-        for call in event.get("tool_calls", []):
-            pending.add(call["id"])
-        if event.get("type") == "tool_result":
-            pending.discard(event.get("tool_call_id"))
-        if pending:
-            continue
-        completed_turn = (
-            event.get("type") == "message"
-            and event.get("scope") == "session"
-            and event.get("role") == "assistant"
-            and event.get("final")
-            and event.get("turn_id") not in protected
-        )
-        completed_stage = event.get("type") in {"stage_complete", "tool_result"}
-        if completed_turn or completed_stage:
-            candidates.append(event["seq"])
+    candidates = complete_prefix_boundaries(events)
     if not candidates:
         return None
     for seq in candidates:
