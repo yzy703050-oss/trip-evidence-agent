@@ -395,7 +395,8 @@ class MemoryManager:
             summary = state.get("session_summary", "")
             if not summary or state.get("session_summary_through_seq", 0) < last_seq:
                 newer = [event for event in visible if event["seq"] > state.get("session_summary_through_seq", 0)]
-                lines = [f"{event['role']}: {event.get('content', '')}" for event in newer[-max_messages:]]
+                lines = [f"{event['role']}: {event.get('content', '')}" for raw in newer[-max_messages:]
+                         if (event := project_session_message(raw)) is not None]
                 if self.llm_model:
                     prompt = (
                         "更新这段历史会话的简短摘要。保留用户偏好、已确认事实和重要约束，不要添加没有依据的信息。\n"

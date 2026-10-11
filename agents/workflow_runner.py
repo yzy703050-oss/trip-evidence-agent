@@ -13,6 +13,7 @@ from agents.planning_conditions import prepare_task
 from context.telemetry import model_scope
 from context.workflow_store import WorkflowConflictError
 from travel_data.candidates import CandidateStore
+from agents.context_projection import project_child_result, project_domain_result, project_workflow_context
 
 
 @dataclass(frozen=True)
@@ -107,12 +108,12 @@ class WorkflowRunner:
         base={k:v for k,v in self.context.items() if k not in {'active_workflows','known_workflows'}}
         overview=[{k:t.get(k) for k in ('id','revision','status','origin','destination','purpose','requires_hotel','depends_on','summary')} for t in self.w['tasks']]
         return {**base, 'original_query': self.w['original_query'], 'current_user_query': self.context['original_query'],
-                'workflow': public, 'workflow_overview': overview, 'current_task': deepcopy(task),
+                'workflow': project_workflow_context(public), 'workflow_overview': overview, 'current_task': deepcopy(task),
                 'confirmed_conditions': deepcopy(self.w['confirmed_conditions']), 'effective_conditions': effective,
                 'field_sources': sources, 'effective_preferences': deepcopy(self.run_state.effective_preferences),
                 'preflight': prepared,
-                'previous_boundary': boundary, 'relevant_results': query_views(self.w, task['id'], limit=self.run_state.limits.candidate_limit),
-                'latest_child_result': latest, 'issues': deepcopy(task['issues']),
+                'previous_boundary': boundary, 'relevant_results': [project_domain_result(r, candidate_limit=self.run_state.limits.candidate_limit) for r in query_views(self.w, task['id'], limit=self.run_state.limits.candidate_limit)],
+                'latest_child_result': project_child_result(latest) if latest else None, 'issues': deepcopy(task['issues']),
                 'resources': {'main_calls_remaining': len(self.w['tasks'])*self.limits.main_steps_per_task+self.limits.main_extra_steps-self.main_calls,
                               'tools_remaining': self.run_state.workflow_tool_budget,
                               'task_info_remaining': self.limits.info_executions_per_task-self.counts.get(task['id'], 0)}}
