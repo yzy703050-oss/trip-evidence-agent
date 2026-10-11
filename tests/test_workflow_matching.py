@@ -205,3 +205,18 @@ async def test_reused_simulated_plan_keeps_simulation_disclosure(tmp_path):
     result = await current.turn()
     assert result["data_mode"] == "simulation"
     assert "模拟" in result["final_answer"]
+
+
+def test_model_reply_must_keep_reuse_notice():
+    from test_natural_reply_regressions import logged_result
+
+    from utils.workflow_reply import build_reply_facts, render_reply_template
+
+    result = logged_result()
+    result["stop_reason"] = "workflow_reused"
+    facts = build_reply_facts(result)
+    template = "。".join("{{" + key + "}}" for key in facts["required"])
+    text = render_reply_template(template, facts)
+    assert "已有规划" in text and "并非实时信息" in text
+    with pytest.raises(ValueError):
+        render_reply_template(template.replace("{{workflow_reuse}}", ""), facts)

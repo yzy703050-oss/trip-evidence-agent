@@ -133,6 +133,8 @@ def build_reply_facts(result):
         values['continuation'] = '已有安排先保留，剩余内容可以接着查询或调整'
     if result.get('data_mode') == 'simulation':
         values['simulation'] = '以下为模拟数据，仅用于测试'
+    if result.get('stop_reason') == 'workflow_reused':
+        values['workflow_reuse'] = '沿用这趟旅行的已有规划；以下为此前查询的结果，票价和余票并非实时信息'
     summaries = [value for key, value in values.items() if not re.match(r's\d+_', key)]
     fallback = '\n\n'.join(paragraphs + ([' '.join(v + '。' for v in summaries)] if summaries else []))
     return {'values': values, 'required': list(values),
