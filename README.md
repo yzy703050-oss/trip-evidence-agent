@@ -141,13 +141,11 @@ Harness 自身没有独立的模型判断。CLI 直接实例化 `ExecutionHarnes
 
 ```mermaid
 flowchart TD
-    U[用户请求与已保存旅行] --> M[主 Agent 判断新建或修改]
+    U[用户在 CLI 输入问题或旅行需求]
+    U --> H[CLI 将请求与会话上下文交给 ExecutionHarness]
+    H --> M[主 Agent 判断新建或修改]
     M --> P[拆分全程任务或更新指定部分]
-    P --> O{交通起点是否已知}
-    O -- 否 --> Q[保存断点并询问出发城市]
-    Q --> A[用户补充后恢复同一旅行]
-    A --> O
-    O -- 是 --> D[主 Agent 决定当前任务下一步]
+    P --> D[主 Agent 决定当前任务下一步]
     D --> I[信息获取调用工具并返回]
     I --> D
     D --> T[形成当前任务草稿]
@@ -158,7 +156,12 @@ flowchart TD
     F -- 是 --> C[完成并返回方案]
     F -- 否 --> R[按授权修正或结束为部分方案]
     R -- 继续修正 --> D
+    C --> J[Harness 返回 JSON，完整回复放入 final_answer]
+    R -- 返回部分方案 --> J
+    J --> Z[CLI 显示 final_answer 自然语言回复]
 ```
+
+交通查询缺少出发城市时，会保存断点并追问；用户补充后恢复同一旅行。长期居住城市仅作为背景信息，不自动视为本次出发地。
 
 修正路径受次数和时间预算限制。已有草稿或一次循环结束，不代表全程成功；部分结果可以结束本轮，等待用户后续修改。
 
@@ -383,17 +386,18 @@ Harness 校验后创建旅行和任务 ID。`purpose` 可为 `visit / business /
 
 ```text
 data/memory/{user_id}/
-├─ profile.json                  # 偏好、来源与用户画像
-├─ trips.json                    # 历史行程，兼容已有历史功能
-├─ trip.md                       # 活动/近期旅行的可读摘要，可重建
-├─ workflows/{workflow_id}.json   # 旅行、任务、证据、版本和断点的权威状态
+├─ profile.json                  # 用户偏好
+├─ trip.md                       # 旅行摘要
+├─ workflows/                    # 旅行状态与历史记录
 └─ sessions/{session_id}/
-   ├─ events.jsonl               # 追加的会话与执行事件
-   ├─ state.json                 # 压缩摘要、覆盖边界、历史摘要缓存及活动旅行引用
-   └─ runs.jsonl                 # 调度、模型调用、耗时、用量和运行记录
+   ├─ events.jsonl               # 会话事件
+   ├─ state.json                 # 会话状态
+   └─ runs.jsonl                 # 运行记录
 ```
 
 user_id标识用户，session_id标识会话，turn_id标识一轮请求。旅行身份由独立workflow_id保持，可以跨会话更新。
+
+历史查询、`history` 命令和目的地统计统一读取 `workflows/`，展示每趟旅行已完成规划的最新方案，不代表已经出行。旧 `trips.json` 记录自动迁入，原文件保留为只读备份；新记录不再写入它。不完整的旧记录仅供历史查询，不作为可恢复任务。
 
 ### 短期记忆如何进入上下文
 

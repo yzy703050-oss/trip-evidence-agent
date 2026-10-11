@@ -44,8 +44,7 @@ class TripMemory:
                         field_sources=t['field_sources'],schedule=draft.get('schedule',{}),selected=selections,
                         gaps=t['issues'],summary=t['summary']),ensure_ascii=False))
                 lines.append('')
-            legacy_path=self.directory/'trips.json'
-            legacy=json.loads(legacy_path.read_text(encoding='utf-8')).get('trip_history',[]) if legacy_path.exists() else []
+            legacy=workflow_store.list_history()
             ids={w['id'] for w in workflows}
             for index,record in enumerate(legacy):
                 if record.get('workflow_id') in ids: continue

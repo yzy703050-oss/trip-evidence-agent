@@ -23,8 +23,10 @@ def test_partial_and_completed_are_known_across_sessions_and_summary_repairs(tmp
 
 
 def test_legacy_projection_is_idempotent_and_preserves_json(tmp_path):
+    source=tmp_path/'alice'/'trips.json'
+    source.parent.mkdir(parents=True)
+    source.write_text(json.dumps({'trip_history':[dict(origin='重庆',destination='上海',summary='旧记录')]}),encoding='utf-8')
     m=MemoryManager('alice','one',storage_path=str(tmp_path))
-    m.long_term.save_trip_history(dict(origin='重庆',destination='上海',summary='旧记录'))
     before=(tmp_path/'alice'/'trips.json').read_bytes()
     m.get_known_workflows(); m.get_known_workflows()
     assert (tmp_path/'alice'/'trips.json').read_bytes()==before
@@ -73,7 +75,7 @@ def test_active_trips_do_not_displace_five_recent_completed_details(tmp_path):
         w['status']='partial' if index<6 else 'completed'
         rows.append(w)
     projection=TripMemory(tmp_path,'alice')
-    projection.rebuild(SimpleNamespace(list_all=lambda:rows))
+    projection.rebuild(SimpleNamespace(list_all=lambda:rows,list_history=lambda:[]))
     text=(tmp_path/'alice'/'trip.md').read_text(encoding='utf-8')
     for index in range(11):
         section=text.split('## workflow_'+str(index)+'\n')[1].split('\n## ')[0]

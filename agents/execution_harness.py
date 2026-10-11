@@ -369,13 +369,7 @@ class ExecutionHarness:
             if value != old.get(key):
                 memory.save_preference(key, value)
         plan = result.get('itinerary', {})
-        if result.get('finalization_method') == 'workflow' and result.get('status') == 'completed':
-            workflow = result['workflow']
-            memory.save_trip_history({'workflow_id': workflow['id'], 'workflow_revision': workflow['revision'],
-                'record_kind': 'planned_itinerary', 'origin': workflow['tasks'][0]['origin'],
-                'destination': workflow['tasks'][-1]['destination'], 'start_date': workflow['confirmed_conditions'].get('start_date'),
-                'end_date': workflow['confirmed_conditions'].get('end_date'), 'turn_id': run.turn_id,
-                'itinerary': deepcopy(result['validated_plan']), 'summary': result['final_answer']})
+        # WorkflowRunner has already saved the canonical plan; history reads it directly.
         if plan.get('planning_complete') is True and result['status'] in {'ok', 'partial'}:
             conditions = run.travel_conditions
             memory.save_trip_history({
