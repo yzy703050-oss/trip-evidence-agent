@@ -10,14 +10,14 @@ from typing import Any
 class ShortTermMemory:
     """Keep recent turns without assuming each turn has exactly two events."""
 
-    def __init__(self, max_turns: int = 10):
+    def __init__(self, max_turns: int | None = None):
         self.max_turns = max_turns
         self.messages: list[dict[str, Any]] = []
 
     def add_event(self, event: dict[str, Any]) -> None:
         self.messages.append(dict(event))
         turns = list(dict.fromkeys(item.get("turn_id") for item in self.messages if item.get("turn_id")))
-        if len(turns) > self.max_turns:
+        if self.max_turns is not None and len(turns) > self.max_turns:
             keep = set(turns[-self.max_turns:])
             self.messages = [item for item in self.messages if item.get("turn_id") in keep]
 

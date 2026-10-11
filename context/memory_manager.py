@@ -8,6 +8,7 @@ from .long_term_memory import LongTermMemory
 from .session_store import SessionStore
 from .workflow_store import WorkflowStore
 from .compaction import estimate_tokens, select_safe_prefix
+from agents.context_projection import project_session_message
 import logging
 import json
 import threading
@@ -60,7 +61,7 @@ class MemoryManager:
         self.session_store = SessionStore(storage_path, user_id, session_id)
         self.workflow_store = WorkflowStore(storage_path, user_id)
         self.workflow_store.trip_memory.repair(self.workflow_store)
-        self.short_term = ShortTermMemory(max_turns=10)
+        self.short_term = ShortTermMemory()
         self._record_lock = threading.RLock()
         self._cleared_through_seq = self.session_store.read_state().get("cleared_through_seq", 0)
         for event in self.session_store.read_events():
@@ -283,13 +284,15 @@ class MemoryManager:
             logger.exception("Could not compact session context; raw events remain available")
             return state
 
-    def get_compacted_context(self, n_turns: int = 5) -> Dict[str, Any]:
+    def get_compacted_context(self, n_turns: int | None = None) -> Dict[str, Any]:
         state = self.session_store.read_state()
         covered = max(state.get("covered_through_seq", 0), state.get("cleared_through_seq", 0))
         events = [event for event in self.session_store.read_events() if event["seq"] > covered]
-        recent = ShortTermMemory(max_turns=max(10, n_turns))
+        recent = ShortTermMemory()
         for event in events:
-            recent.add_event(event)
+            projected = project_session_message(event)
+            if projected is not None:
+                recent.add_event(projected)
         summary = state.get("summary", "")
         checkpoint = state.get("checkpoint", {})
         if checkpoint.get("goal"):
