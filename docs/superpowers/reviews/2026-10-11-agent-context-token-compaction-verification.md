@@ -41,3 +41,5 @@
 - Windows 使用 PowerShell/Python 保存同格式 ledger，不运行 bash 辅助脚本。代价：不生成辅助脚本的逐任务 brief；执行以原计划正文及 ledger 为准。
 - 默认估算 ceil(UTF-8 JSON bytes/3)，明确 estimated=true；除以2的静态估算会令现有主指令本身超过6000初始值。代价：仍有模型相关估算误差，6000未校准，可配置并可注入兼容计数器。
 
+
+归档命令成功：2026-10-11-isolate-agent-context-token-compaction；两个主规格同步完成。任务4.3的归档动作完成后标记，归档时其未勾选提示不对应产品或测试缺项。
