@@ -63,10 +63,10 @@ async def test_harness_final_answer_contains_sourced_quote_without_cli():
         "627.50",
         "单人票价",
         "查询时有票",
-        SOURCE["url"],
-        SOURCE["fetched_at"],
     ):
         assert expected in final["final_answer"]
+    assert SOURCE["url"] not in final["final_answer"]
+    assert final["domain_results"]["train"]["items"][0]["source"] == SOURCE
     assert final["domain_results"]["train"]["items"][0]["price_cny"] == "627.50"
 
 
@@ -77,12 +77,11 @@ async def test_workflow_final_answer_contains_dates_and_unknown_costs(tmp_path):
     for expected in (
         "北京",
         "杭州",
-        "2026-10-15",
-        "入住日期",
-        "离店日期",
+        "2026年10月15日",
+        "入住",
+        "离店",
         "房价、空房和入住规则尚未核实",
         "全程费用尚未完整核实",
-        "参考链接",
     ):
         assert expected in result["final_answer"]
     assert isinstance(result["workflow"], dict) and isinstance(result["validated_plan"], dict)

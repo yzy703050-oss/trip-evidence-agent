@@ -104,7 +104,7 @@ def test_nested_embedded_result_keeps_prose_and_normal_links():
     assert "{" not in text and "}" not in text and "message" not in text
 
 
-def test_train_reply_retains_quote_source_times_and_stock_without_field_dump():
+def test_train_reply_retains_quote_times_and_stock_without_sources():
     text = display(
         {
             "final_answer": "火车查询：1 个已取得结果；ok。",
@@ -122,8 +122,6 @@ def test_train_reply_retains_quote_source_times_and_stock_without_field_dump():
         "元",
         "3",
         "有票",
-        SOURCE["url"],
-        SOURCE["fetched_at"],
     ):
         assert expected in text
     for internal in ('"price_cny"', "availability", "available", "source", "ok", "{", "}", "None"):
@@ -177,7 +175,7 @@ def test_hotel_quote_preserves_stay_total_and_fee_basis():
     }
     text = display({"domain_results": {"hotel": domain([hotel])}})
     assert "800.00" in text and "住宿总价" in text and "含费用" in text
-    assert "2026-10-11" in text and "2026-10-13" in text
+    assert "2026年10月11日" in text and "2026年10月13日" in text
     assert "退改规则尚未核实" in text and "True" not in text
 
 
@@ -194,7 +192,7 @@ def test_workflow_schedule_and_revalidation_render_as_sentences():
             "gaps": checked["issues"],
         }
     )
-    assert "北京" in text and "杭州" in text and "2026-10-15" in text
+    assert "北京" in text and "杭州" in text and "2026年10月15日" in text
     assert "重新核实" in text and "尚未完整核实" in text and "决策" in text
     for internal in (
         "task_id",
@@ -216,7 +214,7 @@ def test_missing_fields_and_general_error_are_natural_language():
     assert "origin" not in text and "check_in" not in text and "{" not in text
 
 
-def test_guide_and_weather_are_sourced_readable_facts():
+def test_guide_and_weather_are_readable_facts_without_sources():
     fact = {
         "kind": "note",
         "content": "博物馆开放时间待确认",
@@ -240,12 +238,12 @@ def test_guide_and_weather_are_sourced_readable_facts():
     )
     assert "博物馆开放时间待确认" in text and "待核实" in text
     assert (
-        "上海" in text and "18" in text and "24" in text and "℃" in text and SOURCE["url"] in text
+        "上海" in text and "18" in text and "24" in text and "℃" in text and SOURCE["url"] not in text
     )
     assert "needs_check" not in text and '{"' not in text
 
 
-def test_web_results_keep_title_snippet_and_link():
+def test_web_results_keep_title_snippet_without_source_link():
     text = display(
         {
             "domain_results": {
@@ -262,7 +260,7 @@ def test_web_results_keep_title_snippet_and_link():
             }
         }
     )
-    assert "上海出行" in text and "地铁出行说明" in text and "https://example.com/shanghai" in text
+    assert "上海出行" in text and "地铁出行说明" in text and "https://example.com/shanghai" not in text
 
 
 def test_legacy_itinerary_uses_guarded_activities_in_prose():
@@ -288,5 +286,5 @@ def test_legacy_itinerary_uses_guarded_activities_in_prose():
             }
         }
     )
-    assert "市内漫步" in text and "2026-10-11" in text and "未报价" in text
+    assert "市内漫步" in text and "2026年10月11日" in text and "未报价" in text
     assert "299" not in text and "今日开放" not in text and "daily_plans" not in text

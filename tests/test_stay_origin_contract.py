@@ -99,7 +99,8 @@ async def test_missing_origin_saves_question_before_external_requests(tmp_path):
     assert w['checkpoint']['missing_fields'] == ['origin']
     assert not r.train.calls and not r.hotel.calls
     assert w['tasks'][0]['conditions']['nights'] == 3
-    assert '出发' in result['final_answer']
+    assert result['final_answer'] == '你准备从哪个城市出发？'
+    assert {'task_not_draft', 'invalid_draft'} <= {gap['code'] for gap in result['gaps']}
 
 
 @pytest.mark.asyncio
@@ -108,7 +109,7 @@ async def test_origin_answer_resumes_same_task_and_queries_missing_hotel(tmp_pat
                                conditions={'nights': 3}, field_sources={'nights': 'proposal'})])
     first = await r.turn('我要去上海，安排火车和酒店')
     w = first['workflow']; task = w['tasks'][0]
-    resumed = runtime(tmp_path, [], session='new')
+    resumed = runtime(tmp_path, [], session=r.memory.session_id)
     async def resume(context):
         return dict(response_mode='workflow', finalization_mode='synthesize', agent_schedule=[],
                     resume_workflow_id=w['id'], travel_update=dict(update_type='supplement',

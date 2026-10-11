@@ -126,7 +126,7 @@ class ExecutionHarness:
                                                for w in self.memory_manager.get_active_workflows()]
                 context['known_workflows'] = []
                 from agents.workflow_guard import check_workflow
-                for w in self.memory_manager.get_known_workflows(query=context['original_query']):
+                for w in self.memory_manager.get_workflow_context(query=context['original_query']):
                     context['known_workflows'].append({**{k:deepcopy(w[k]) for k in ('id','revision','status','original_query','confirmed_conditions','tasks','checkpoint')},
                                                       'saved_plan':check_workflow(w)})
             initial = getattr(self.main_agent, 'initialize', self.main_agent.plan if hasattr(self.main_agent, 'plan') else None)

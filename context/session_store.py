@@ -74,10 +74,43 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 class SessionStore:
     """One ordered event log and one compacted state for a user session."""
 
+    @classmethod
+    def list_sessions(cls, root, user_id, limit=20):
+        from context.user_storage import resolve_user_directory
+        from zoneinfo import ZoneInfo
+        rows = []
+        for path in (resolve_user_directory(root, user_id) / 'sessions').glob('*/events.jsonl'):
+            try:
+                store = cls(root, user_id, path.parent.name)
+                store.read_state()
+                messages = [event for event in store.read_events() if event.get('scope') == 'session' and event.get('type') == 'message']
+                user_messages = [event for event in messages if event.get('role') == 'user' and isinstance(event.get('content'), str) and event['content'].strip()]
+                if not user_messages:
+                    continue
+                timestamps = []
+                for event in messages:
+                    try:
+                        value = datetime.fromisoformat(event.get('timestamp', ''))
+                        if value.tzinfo is None:
+                            value = value.replace(tzinfo=timezone.utc)
+                        timestamps.append(value)
+                    except (ValueError, TypeError):
+                        continue
+                updated = max(timestamps).astimezone(ZoneInfo('Asia/Shanghai')) if timestamps else None
+                title = ' '.join(user_messages[0]['content'].split())
+                rows.append({'session_id': store.session_id, 'title': title[:36] + ('…' if len(title) > 36 else ''),
+                             'updated_at': updated.isoformat() if updated else '',
+                             'last_user_message': user_messages[-1]['content']})
+            except (ValueError, OSError, KeyError, TypeError):
+                continue
+        return sorted(rows, key=lambda row: row['updated_at'], reverse=True)[:limit]
+
     def __init__(self, root: str | Path, user_id: str, session_id: str):
         self.user_id = storage_component(user_id)
         self.session_id = storage_component(session_id)
-        self.session_dir = Path(root) / self.user_id / "sessions" / self.session_id
+        from context.user_storage import resolve_user_directory
+        self.user_dir = resolve_user_directory(root, self.user_id)
+        self.session_dir = self.user_dir / "sessions" / self.session_id
         self.events_path = self.session_dir / "events.jsonl"
         self.runs_path = self.session_dir / "runs.jsonl"
         self.state_path = self.session_dir / "state.json"
@@ -88,7 +121,14 @@ class SessionStore:
 
     def read_events(self) -> list[dict[str, Any]]:
         with self._lock:
-            return _read_jsonl(self.events_path)
+            records = _read_jsonl(self.events_path)
+            for record in records:
+                self._validate_owner(record)
+            return records
+
+    def _validate_owner(self, record):
+        if not isinstance(record, dict) or record.get('user_id') != self.user_id or record.get('session_id') != self.session_id:
+            raise ValueError('session record identity mismatch')
 
     def append(self, event: dict[str, Any]) -> dict[str, Any]:
         """Persist one event; repeated event_id values are idempotent."""
@@ -103,6 +143,7 @@ class SessionStore:
             record["seq"] = existing[-1]["seq"] + 1 if existing else 1
             record.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
             record["session_id"] = self.session_id
+            record['user_id'] = self.user_id
             encoded = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
             self.session_dir.mkdir(parents=True, exist_ok=True)
             with self.events_path.open("a", encoding="utf-8", newline="\n") as handle:
@@ -116,11 +157,16 @@ class SessionStore:
             if not self.state_path.exists():
                 return {}
             with self.state_path.open("r", encoding="utf-8") as handle:
-                return json.load(handle)
+                state = json.load(handle)
+                self._validate_owner(state)
+                return state
 
     def read_runs(self) -> list[dict[str, Any]]:
         with self._lock:
-            return _read_jsonl(self.runs_path)
+            records = _read_jsonl(self.runs_path)
+            for record in records:
+                self._validate_owner(record)
+            return records
 
     def append_run(self, event: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
@@ -128,6 +174,7 @@ class SessionStore:
             record = dict(event)
             record["run_seq"] = previous[-1]["run_seq"] + 1 if previous else 1
             record["session_id"] = self.session_id
+            record['user_id'] = self.user_id
             record.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
             self.session_dir.mkdir(parents=True, exist_ok=True)
             with self.runs_path.open("a", encoding="utf-8", newline="\n") as handle:
@@ -138,4 +185,4 @@ class SessionStore:
 
     def write_state(self, state: dict[str, Any]) -> None:
         with self._lock:
-            atomic_json_write(self.state_path, state)
+            atomic_json_write(self.state_path, {**state, 'user_id': self.user_id, 'session_id': self.session_id})

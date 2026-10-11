@@ -80,4 +80,4 @@ async def test_financial_forwarding_rebuilds_display_from_real_offers():
     app.console = Console(file=output, width=240, color_system=None)
     app._display_results(result)
     assert '299999' not in output.getvalue()
-    assert '100' in output.getvalue() and 'https://example.com' in output.getvalue()
+    assert '100' in output.getvalue() and 'https://example.com' not in output.getvalue()

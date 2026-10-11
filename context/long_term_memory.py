@@ -36,7 +36,8 @@ class LongTermMemory:
         self.user_id = storage_component(user_id)
         self.storage_path = storage_path
         self.db_path = os.path.join(storage_path, f"{self.user_id}.json")  # retained legacy file
-        self.user_dir = Path(storage_path) / self.user_id
+        from context.user_storage import resolve_user_directory
+        self.user_dir = resolve_user_directory(storage_path, self.user_id)
         self.profile_path = self.user_dir / "profile.json"
         self.trips_path = self.user_dir / "trips.json"
         self.workflow_store = WorkflowStore(storage_path, self.user_id)
@@ -49,20 +50,19 @@ class LongTermMemory:
         if self.trips_path.exists():
             rows = json.loads(self.trips_path.read_text(encoding='utf-8')).get('trip_history', [])
             self.workflow_store.import_history(rows, 'trips.json')
-        elif os.path.exists(self.db_path):
-            rows = json.loads(Path(self.db_path).read_text(encoding='utf-8')).get('trip_history', [])
+        elif self._read_legacy():
+            rows = self._read_legacy().get('trip_history', [])
             self.workflow_store.import_history(rows, 'legacy-user.json')
         logger.info(f"Long-term memory initialized for user: {user_id}")
 
     def _load(self) -> Dict[str, Any]:
         """从文件加载数据"""
-        legacy = {}
-        if os.path.exists(self.db_path):
-            with open(self.db_path, "r", encoding="utf-8") as handle:
-                legacy = json.load(handle)
+        legacy = self._read_legacy()
 
         if self.profile_path.exists() or self.trips_path.exists():
             profile = json.loads(self.profile_path.read_text(encoding="utf-8")) if self.profile_path.exists() else {}
+            if profile and profile.get('user_id') != self.user_id:
+                raise ValueError('profile owner mismatch')
             trips = json.loads(self.trips_path.read_text(encoding="utf-8")) if self.trips_path.exists() else {}
             data = self._init_data()
             data.update(profile)
@@ -78,6 +78,12 @@ class LongTermMemory:
         if not self.data.get("legacy_chat_cleared"):
             self._migrate_legacy_chat(legacy.get("chat_history", []))
         return self.data
+
+    def _read_legacy(self):
+        if not os.path.exists(self.db_path):
+            return {}
+        value = json.loads(Path(self.db_path).read_text(encoding='utf-8'))
+        return value if value.get('user_id') == self.user_id else {}
 
     def _migrate_legacy_chat(self, messages: List[Dict[str, Any]]) -> None:
         """Replay old chat messages with stable IDs so restarts never duplicate them."""
@@ -372,6 +378,6 @@ class LongTermMemory:
         """删除所有数据（包括文件）"""
         if self.user_dir.exists():
             shutil.rmtree(self.user_dir)
-        if os.path.exists(self.db_path):
+        if self._read_legacy():
             os.remove(self.db_path)
             logger.warning(f"Deleted long-term memory file: {self.db_path}")

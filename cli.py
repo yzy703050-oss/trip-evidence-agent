@@ -35,7 +35,7 @@ from travel_data.juhe_train import JuheTrainProvider
 from travel_data.ddgs_guide import DDGSGuideProvider
 from travel_data.amap_hotel import AmapHotelProvider
 from context.memory_manager import MemoryManager
-from context.session_store import storage_component
+from context.session_store import SessionStore, storage_component
 from context.telemetry import MeteredModel
 from utils.circuit_breaker import CircuitBreaker, CircuitOpenError
 from utils.llm_resilience import run_health_check as check_llm_health
@@ -76,6 +76,7 @@ class TripEvidenceCLI:
         table.add_row("health", "检查 LLM 服务是否可用")
         table.add_row("clear", "清空当前任务（保留长期记忆）")
         table.add_row("history", "查看历史行程")
+        table.add_row("resume", "按主题选择并恢复历史对话（可取消）")
         table.add_row("preferences", "查看用户偏好")
         table.add_row("preferences set 类型 值", "手动设置偏好（列表可用 JSON 数组）")
         table.add_row("preferences delete 类型", "删除偏好并阻止 Agent 自动恢复")
@@ -94,7 +95,7 @@ class TripEvidenceCLI:
         self.user_id = Prompt.ask(
             "用户ID",
             default="default_user"
-        )
+        ).strip()
 
         self.session_id = self.choose_session_id()
 
@@ -122,39 +123,12 @@ class TripEvidenceCLI:
                 generate_kwargs=get_model_generate_kwargs(),
             )
 
-            self.model = MeteredModel(
-                raw_model,
-                self.memory_manager.session_store.append_run,
-                input_usd_per_million=LLM_CONFIG["input_usd_per_million"],
-                output_usd_per_million=LLM_CONFIG["output_usd_per_million"],
-            )
-            self.memory_manager.llm_model = self.model
-
-            self.main_agent = MainAgent(model=self.model)
-
-            # 使用懒加载注册器（智能体在首次使用时才加载）
-            from agents.lazy_agent_registry import LazyAgentRegistry
-            self._agent_cache = {}
             train_key = get_settings().juhe_train_api_key
             providers = {"train_search": JuheTrainProvider(train_key)} if train_key.strip() else {}
             providers['travel_guide'] = DDGSGuideProvider()
             providers['hotel_search'] = AmapHotelProvider(get_settings().amap_api_key)
-            lazy_registry = LazyAgentRegistry(
-                model=self.model,
-                cache=self._agent_cache,
-                memory_manager=self.memory_manager,
-                providers=providers,
-            )
-
-            # 预先加载关键智能体（可选，利用 preload）
-            # lazy_registry.preload("memory_query", "preference")
-
-            # 初始化执行 Harness
-            self.harness = ExecutionHarness(
-                main_agent=self.main_agent,
-                agent_registry=lazy_registry,
-                memory_manager=self.memory_manager
-            )
+            self._bind_session(self.session_id, raw_model=raw_model,
+                               providers=providers, memory=self.memory_manager)
 
             # 熔断器（连接与可用性）
             rc = RESILIENCE_CONFIG
@@ -164,7 +138,7 @@ class TripEvidenceCLI:
                 half_open_successes=rc.get("circuit_half_open_successes", 2),
             )
 
-        self.console.print(f"✓ 就绪 (用户: {self.user_id}, 会话: {self.session_id}) - 输入 help 查看帮助\n", style="green")
+        self.console.print(f"✓ 就绪 (用户: {self.user_id}) — 已开始新对话，可输入 resume 查看历史，help 查看帮助\n", style="green")
 
     def ensure_home_location(self) -> str:
         """Collect a required, user-owned residence once for each local identity."""
@@ -181,28 +155,60 @@ class TripEvidenceCLI:
             self.console.print("长期居住城市必须填写，请输入城市名称。", markup=False)
 
     def choose_session_id(self, storage_path: str = "data/memory") -> str:
-        """An empty answer creates a session; an existing ID resumes it."""
-        from pathlib import Path
+        """Startup always opens a new conversation; resume is an explicit command."""
         import uuid
-
         storage_component(self.user_id)
-        sessions_dir = Path(storage_path) / self.user_id / "sessions"
-        known = sorted(
-            (path for path in sessions_dir.iterdir() if path.is_dir() and (path / "events.jsonl").exists()),
-            key=lambda path: (path / "events.jsonl").stat().st_mtime,
-            reverse=True,
-        ) if sessions_dir.exists() else []
-        if known:
-            self.console.print("可恢复的会话: " + ", ".join(path.name for path in known[:5]))
-        else:
-            return uuid.uuid4().hex
-        requested = Prompt.ask("会话ID（回车新建，输入已有ID恢复）", default="").strip()
-        if not requested:
-            return uuid.uuid4().hex
-        storage_component(requested)
-        if not (sessions_dir / requested / "events.jsonl").exists():
-            raise ValueError(f"找不到会话 {requested}")
-        return requested
+        return uuid.uuid4().hex
+
+    def _bind_session(self, session_id: str, *, raw_model=None, providers=None, memory=None) -> None:
+        """Construct all session-owned components before replacing live bindings."""
+        from agents.lazy_agent_registry import LazyAgentRegistry
+        memory = memory or MemoryManager(self.user_id, session_id,
+                               storage_path=self.memory_manager.long_term.storage_path)
+        if raw_model is None:
+            raw_model = self.model.model if isinstance(self.model, MeteredModel) else self.model
+        model = MeteredModel(raw_model, memory.session_store.append_run,
+                             input_usd_per_million=LLM_CONFIG['input_usd_per_million'],
+                             output_usd_per_million=LLM_CONFIG['output_usd_per_million'])
+        memory.llm_model = model
+        main = MainAgent(model=model)
+        cache = {}
+        registry = LazyAgentRegistry(model, cache, memory_manager=memory,
+                                     providers=providers if providers is not None else getattr(self.harness.agent_registry, 'providers', {}))
+        harness = ExecutionHarness(main_agent=main, agent_registry=registry, memory_manager=memory)
+        self.session_id, self.memory_manager, self.model = session_id, memory, model
+        self.main_agent, self.harness, self._agent_cache = main, harness, cache
+        self.last_result = None
+        self.current_run = None
+
+    def resume_session(self) -> bool:
+        from datetime import datetime
+        try:
+            rows = SessionStore.list_sessions(self.memory_manager.long_term.storage_path, self.user_id)
+            if not rows:
+                self.console.print('当前用户还没有可恢复的历史对话。可以直接开始聊天，内容会自动保存，以后输入 resume 即可继续。', markup=False)
+                return False
+            table = Table(title='历史对话')
+            for label in ('编号', '对话主题', '最近时间'):
+                table.add_column(label)
+            for index, row in enumerate(rows, 1):
+                updated = datetime.fromisoformat(row['updated_at']).strftime('%Y年%m月%d日 %H:%M') if row['updated_at'] else '时间未记录'
+                table.add_row(str(index), Text(row['title']), updated)
+            self.console.print(table)
+            while True:
+                answer = Prompt.ask('选择编号（回车取消）', default='', console=self.console).strip()
+                if not answer:
+                    return False
+                if answer.isascii() and answer.isdigit() and 1 <= int(answer) <= len(rows):
+                    chosen = rows[int(answer) - 1]
+                    self._bind_session(chosen['session_id'])
+                    self.console.print('已恢复：' + chosen['title'], markup=False)
+                    self.console.print('上次聊到：' + chosen['last_user_message'], markup=False)
+                    return True
+                self.console.print('请输入列表中的编号，或回车取消。', markup=False)
+        except (OSError, ValueError, KeyError):
+            self.console.print('这段对话暂时无法恢复，当前对话保持不变。', markup=False)
+            return False
 
     def handle_preferences_command(self, raw_command: str) -> None:
         parts = raw_command.strip().split(maxsplit=3)
@@ -258,7 +264,7 @@ class TripEvidenceCLI:
                 return False
         await self.memory_manager.compact_if_needed_async(
             token_budget=SYSTEM_CONFIG.get('memory_context_budget_tokens', 6000))
-        history = await self._get_long_term_summary(user_input)
+        history = await self._get_long_term_summary(user_input, include_history=self.memory_manager.references_history(user_input))
         snapshot = self.memory_manager.get_compacted_context(n_turns=5)
         context = {'original_query': user_input, 'current_time': datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(),
                    'history_summary': history, 'session_summary': snapshot['summary'],
@@ -316,7 +322,7 @@ class TripEvidenceCLI:
                            else "本轮暂未取得可展示的回复，请稍后重试。", markup=False)
         self.console.print()
 
-    async def _get_long_term_summary(self, user_input: str = "") -> str:
+    async def _get_long_term_summary(self, user_input: str = "", *, include_history: bool = True) -> str:
         """
         生成长期记忆摘要，用于传递给 MainAgent
         使用LLM总结历史聊天记录 + 结构化偏好
@@ -338,7 +344,7 @@ class TripEvidenceCLI:
             for pref_key, pref_value in prefs.items():
                 if pref_value:  # 只添加有值的偏好
                     if pref_key == "home_location":
-                        pref_lines.append(f"• 长期居住城市：{pref_value}；这是背景信息，不代表本次出发地。")
+                        pref_lines.append(f"• 长期居住城市：{pref_value}；未指定本次出发地时作为默认起点，本次明确出发地优先。")
                         continue
                     # 如果是列表，用逗号连接
                     if isinstance(pref_value, list):
@@ -349,6 +355,9 @@ class TripEvidenceCLI:
             # 只有在有具体偏好内容时才添加
             if len(pref_lines) > 1:
                 summary_parts.extend(pref_lines)
+
+        if not include_history:
+            return '\n'.join(summary_parts)
 
         # 2. 使用LLM总结历史聊天记录
         chat_summary = await self.memory_manager.get_long_term_summary_async(max_messages=50, query=user_input)
@@ -563,6 +572,8 @@ class TripEvidenceCLI:
                     self.console.print("✓ 已清空短期记忆", style="green")
                 elif command == "history":
                     self.show_history()
+                elif command == "resume":
+                    self.resume_session()
                 elif command == "preferences":
                     self.show_preferences()
                 elif command.startswith("preferences "):

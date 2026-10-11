@@ -3,6 +3,8 @@
 import ast
 import json
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from travel_data.result_guard import grounded_answer, guard_domain_result
 
@@ -136,17 +138,22 @@ def _sentence(text: str) -> str:
     return text if not text or text.endswith(("。", "！", "？", "!", "?")) else text + "。"
 
 
-def _source(source, fetched_at=None) -> str:
-    source = source if isinstance(source, dict) else {}
-    parts = []
-    if source.get("provider"):
-        parts.append(f"来源为{source['provider']}")
-    if source.get("url"):
-        parts.append(f"参考链接为 {source['url']}")
-    timestamp = fetched_at or source.get("fetched_at")
-    if timestamp:
-        parts.append(f"查询时间为 {timestamp}")
-    return "，".join(parts)
+def _format_date(value: str) -> str:
+    try:
+        date = datetime.fromisoformat(value)
+        return f'{date.year}年{date.month}月{date.day}日'
+    except (ValueError, TypeError):
+        return value
+
+
+def _format_datetime(value: str) -> str:
+    try:
+        date = datetime.fromisoformat(value)
+        if date.tzinfo is not None:
+            date = date.astimezone(ZoneInfo('Asia/Shanghai'))
+        return f'{date.year}年{date.month}月{date.day}日 {date:%H:%M}'
+    except (ValueError, TypeError):
+        return value
 
 
 def _missing(fields) -> str:
@@ -158,17 +165,19 @@ def _missing(fields) -> str:
     return "请补充" + "、".join(names) if names else ""
 
 
-def _offer(item: dict, kind: str) -> list[str]:
+def _offer(item: dict, kind: str, *, include_route: bool = True) -> list[str]:
     parts = []
     if kind == "train":
         route = "到".join(
             item.get(key) or "未确认车站" for key in ("origin_station", "destination_station")
         )
-        text = f"可参考{item.get('train_number') or '该车次'}，从{route}"
+        text = f"可参考{item.get('train_number') or '该车次'}"
+        if include_route:
+            text += f'，从{route}'
         if item.get("departure_at") or item.get("departure_time"):
-            text += f"，{item.get('departure_at') or item['departure_time']}出发"
+            text += f"，{_format_datetime(item.get('departure_at') or item['departure_time'])}出发"
         if item.get("arrival_at") or item.get("arrival_time"):
-            text += f"，{item.get('arrival_at') or item['arrival_time']}抵达"
+            text += f"，{_format_datetime(item.get('arrival_at') or item['arrival_time'])}抵达"
         if item.get("seat_class"):
             text += f"，{item['seat_class']}"
         text += (
@@ -189,15 +198,19 @@ def _offer(item: dict, kind: str) -> list[str]:
         text = f"可参考{item.get('hotel_name') or '该酒店'}"
         if item.get("address"):
             text += f"，位于{item['address']}"
+        if item.get('check_in'):
+            text += f"，{_format_date(item['check_in'])}入住"
+        if item.get('check_out'):
+            text += f"，{_format_date(item['check_out'])}离店"
         parts.append(text + "；这是酒店地点参考，房价、空房和入住规则尚未核实")
     else:
         text = f"住宿可参考{item.get('hotel_name') or '该酒店'}"
         if item.get("room_type"):
             text += f"的{item['room_type']}"
         if item.get("check_in"):
-            text += f"，{item['check_in']}入住"
+            text += f"，{_format_date(item['check_in'])}入住"
         if item.get("check_out"):
-            text += f"，{item['check_out']}离店"
+            text += f"，{_format_date(item['check_out'])}离店"
         if item.get("guests"):
             text += f"，{item['guests']}人入住"
         text += (
@@ -227,7 +240,6 @@ def _offer(item: dict, kind: str) -> list[str]:
         parts.append(text)
     if item.get("needs_revalidation"):
         parts.append("上述价格和库存是此前取得的信息，需要重新核实")
-    parts.append(_source(item.get("source")))
     return parts
 
 
@@ -236,7 +248,7 @@ def _domain(domain: str, raw: dict) -> list[str]:
     status = data.get("status", "error")
     parts = [
         f"{DOMAINS[domain]}查询{DOMAIN_STATES[status]}",
-        _prose(data.get("message")),
+        _prose(data.get("message")).replace("部分条目缺少有效来源或字段，已排除", "部分结果尚未核实，暂未列入推荐"),
         _missing(data.get("missing_fields")),
     ]
     if status in {"ok", "partial"}:
@@ -252,22 +264,19 @@ def _domain(domain: str, raw: dict) -> list[str]:
                 parts.append(
                     f"{item['content']}（{'已核实' if item['verification'] == 'verified' else '待核实'}）"
                 )
-                parts.append(_source(item.get("source")))
             elif domain == "weather":
-                text = f"{data.get('query', {}).get('city', '')}{item.get('date') or '当前'}的天气为{item.get('description') or '天气描述未提供'}"
+                text = f"{data.get('query', {}).get('city', '')}{_format_date(item.get('date') or '当前')}的天气为{item.get('description') or '天气描述未提供'}"
                 if item.get("min_temp_c") is not None and item.get("max_temp_c") is not None:
                     text += f"，气温为{item['min_temp_c']}～{item['max_temp_c']}℃"
                 elif item.get("temp_c") is not None:
                     text += f"，气温为{item['temp_c']}℃"
-                parts.extend([text, _source(item.get("source"))])
+                parts.append(text)
             else:
                 parts.extend(
                     [
-                        f"{item.get('title') or '网页资料'}：{item.get('snippet') or '未提供摘要'}，参考链接为 {item['url']}",
-                        _source(item.get("source")),
+                        f"{item.get('title') or '网页资料'}：{item.get('snippet') or '未提供摘要'}",
                     ]
                 )
-    parts.append(_source(data.get("source"), data.get("fetched_at")))
     return parts
 
 
@@ -296,6 +305,13 @@ def build_final_answer(result: dict) -> str:
     """Return a single paragraph; preserve the internal result and all fact guards."""
     domains = result.get("domain_results") or {}
     answer = result.get("final_answer")
+    if result.get('workflow') and result.get('status') == 'needs_input':
+        # A pending task has no itinerary to present. Keep guard diagnostics
+        # internal and show the durable checkpoint question verbatim.
+        checkpoint = result['workflow'].get('checkpoint') or {}
+        return (_prose(checkpoint.get('question')) or _prose(answer)
+                or _sentence(_missing(result.get('missing_fields')))
+                or '请补充这趟行程的具体要求。')
     if not (
         domains
         or result.get("workflow")
@@ -314,28 +330,39 @@ def build_final_answer(result: dict) -> str:
         answer = "\n".join(
             line for line in answer.splitlines() if _prose(line) not in grounded_lines
         )
-    parts = [_prose(answer), _missing(result.get("missing_fields"))]
+    has_plan = bool(result.get('workflow') and (result.get('validated_plan') or {}).get('reconstructed_tasks'))
+    parts = ['这趟行程可以这样安排' if has_plan else _prose(answer), _missing(result.get("missing_fields"))]
     if result.get("workflow"):
         checked = result.get("validated_plan") or {}
         for task in checked.get("reconstructed_tasks", []):
-            parts.append(
-                f"从{task.get('origin') or '待确认的出发城市'}到{task.get('destination') or '待确认的目的地'}"
-            )
+            route = f"从{task.get('origin') or '待确认的出发城市'}到{task.get('destination') or '待确认的目的地'}"
             schedule = task.get("schedule") or {}
-            for field, label in (
-                ("departure_at", "出发时间"),
-                ("arrival_at", "抵达时间"),
-                ("check_in", "入住日期"),
-                ("check_out", "离店日期"),
-            ):
-                if schedule.get(field):
-                    parts.append(f"{label}为{schedule[field]}")
+            segment = []
             for kind in ("train", "hotel"):
                 if task.get(kind):
-                    parts.extend(_offer(task[kind], kind))
+                    offer = dict(task[kind])
+                    for field in (('departure_at', 'arrival_at') if kind == 'train' else ('check_in', 'check_out')):
+                        if not offer.get(field) and schedule.get(field):
+                            offer[field] = schedule[field]
+                    include_route = not (kind == 'train' and offer.get('origin_station') == task.get('origin')
+                                         and offer.get('destination_station') == task.get('destination'))
+                    segment.extend(_offer(offer, kind, include_route=include_route))
+            if not task.get('train'):
+                for field, label in (('departure_at', '出发时间'), ('arrival_at', '抵达时间')):
+                    if schedule.get(field):
+                        segment.append(f'{label}为{_format_datetime(schedule[field])}')
+            if not task.get('hotel'):
+                for field, label in (('check_in', '入住日期'), ('check_out', '离店日期')):
+                    if schedule.get(field):
+                        segment.append(f'{label}为{_format_date(schedule[field])}')
+            segment = [text for text in segment if text]
+            parts.append(route + '，' + '；'.join(segment) if segment else route)
         parts.extend(_budget(checked.get("budget", {})))
         for gap in result.get("gaps", []):
-            parts.append(_prose(gap.get("message") if isinstance(gap, dict) else gap))
+            message = _prose(gap.get("message") if isinstance(gap, dict) else gap)
+            if has_plan and message.startswith('酒店地点不提供房价'):
+                continue  # Each place offer already states this booking limitation.
+            parts.append(message)
     else:
         for domain, raw in domains.items():
             if domain in DOMAINS and isinstance(raw, dict):
@@ -348,7 +375,7 @@ def build_final_answer(result: dict) -> str:
                 result["itinerary"], domains, result.get("travel_conditions")
             )
             for day in checked["itinerary"].get("daily_plans", []):
-                label = day.get("date") or (f"第{day['day']}天" if day.get("day") else "行程当天")
+                label = _format_date(day['date']) if day.get('date') else (f"第{day['day']}天" if day.get("day") else "行程当天")
                 activities = [
                     " ".join(filter(None, (item.get("time"), item.get("location"))))
                     for item in day.get("activities", [])

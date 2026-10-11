@@ -50,6 +50,7 @@ def test_clear_history_removes_sessions_but_keeps_profile_after_restart(tmp_path
     legacy.write_text(
         json.dumps(
             {
+                "user_id": "alice",
                 "preferences": [{"type": "hotel_brands", "value": ["汉庭"]}],
                 "trip_history": [{"destination": "北京"}],
                 "chat_history": [{"role": "user", "content": "旧消息", "session_id": "old"}],
@@ -144,7 +145,7 @@ def test_cli_can_select_existing_session_and_edit_profile(tmp_path, monkeypatch)
     cli.user_id = "alice"
     cli.console = Console(file=io.StringIO(), force_terminal=False)
     monkeypatch.setattr("cli.Prompt.ask", lambda *_args, **_kwargs: "s1")
-    assert cli.choose_session_id(storage_path=str(tmp_path)) == "s1"
+    assert cli.choose_session_id(storage_path=str(tmp_path)) != "s1"
 
     cli.memory_manager = MemoryManager("alice", "s1", storage_path=str(tmp_path))
     cli.handle_preferences_command('preferences set hotel_brands ["汉庭", "全季"]')

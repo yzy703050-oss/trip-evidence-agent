@@ -17,6 +17,6 @@ def test_cli_displays_the_same_validated_route_without_old_guard(monkeypatch):
     app._display_results(finalize_business_result({'status': 'completed', 'final_answer': '已整理', 'workflow': w,
                           'workflow_id': w['id'], 'validated_plan': checked, 'stop_reason': 'validated'}))
     assert '北京' in output.getvalue() and '杭州' in output.getvalue()
-    assert '2026-10-15' in output.getvalue()
+    assert '2026年10月15日' in output.getvalue()
     assert '尚未核实' in output.getvalue()
     assert json.dumps(w, sort_keys=True) == before

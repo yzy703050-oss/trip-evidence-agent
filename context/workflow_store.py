@@ -53,7 +53,9 @@ def _file_lock(path):
 
 class WorkflowStore:
     def __init__(self, root, user_id):
-        self.directory = Path(root) / storage_component(user_id) / "workflows"
+        from context.user_storage import resolve_user_directory
+        self.user_id = storage_component(user_id)
+        self.directory = resolve_user_directory(root, user_id) / "workflows"
         from context.trip_memory import TripMemory
 
         self.trip_memory = TripMemory(root, user_id)
@@ -82,6 +84,8 @@ class WorkflowStore:
         path = self._path(workflow_id)
         with _file_lock(path.with_suffix(".lock")):
             value = self._read(path)
+            if value is not None and value.get('user_id') != self.user_id:
+                raise ValueError('workflow owner mismatch')
             if value is not None and value.get("id") != workflow_id:
                 raise ValueError("workflow snapshot identity mismatch")
             if value and value.get("record_type") == "travel_history":
@@ -90,9 +94,14 @@ class WorkflowStore:
 
     def save(self, workflow, *, expected_revision):
         value = deepcopy(workflow)
+        if value.get('user_id', self.user_id) != self.user_id:
+            raise ValueError('workflow owner mismatch')
+        value['user_id'] = self.user_id
         path = self._path(value["id"])
         with _file_lock(path.with_suffix(".lock")):
             current = self._read(path)
+            if current is not None and current.get('user_id') != self.user_id:
+                raise ValueError('workflow owner mismatch')
             if current and current.get("record_type") == "travel_history":
                 raise WorkflowConflictError("history record cannot become an executable workflow")
             if current is None:
@@ -173,6 +182,7 @@ class WorkflowStore:
             path,
             {
                 "id": record_id,
+                "user_id": self.user_id,
                 "record_type": "travel_history",
                 "revision": current["revision"] + 1 if current else 1,
                 "updated_at": now,

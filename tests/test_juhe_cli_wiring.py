@@ -99,8 +99,10 @@ def test_startup_injects_juhe_and_agent_cli_show_sourced_quote(monkeypatch, capl
     assert calls[0][1]['data']['key'] == KEY
     app._display_results(finalize_business_result({'domain_results': {'train': result}}))
     text = output.getvalue()
-    for expected in ['G25', '二等座', '627.50', '查询时有票', '聚合数据', 'https://www.juhe.cn/docs/api/id/817', '2026-10-09T09:00:00+08:00']:
+    for expected in ['G25', '二等座', '627.50', '查询时有票']:
         assert expected in text
+    assert "https://www.juhe.cn/docs/api/id/817" not in text
+    assert result["items"][0]["source"]["provider"] == "聚合数据"
     assert KEY not in text + caplog.text + json.dumps(result)
 
 @pytest.mark.asyncio

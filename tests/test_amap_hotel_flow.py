@@ -155,7 +155,7 @@ async def test_cli_displays_the_real_place_address_and_unknown_inventory():
     cli.console = Console(file=output, width=160, color_system=None)
     cli._display_sourced_result("hotel_search", result)
     text = output.getvalue()
-    assert "汉庭酒店1" in text and "示例路1号" in text and "amap" in text
+    assert "汉庭酒店1" in text and "示例路1号" in text and "amap" not in text
     assert "房价、空房和入住规则尚未核实" in text and "test-secret" not in text
 
 
