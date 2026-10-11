@@ -281,7 +281,8 @@ class TripEvidenceCLI:
             context = {'original_query': user_input,
                        'current_time': datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(),
                        'history_summary': history, 'session_summary': snapshot['summary'],
-                       'recent_messages': [m for m in snapshot['recent_messages'] if m.get('turn_id') != turn_id]}
+                       'recent_messages': [m for m in snapshot['recent_messages']
+                                           if m.get('turn_id') != turn_id]}
             with self.console.status("思考中...", spinner='dots'):
                 result = await self.harness.run_turn(context, run)
             if self.circuit_breaker and result.get('stop_reason') != 'context_budget_exceeded':
