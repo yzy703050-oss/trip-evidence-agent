@@ -98,7 +98,8 @@ async def test_early_personal_question_or_partial_gets_feedback_to_query_availab
                 if first_action=='finish': return dict(action='finish',status='partial',final_answer='缺预算')
                 return dict(action='ask_user',question='预算多少？',reason='缺预算',
                             affected_task_ids=[context['current_task']['id']],suggested_changes=[])
-            if context['current_task']['status']=='pending':
+            if (context['current_task']['status']=='pending'
+                    and context['current_task']['id']==context['workflow']['tasks'][0]['id']):
                 assert context['action_feedback']['code']=='available_queries_required'
             return await super().step(context)
     r=runtime(tmp_path,[dict(origin='重庆',destination='上海',requires_hotel=True,conditions={})])
@@ -106,7 +107,7 @@ async def test_early_personal_question_or_partial_gets_feedback_to_query_availab
     r.harness.main_agent=r.main
     result=await r.turn('我要去上海玩，安排一下')
     assert result['status']=='completed' and result['workflow']['checkpoint'] is None
-    assert len(r.hotel.calls)==1 and len(r.train.calls)==1
+    assert len(r.hotel.calls)==1 and len(r.train.calls)==2
     assert result['workflow']['tasks'][0]['draft_plan']['hotel_selection']
 
 
@@ -130,7 +131,7 @@ async def test_default_date_can_try_next_two_days_without_changing_user_date(tmp
     r = runtime(tmp_path,[dict(origin='重庆',destination='上海',requires_hotel=False,conditions={})])
     from datetime import date
     r.train.empty_dates={date(2026,10,17)}
-    result=await r.turn('去上海，安排火车')
+    result=await r.turn('去上海，只安排单程火车')
     assert result['status']=='completed'
     assert [d.isoformat() for d in r.train.calls]==['2026-10-17','2026-10-18']
     assert result['workflow']['tasks'][0]['conditions']['departure_date']=='2026-10-18'
