@@ -1,5 +1,7 @@
 # 用户隔离、会话恢复与回复呈现验证
 
+历史验证记录：这部分修改后来已提交PR #6（https://github.com/yzy703050-oss/trip-evidence-agent/pull/6）。后续模型回复与默认往返的最新本地验证见[独立记录](2026-10-11-model-replies-round-trip.md)；下文未提交等状态描述为当时记录。
+
 日期：2026-10-11。执行方式：单代理实施与整体自审。工作分支：codex/user-session-isolation。产品代码、测试与文档保留在当前工作区；未合并、推送或创建PR。
 
 ## 验证结果

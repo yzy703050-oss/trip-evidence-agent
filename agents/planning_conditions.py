@@ -31,7 +31,8 @@ def prepare_task(workflow, task_id, current_time, *, previous_boundary=None):
     sources.update(task.get('field_sources', {}))
     index = workflow['tasks'].index(task)
     boundary = previous_boundary or {}
-    if (index and task.get('needs_dependency_check') and boundary.get('arrival_at')
+    if (index and task.get('needs_dependency_check')
+            and (boundary.get('check_out') or boundary.get('arrival_at'))
             and task['field_sources'].get('departure_date') in {'derived','proposal'}
             and not effective.get('arrival_date') and not effective.get('arrival_before')):
         value=boundary.get('check_out') or boundary['arrival_at'][:10]
@@ -42,7 +43,7 @@ def prepare_task(workflow, task_id, current_time, *, previous_boundary=None):
         if index == 0 and current_time:
             now = datetime.fromisoformat(current_time).astimezone(BEIJING)
             value, source = (now.date() + timedelta(days=7)).isoformat(), 'default'
-        elif boundary.get('arrival_at'):
+        elif boundary.get('check_out') or boundary.get('arrival_at'):
             value = boundary.get('check_out') or boundary['arrival_at'][:10]
             previous = workflow['tasks'][index-1]
             source = 'derived' if not boundary.get('check_out') or previous.get('field_sources', {}).get('check_out') in {'user', 'context'} else 'proposal'

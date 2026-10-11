@@ -6,7 +6,7 @@
 
 **Architecture:** 用统一的用户存储解析器替代各模块直接拼接用户名目录，对身份、归属和旧数据兼容做集中处理。复用 SessionStore 与 MemoryManager 恢复对话，切换时重建用户会话绑定的运行组件。完整自然回复继续在 Harness 返回边界生成，CLI 只打印 final_answer。
 
-**Tech Stack:** Python 3.11、pathlib/hashlib、Rich、AgentScope、pytest/pytest-asyncio；不增加依赖或额外模型调用。
+**Tech Stack:** Python 3.11、pathlib/hashlib、Rich、AgentScope、pytest/pytest-asyncio；不增加依赖。最初三项任务不增加模型调用；Follow-up 2按最新用户确认增加一次有界的回复组织调用。
 
 **Spec:** 本次聊天中用户提出不同用户隔离、不要回复数据来源、恢复入口可选且显示会话主题；2026-10-11 用户以“符合”确认上一条三项设计。项目未初始化 OpenSpec，不创建其目录，不声称执行 propose/apply/verify/archive。本文展开已确认设计，不另定义产品规格；参考现有 `docs/design/v0-memory-redesign.md`、`docs/superpowers/plans/2026-10-10-residence-and-cli-prose.md` 和 `docs/superpowers/specs/2026-10-11-unified-travel-history-design.md`，本次用户要求覆盖旧计划中“公开回复保留来源及查询时间”的约束。
 
@@ -25,7 +25,7 @@
 - 回复保留已校验车次、车站、出发/到达日期和时刻、价格单位、可用情况与必要限制；ISO 时间显示为“2026年10月18日 21:15”，跨日到达保留完整日期。
 - 来源名称、来源链接、查询时间不进入默认 final_answer；原始 source/fetched_at 等保留在内部结果中。网页结果默认显示标题和相关摘要，用户明确要链接时仍可直接回答链接请求，不全局删除任意正文 URL。
 - 酒店地点参考不能说成已核实报价或已预订；未知房价/空房、旧报价需复查、部分失败、费用不完整仍明确表达。合并同义费用提醒，不用重复字段句堆叠同一事实。
-- 不改变 MainAgent 的 JSON 协议、查询及报价校验、不增加生成回复的模型调用；CLI 不另读结构化数据追加正文。
+- 最初三项任务不改变 MainAgent 的 JSON 协议、查询及报价校验、不增加生成回复的模型调用；Follow-up 2覆盖回复调用约束，新增独立模板协议，查询及报价校验保持。CLI 不另读结构化数据追加正文。
 
 ## Review Focus
 
@@ -98,6 +98,26 @@
 - [x] 定向及全量测试、代码自审、规格人工核对，更新本计划与验证记录。此前完成证据不作为本次新增修复的通过证据。
 
 ## Execution Record
+
+## Follow-up 2：模型组织回复、默认往返
+
+用户已确认：未指定晚数由模型建议，默认往返，按停留方案衔接回常住城市；明确单程或不返程时遵守原要求。查不到车次时模型提供后续安排建议，不将不存在的车次、价格、库存或时刻写成查询事实。无需展示“模型生成”字样，建议日期用自然措辞表达。此要求覆盖旧“单目的地不默认加返程”和“回复不增加模型调用”约束。项目未初始化 OpenSpec，继续单代理并按用户批准的短设计实施。
+
+- [x] Task A：先测默认首段/多目的地返回常住城市、明确单程、已闭合路线不重复、模型晚数不变；新建旅行默认补回程，恢复/局部修改不补路段。旧单程重试测试明确要求单程，其余新建旅行集成同步验证双程查询；CLI默认往返集成单独覆盖。
+- [x] Task B：先测已查到的抵达与离店日期衔接回程，以及去程失败时仍可按建议离店日期查询回程；不将建议当作实际抵达，不改用户固定日期。
+- [x] Task C：先测完整、失败、未知房价、跨日、过期事实、额外票价/虚构车次/预订承诺。新增reply facts与模板校验：模型组织自然语句，票价/车次/时刻/住宿/未知提醒只能引用由校验结果构建的占位事实，必要事实必须覆盖且不重复；程序替换占位符，无效输出或模型失败则用简洁后备回复。
+- [x] Task D：在Harness最终返回边界调用一次MainAgent的回复组织方法；单独计量，设置超时，等待输入与暂停不调用，不重放供应商查询。最终正文不再二次改写或追加内部校验话语；公开结构事实保留。
+- [x] 更新提示词、README与执行证据；全量测试、Ruff、compileall、diff检查和单代理整体自审。真实数据仅只读排查，不用于测试或修改。当前PR不自动合并或发布新修复。
+
+实施文件：agents/workflow_contracts.py、planning_conditions.py、main_agent.py、execution_harness.py、utils/workflow_reply.py（新增）、response_renderer.py；tests/test_round_trip_reply.py（新增）及原有受影响测试。验收以本段用户确认要求与实际测试证据为准。
+
+详细执行对应：A在workflow_contracts.create_workflow的新建分支补回程；B在planning_conditions.prepare_task按已核实或建议checkout衔接，保留user日期；C在workflow_reply.build_reply_facts/render_reply_template隔离事实和句式、合并限制与报价日期；D由MainAgent.compose_workflow_reply生成唯一template字段，Harness限时调用后替换事实，Renderer保留最终正文。各任务测试先失败再最小实现，验证命令为`.venv/Scripts/python.exe -m pytest -q tests/test_round_trip_reply.py tests/test_model_workflow_reply.py --basetemp=.test-tmp/round-reply --tb=short`；完成条件是对应案例通过、内部事实未被改写、没有供应商重放。
+
+执行证据：A/B初始4 failed、3 passed，最小实现7 passed；C/D初始13 failed、7 passed，集成20 passed。自审新增报价日期去重与停止后续建议两项RED（2 failed、39 passed），修复后通过；再次补无抵达证据下更新回程日期的RED后修复。跨夜测试初始遗漏起点的fixture修正后通过，不将其当产品RED证据。最后补模型段落保留RED（1 failed、16 passed），修复模板替换和Renderer对换行的压平；旧单域无换行断言保留，工作流断言改为短段落。相关集成92 passed；最终全量635 passed、3 skipped、1既有dashscope弃用警告，33.31s，exit=0，命令`.venv/Scripts/python.exe -m pytest -q tests --basetemp=.test-tmp/followup2-verified --tb=short`。新增模块与测试Ruff、修改Python的compileall、git diff --check均通过。
+
+实际配置deepseek-flash模型检查：初始化建议曾为3晚，最终检查为2晚（不是程序固定晚数）；最终两份固定事实回复均合格并按去程/住宿/回程留空行，失败时仅收尾给核对建议。真实主模型与信息获取模型配模拟供应商的正常/去程报错两种完整工作流分别22.60s/22.81s通过，均2次火车查询、1次酒店查询、一次main:reply。失败去程保持partial和未知实际抵达，拟入住12日离店15日仍能查询15日返程。全部使用临时测试记忆，未查询真实票务/酒店或修改用户历史。详细核对见`docs/superpowers/verification/2026-10-11-model-replies-round-trip.md`。
+
+## Prior Execution Record
 
 - 2026-10-11：用户确认三项设计；用户已选择单代理；当前代理实施并整体自审，不派子代理。
 - 排查证据：data/memory/Yzy/profile.json 的 user_id 为 Yzy；Windows 下 data/memory/yzy 解析到同目录。临时 SessionStore(Yzy,s1) 写入消息，SessionStore(yzy,s1) 能读取，确认隔离漏洞。

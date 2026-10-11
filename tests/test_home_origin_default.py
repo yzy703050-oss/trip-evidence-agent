@@ -62,7 +62,8 @@ async def test_cli_uses_saved_home_after_reopening_without_origin_question(tmp_p
     assert r.main.contexts[0]['preflight']['query_requests'][0]['parameters']['origin'] == '重庆'
     parameters = r.main.contexts[0]['preflight']['query_requests'][0]['parameters']
     assert parameters['departure_date'] == expected_date
-    assert len(r.train.calls) == len(r.hotel.calls) == 1
+    assert len(r.train.calls) == 2 and len(r.hotel.calls) == 1
+    assert result['workflow']['tasks'][-1]['destination'] == '重庆'
     assert '你准备从哪个城市出发' not in result['final_answer']
     assert '草稿包含' not in result['final_answer']
     assert app.memory_manager.long_term.get_preference('home_location') == '重庆'

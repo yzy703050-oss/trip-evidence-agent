@@ -184,6 +184,18 @@ def create_workflow(proposal, context, *, workflow_id=None, require_stay_proposa
                           requires_hotel=row['requires_hotel'], depends_on=[tasks[-1]['id']] if tasks else [],
                           conditions=conditions, field_sources=task_sources,
                           draft_plan=None, summary='', query_ids=[], issues=[]))
+    query = context.get('original_query', '')
+    one_way = re.search(r'单程|(?:不用|不要|不需要|不安排)(?:安排)?(?:回程|返程)|(?:暂时|先)?不回|不返|one[ -]way', query, re.I)
+    home = context.get('effective_preferences', {}).get('home_location')
+    return_to = home.strip() if isinstance(home, str) and home.strip() else tasks[0]['origin']
+    if (context.get('default_round_trip') and not one_way and return_to
+            and tasks[-1]['destination'] != return_to and tasks[-1]['purpose'] != 'return'):
+        tasks.append(dict(id=identifier('task'), revision=1, status='pending',
+                          origin=tasks[-1]['destination'], destination=return_to,
+                          purpose='return', purpose_source='default', requires_hotel=False,
+                          depends_on=[tasks[-1]['id']], conditions={'flexible_dates': True},
+                          field_sources={'flexible_dates': 'default'}, draft_plan=None,
+                          summary='', query_ids=[], issues=[]))
     return dict(id=workflow_id or identifier('workflow'), revision=1, status='running',
                 original_query=context.get('original_query', ''), confirmed_conditions=confirmed,
                 effective_conditions=effective, field_sources=sources, current_task_id=tasks[0]['id'],

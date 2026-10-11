@@ -18,5 +18,5 @@ def test_cli_displays_the_same_validated_route_without_old_guard(monkeypatch):
                           'workflow_id': w['id'], 'validated_plan': checked, 'stop_reason': 'validated'}))
     assert '北京' in output.getvalue() and '杭州' in output.getvalue()
     assert '2026年10月15日' in output.getvalue()
-    assert '尚未核实' in output.getvalue()
+    assert '房价、空房' in output.getvalue() and '需在订房时确认' in output.getvalue()
     assert json.dumps(w, sort_keys=True) == before
