@@ -193,7 +193,8 @@ def test_workflow_schedule_and_revalidation_render_as_sentences():
         }
     )
     assert "北京" in text and "杭州" in text and "2026年10月15日" in text
-    assert "重新核实" in text and "尚未完整核实" in text and "决策" in text
+    assert "重新核实" in text and "其余费用还需确认" in text
+    assert "剩余内容可以接着查询或调整" in text
     for internal in (
         "task_id",
         "check_in",
@@ -205,7 +206,7 @@ def test_workflow_schedule_and_revalidation_render_as_sentences():
         "}",
     ):
         assert internal not in text
-    assert "\n" not in text
+    assert "\n\n" in text
 
 
 def test_missing_fields_and_general_error_are_natural_language():

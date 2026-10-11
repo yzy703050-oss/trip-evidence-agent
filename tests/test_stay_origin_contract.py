@@ -139,4 +139,4 @@ async def test_harness_rejects_false_quote_requirement_in_a_feedback_update(tmp_
     result = await r.turn('换一家酒店，其他不变')
     assert result['status'] == 'error'
     assert r.memory.workflow_store.load(w['id'])['revision'] == w['revision']
-    assert len(r.train.calls) == len(r.hotel.calls) == 1
+    assert len(r.train.calls) == 2 and len(r.hotel.calls) == 1

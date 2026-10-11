@@ -87,7 +87,7 @@ def test_logged_workflow_hides_sources_and_merges_duplicate_details():
         "2026年10月19日 09:25",
         "2026年10月22日 08:00",
         "驿小栈青年酒店",
-        "房价、空房和入住规则尚未核实",
+        "酒店房价、空房和入住及退改规则需在订房时确认",
     ]:
         assert expected in text
     for forbidden in [
@@ -102,7 +102,7 @@ def test_logged_workflow_hides_sources_and_merges_duplicate_details():
     assert text.count("21:15") == 1
     assert text.count('从上海到北京') == 1
     assert text.count("655") == 1
-    assert text.count("全程费用尚未完整核实") == 1
+    assert text.count("其余费用还需确认") == 1
     assert result == before
 
 
@@ -152,7 +152,7 @@ def test_unknown_prices_and_stale_inventory_are_not_hidden():
         price_cny=None, availability="unknown", remaining=None, needs_revalidation=True
     )
     text = finalize_business_result(result)["final_answer"]
-    assert "票价尚未核实" in text and "余票尚未核实" in text
+    assert "票价还未确认" in text and "余票还未确认" in text
     assert "重新核实" in text
 
 

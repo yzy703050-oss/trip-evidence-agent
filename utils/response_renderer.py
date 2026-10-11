@@ -312,6 +312,11 @@ def build_final_answer(result: dict) -> str:
         return (_prose(checkpoint.get('question')) or _prose(answer)
                 or _sentence(_missing(result.get('missing_fields')))
                 or '请补充这趟行程的具体要求。')
+    if result.get('reply_style') in {'model', 'fallback'}:
+        return answer.strip() if isinstance(answer, str) else _prose(answer)
+    if result.get('workflow') and (result.get('validated_plan') or {}).get('reconstructed_tasks'):
+        from utils.workflow_reply import fallback_workflow_reply
+        return fallback_workflow_reply(result)
     if not (
         domains
         or result.get("workflow")

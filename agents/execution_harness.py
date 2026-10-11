@@ -113,10 +113,31 @@ class ExecutionHarness:
                 try: w=self.memory_manager.workflow_store.save(w,expected_revision=w['revision'])
                 except (OSError,WorkflowConflictError): return finalize_business_result(self._error('workflow_save_failed',run))
                 result.update(finalization_method='workflow',workflow=w,workflow_id=w['id'],workflow_revision=w['revision'])
-        return finalize_business_result(result)
+        result = finalize_business_result(result)
+        if (result.get('workflow') and result.get('validated_plan')
+                and result.get('status') in {'completed', 'partial'}):
+            from utils.workflow_reply import build_reply_facts, render_reply_template
+            facts = build_reply_facts(result)
+            result['reply_style'] = 'fallback'
+            compose = getattr(self.main_agent, 'compose_workflow_reply', None)
+            if compose is not None and result.get('stop_reason') != 'turn_timeout':
+                try:
+                    with model_scope(turn_id=run.turn_id, workflow_id=result.get('workflow_id')):
+                        reply = await asyncio.wait_for(compose({
+                            'original_query': context['original_query'],
+                            'current_time': context.get('current_time'),
+                            'status': result['status'],
+                            'reply_facts': {'values': facts['values'], 'required': facts['required']}
+                        }), timeout=15.0)
+                    result['final_answer'] = render_reply_template(reply['template'], facts)
+                    result['reply_style'] = 'model'
+                except Exception:
+                    result['final_answer'] = facts['fallback']
+        return result
 
     async def _run_turn(self, context, run):
         context = deepcopy(context)
+        context.setdefault('default_round_trip', True)
         context['effective_preferences'] = deepcopy(run.effective_preferences)
         from agents.planning_conditions import ambiguous_date_options
         context['ambiguous_date_options']=ambiguous_date_options(context['original_query'],context.get('current_time'))

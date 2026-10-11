@@ -80,8 +80,8 @@ async def test_workflow_final_answer_contains_dates_and_unknown_costs(tmp_path):
         "2026年10月15日",
         "入住",
         "离店",
-        "房价、空房和入住规则尚未核实",
-        "全程费用尚未完整核实",
+        "酒店房价、空房和入住及退改规则需在订房时确认",
+        "其余费用还需确认",
     ):
         assert expected in result["final_answer"]
     assert isinstance(result["workflow"], dict) and isinstance(result["validated_plan"], dict)
