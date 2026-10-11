@@ -127,6 +127,13 @@ class WorkflowRunner:
                               'tools_remaining': self.run_state.workflow_tool_budget,
                               'task_info_remaining': self.limits.info_executions_per_task-self.counts.get(task['id'], 0)}}
 
+    def _delegation_context(self):
+        view = project_delegation_context(self._model_context())
+        if self.memory:
+            latest = self.memory.get_compacted_context()['summary']
+            view['session_summary'] = latest or view.get('session_summary', '')
+        return view
+
     async def _loop(self):
         maximum = len(self.w['tasks'])*self.limits.main_steps_per_task+self.limits.main_extra_steps
         feedback = None
@@ -189,7 +196,7 @@ class WorkflowRunner:
                         'mode': action.get('mode', 'query_candidates'), 'purpose': task.get('purpose'),
                         'goal': action['goal'], 'query_requests': action['query_requests'],
                         'requested_domains': list(dict.fromkeys(r['domain'] for r in action['query_requests']))},
-                        'context': project_delegation_context(self._model_context())}, task_id=task['id'])
+                        'context': self._delegation_context()}, task_id=task['id'])
                 with model_scope(turn_id=self.run_state.turn_id, workflow_id=self.w['id'], task_id=task['id'],
                                  task_revision=task['revision'], message_id=request['message_id']):
                     result = await self.info.run(request, self.run_state)

@@ -1,4 +1,22 @@
 import importlib
+from types import SimpleNamespace
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_budget_telemetry_failure_preserves_normal_model_reply():
+    context_budget = importlib.import_module("context.context_budget")
+    reply = SimpleNamespace(content="普通回复")
+
+    async def model(messages, **kwargs):
+        return reply
+
+    def record(event):
+        raise OSError("telemetry storage unavailable")
+
+    wrapped = context_budget.BudgetedModel(model, budget_tokens=6000, record=record)
+    assert await wrapped([{"role": "user", "content": "普通请求"}]) is reply
 
 
 def test_input_count_includes_instructions_business_and_tools():

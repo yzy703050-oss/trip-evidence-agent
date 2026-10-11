@@ -1,6 +1,6 @@
 # Agent 上下文隔离与 token 压缩实施计划
 
-> **For agentic workers:** 按用户选择执行。单代理使用 superpowers:executing-plans，由当前代理连续实施并整体自审；多子代理使用 superpowers:subagent-driven-development，以干净任务上下文实施并独立评审。执行方式尚未选择，不默认派子代理。
+> **For agentic workers:** 按用户选择执行。单代理使用 superpowers:executing-plans，由当前代理连续实施并整体自审；多子代理使用 superpowers:subagent-driven-development，以干净任务上下文实施并独立评审。用户已选择单代理连续实施并整体自审，不派子代理。
 
 **Goal:** 实现本次 OpenSpec 规定的子临时上下文、主结果摘要、完整用户轮次 token 压缩与超限分段提示。
 
@@ -49,15 +49,15 @@
 - `MemoryManager.get_compacted_context() -> dict`：summary、全部未覆盖主 recent_messages、pending_tool_calls；生产调用不限制轮数。
 - `ShortTermMemory(max_turns: int | None = None)`：None 不按轮数淘汰；展示用 `get_recent_context(n_turns)` 可保留。
 
-- [ ] 先写失败测试：`test_more_than_ten_small_turns_remain_visible` 保存 12 个短完整轮次，断言主历史为全部 24 条；`test_main_result_history_projects_reply_without_tool_payload` 带唯一工具原文标记，断言主投影无标记、原 event 未变；`test_input_count_includes_instructions_business_and_tools` 注入确定性计数器核对各组成部分，无超限停止断言。
-- [ ] RED：运行下列命令，确认失败来自旧轮数截取、完整 JSON 泄漏和缺少输入计数接口，不是导入环境错误。
+- [x] 先写失败测试：`test_more_than_ten_small_turns_remain_visible` 保存 12 个短完整轮次，断言主历史为全部 24 条；`test_main_result_history_projects_reply_without_tool_payload` 带唯一工具原文标记，断言主投影无标记、原 event 未变；`test_input_count_includes_instructions_business_and_tools` 注入确定性计数器核对各组成部分，无超限停止断言。
+- [x] RED：运行下列命令，确认失败来自旧轮数截取、完整 JSON 泄漏和缺少输入计数接口，不是导入环境错误。
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_context_budget.py tests/test_v0_memory_context.py -q
 ```
 
-- [ ] 最小实现：使用模型兼容计数器注入接口；默认明确标识 UTF-8 估算方法及 estimated；规范序列化消息/tools，避免重复计算快照。主投影不读 agent scope；移除生产窗口淘汰并保持人工展示接口。
-- [ ] GREEN：重跑上述测试和 `tests/test_v0_memory_flow.py`，读取输出；更新 OpenSpec 1.1 与本计划记录，再提交本任务代码/测试。
+- [x] 最小实现：使用模型兼容计数器注入接口；默认明确标识 UTF-8 估算方法及 estimated；规范序列化消息/tools，避免重复计算快照。主投影不读 agent scope；移除生产窗口淘汰并保持人工展示接口。
+- [x] GREEN：重跑上述测试和 `tests/test_v0_memory_flow.py`，读取输出；更新 OpenSpec 1.1 与本计划记录，再提交本任务代码/测试。
 
 **完成条件:** 未压缩主消息全部可见；工具事件不计入主历史；输入计数覆盖真实组成且方法可追踪；原日志不改。
 
@@ -72,15 +72,15 @@
 - `compact_if_needed(token_budget, *, summarizer, token_counter=estimate_tokens)`、async 对应接口：不接受生产 keep_recent_turns；可接受固定输入估算作为剩余历史预算，实际请求重建接口由 Task 4 接入。
 - 使用既有 covered_through_seq/cleared_through_seq；新 cutoff 永远是完整轮末，checkpoint 只兼容读取。
 
-- [ ] 先写失败测试：替换旧 `test_active_turn_cut_uses_completed_stage_and_retains_pending_call` 为 `test_active_turn_stages_never_form_session_cut`，构造较长的完整旧轮次和低于阈值的短活动轮，断言 cutoff 为旧轮末而非活动轮阶段（不构造单轮超限停止场景）；`test_unfinished_old_turn_blocks_prefix`；`test_legacy_mid_turn_summary_keeps_uncovered_messages`；`test_summary_failure_keeps_coverage`；摘要后重启无空档。
-- [ ] RED：确认旧阶段切点、固定轮数窗口及旧参数依赖分别导致失败。
+- [x] 先写失败测试：替换旧 `test_active_turn_cut_uses_completed_stage_and_retains_pending_call` 为 `test_active_turn_stages_never_form_session_cut`，构造较长的完整旧轮次和低于阈值的短活动轮，断言 cutoff 为旧轮末而非活动轮阶段（不构造单轮超限停止场景）；`test_unfinished_old_turn_blocks_prefix`；`test_legacy_mid_turn_summary_keeps_uncovered_messages`；`test_summary_failure_keeps_coverage`；摘要后重启无空档。
+- [x] RED：确认旧阶段切点、固定轮数窗口及旧参数依赖分别导致失败。
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_v0_compaction.py tests/test_v0_memory_context.py tests/test_cli_session_resume.py -q
 ```
 
-- [ ] 最小实现：顺序分组完整用户轮次，只选连续已完成旧前缀；摘要仅用主投影；生成后重计数并有界尝试更长完整前缀，失败不提交游标。旧摘要保留未覆盖同轮消息，禁止新轮内 checkpoint。
-- [ ] GREEN：重跑上述命令并回归 clear/pending-tool 恢复；更新 1.2 和记录，提交任务。
+- [x] 最小实现：顺序分组完整用户轮次，只选连续已完成旧前缀；摘要仅用主投影；生成后重计数并有界尝试更长完整前缀，失败不提交游标。旧摘要保留未覆盖同轮消息，禁止新轮内 checkpoint。
+- [x] GREEN：重跑上述命令并回归 clear/pending-tool 恢复；更新 1.2 和记录，提交任务。
 
 **完成条件:** 新压缩不拆用户轮，摘要前后连续，失败不丢原消息，旧 state 可读取。
 
@@ -95,15 +95,15 @@
 - `project_workflow_context(workflow: dict, *, task_id: str | None = None, candidate_limit: int = 5) -> dict`：保留确认条件、任务状态、选中候选及需要的有界资料。
 - 完整 run.results/domain_results/workflow 保持现有业务形状；仅在送入模型前应用摘要投影，最终业务渲染读完整对象。
 
-- [ ] 先写失败测试：`test_child_raw_tool_marker_absent_from_main_requests_and_summary` 检查 main initialize/step/finalize 及主历史摘要输入；`test_child_projection_preserves_candidate_ids_and_sources_without_mutation`；`test_reused_child_starts_fresh_messages` 两次同实例调用仅本次任务上下文；`test_child_calls_do_not_invoke_compaction` 使用会报错的摘要 spy；保留同次多工具结果成组进入子模型的既有测试。
-- [ ] RED：捕获真实模型输入，确认失败来自完整结果传递或投影不足；不以只检查 helper 的测试替代运行接线。
+- [x] 先写失败测试：`test_child_raw_tool_marker_absent_from_main_requests_and_summary` 检查 main initialize/step/finalize 及主历史摘要输入；`test_child_projection_preserves_candidate_ids_and_sources_without_mutation`；`test_reused_child_starts_fresh_messages` 两次同实例调用仅本次任务上下文；`test_child_calls_do_not_invoke_compaction` 使用会报错的摘要 spy；保留同次多工具结果成组进入子模型的既有测试。
+- [x] RED：捕获真实模型输入，确认失败来自完整结果传递或投影不足；不以只检查 helper 的测试替代运行接线。
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_agent_context_isolation.py tests/test_information_agent_loop.py tests/test_information_query_agent.py tests/test_main_harness.py tests/test_main_feedback.py tests/test_workflow_runner.py -q
 ```
 
-- [ ] 最小实现：白名单投影必要事实/引用；检查主模型所有路径和历史最终 JSON；子 Agent 局部 messages 不存实例状态，不调用摘要。显式任务资料可传入，不继承其他委派对话；候选选择与程序校验仍读原对象。
-- [ ] GREEN：重跑以上并运行 `tests/test_sourced_itinerary.py`、`tests/test_workflow_queries.py`、`tests/test_travel_updates.py`；分别更新 2.1/2.2 和记录，提交任务。
+- [x] 最小实现：白名单投影必要事实/引用；检查主模型所有路径和历史最终 JSON；子 Agent 局部 messages 不存实例状态，不调用摘要。显式任务资料可传入，不继承其他委派对话；候选选择与程序校验仍读原对象。
+- [x] GREEN：重跑以上并运行 `tests/test_sourced_itinerary.py`、`tests/test_workflow_queries.py`、`tests/test_travel_updates.py`；分别更新 2.1/2.2 和记录，提交任务。
 
 **完成条件:** 主输入无工具过程，子循环完整且任务间独立，来源与选择可验证。
 
@@ -120,18 +120,18 @@
 - 嵌套模型只包一次；会话 resume 解开包装取得 raw model，再按新会话绑定计量和预算；不得将日志继续写进旧会话。
 - 统一 stop_reason=context_budget_exceeded、status=partial，CLI final 消息结束轮次；分段文案取 specs 原文。
 
-- [ ] 依用户指示不写 RED/GREEN 超限测试，不用模拟超限执行或手工触发该场景。
-- [ ] 接入配置、输入重建、流式最终输出检查。明确 main/child/summary 作用域，summary 不递归调用摘要；单个 current 上下文不能通过旧轮压缩解决时向上传播异常。
-- [ ] 静态逐项审查所有 `except Exception` 和回复兜底：优先传播预算异常，轮次最外层保存已有结果并停止；不启动后续工具、补查或回复模型。保留已发生的请求和结果，CAS 冲突不重跑。
-- [ ] 静态核对 input/output 计数不累加独立请求及重复流式快照；超限文案必须建议分段规划。只确认代码路径，不声称实测通过。
-- [ ] 编译变更文件，执行现有非超限模型/CLI/遥测回归；新增用例不得专门验证超限停止。
+- [x] 依用户指示不写 RED/GREEN 超限测试，不用模拟超限执行或手工触发该场景。
+- [x] 接入配置、输入重建、流式最终输出检查。明确 main/child/summary 作用域，summary 不递归调用摘要；单个 current 上下文不能通过旧轮压缩解决时向上传播异常。
+- [x] 静态逐项审查所有 `except Exception` 和回复兜底：优先传播预算异常，轮次最外层保存已有结果并停止；不启动后续工具、补查或回复模型。保留已发生的请求和结果，CAS 冲突不重跑。
+- [x] 静态核对 input/output 计数不累加独立请求及重复流式快照；超限文案必须建议分段规划。只确认代码路径，不声称实测通过。
+- [x] 编译变更文件，执行现有非超限模型/CLI/遥测回归；新增用例不得专门验证超限停止。
 
 ```powershell
 .\.venv\Scripts\python.exe -m compileall -q context agents cli.py config.py utils/response_renderer.py .claude/skills/query-info/script .claude/skills/memory-query/script .claude/skills/preference/script .claude/skills/ask-question/script
 .\.venv\Scripts\python.exe -m pytest tests/test_v0_telemetry.py tests/test_workflow_telemetry.py tests/test_cli_session_resume.py tests/test_model_io.py tests/test_main_output.py -q
 ```
 
-- [ ] 更新 3.1，记录静态审查证据及“按用户要求未对超限场景测试”，提交任务。
+- [x] 更新 3.1，记录静态审查证据及“按用户要求未对超限场景测试”，提交任务。
 
 **完成条件:** 代码审查确认接线、终止传播、已有状态保存与确切文案；编译和非豁免回归通过。超限行为不附实测结论。
 
@@ -141,8 +141,8 @@
 
 **Files:** README、tasks.md、本计划实施记录；完成后 OpenSpec archive 的同步规格和归档目录。
 
-- [ ] 更新 README，明确生产历史不按轮数截取、子调用临时上下文、token 估算方法、6000 初始值及完整轮次边界；记录用户豁免。
-- [ ] 运行 Tasks 1—3 定向测试及项目相关既有全量回归（不新建超限专项测试）；读取真实输出。
+- [x] 更新 README，明确生产历史不按轮数截取、子调用临时上下文、token 估算方法、6000 初始值及完整轮次边界；记录用户豁免。
+- [x] 运行 Tasks 1—3 定向测试及项目相关既有全量回归（不新建超限专项测试）；读取真实输出。
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
@@ -150,11 +150,11 @@ openspec validate isolate-agent-context-token-compaction --strict --no-interacti
 git diff --check
 ```
 
-- [ ] 仅对新增/变更文件执行项目 ruff 检查，遇既有风格问题不做无关批量修正；发现新失败先定位，修复后复测。
-- [ ] 单代理模式整体自审；多子代理模式按用户选择安排规格和代码质量评审。逐项将规格、任务、代码及测试结果对照；测试豁免明确记载，不能把全量通过表述为超限已覆盖。
-- [ ] 查可用 verify 工作流。若没有，报告“未运行 OpenSpec verify，已人工逐项核对”；不得把 validate 当作实现 verify。
-- [ ] 非豁免任务/检查全部满足条件后更新 4.1、4.2，执行 `openspec archive isolate-agent-context-token-compaction --yes`，检查主规格和归档状态；将完成记录纳入工作分支。
-- [ ] 更新 4.3，读取 finishing-a-development-branch 技能，呈现合并/PR/保留分支等适用选项并执行用户选择。
+- [x] 仅对新增/变更文件执行项目 ruff 检查，遇既有风格问题不做无关批量修正；发现新失败先定位，修复后复测。
+- [x] 单代理模式整体自审；多子代理模式按用户选择安排规格和代码质量评审。逐项将规格、任务、代码及测试结果对照；测试豁免明确记载，不能把全量通过表述为超限已覆盖。
+- [x] 查可用 verify 工作流。若没有，报告“未运行 OpenSpec verify，已人工逐项核对”；不得把 validate 当作实现 verify。
+- [x] 非豁免任务/检查全部满足条件后更新 4.1、4.2，执行 `openspec archive isolate-agent-context-token-compaction --yes`，检查主规格和归档状态；将完成记录纳入工作分支。
+- [x] 更新 4.3，读取 finishing-a-development-branch 技能，呈现合并/PR/保留分支等适用选项并执行用户选择。
 
 ## 实施记录
 
@@ -165,3 +165,6 @@ Task 3：RED 2 failed/1 passed，GREEN 85 passed/1 skipped。真实 main initial
 
 Task 4：预算包装、流式最终快照、主请求重建、main/child/summary作用域、异常传播、已有结果保存与确切分段文案已接线。compileall通过，52项计数/历史/模型/恢复等非超限定向回归通过；整套既有回归660 passed/3 skipped后，复核补充委派隔离RED→GREEN，114 passed/1 skipped。按用户要求未运行超限停止及分段提示专项测试或手工触发。
 实施复核：修复新导入循环、保持子结果包装协议与query_run完成状态。主历史预算计数纳入result_summary（RED→GREEN）；兼容上下文文本入口也采用投影（RED→GREEN）。委派不再复制主历史，避免主压缩后的旧快照进入子调用（RED→GREEN）。
+
+Task 5：最终全量663 passed/3 skipped；compileall、strict validate和差异检查通过。Ruff变更范围177项均为既有问题（基线180），各文件无新增诊断。未运行OpenSpec verify（工作流不可用），已人工逐条核对；详见 `docs/superpowers/reviews/2026-10-11-agent-context-token-compaction-verification.md`。单轮超限分段场景仍按用户要求不实测。
+整体自审修复：遥测日志失败不影响正常回复、新请求不继承上一结果元数据，两项均RED→GREEN；最终全量通过。对子任务不复制原聊天记录，但保留显式任务事实摘要并刷新最新值，兼容空recent_messages接口。

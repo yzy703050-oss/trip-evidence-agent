@@ -233,6 +233,7 @@ class TripEvidenceCLI:
 
     async def process_query(self, user_input: str):
         """Measure a whole query even when a stage exits early or fails."""
+        self.last_result = None
         started = perf_counter()
         status = "incomplete"
         error = None

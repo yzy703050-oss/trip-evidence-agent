@@ -10,6 +10,27 @@ from context.telemetry import MeteredModel, model_stage
 
 
 @pytest.mark.asyncio
+async def test_new_query_error_does_not_inherit_previous_result_metadata(tmp_path):
+    from cli import TripEvidenceCLI
+    from context.memory_manager import MemoryManager
+
+    app = TripEvidenceCLI()
+    app.memory_manager = MemoryManager("alice", "s1", storage_path=str(tmp_path))
+    app.last_result = {"stop_reason": "feedback_limit", "finalization_method": "forward"}
+
+    async def fail(context, run):
+        raise OSError("normal business failure")
+
+    app.harness = SimpleNamespace(run_turn=fail)
+    with pytest.raises(OSError, match="normal business failure"):
+        await app.process_query("普通请求")
+    row = app.memory_manager.session_store.read_runs()[-1]
+    assert row["status"] == "error"
+    assert row["stop_reason"] is None
+    assert row["finalization_method"] is None
+
+
+@pytest.mark.asyncio
 async def test_metered_model_records_usage_latency_and_configured_cost(tmp_path):
     class Model:
         model_name = "test-model"

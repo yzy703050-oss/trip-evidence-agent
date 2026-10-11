@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import json
+import logging
 from typing import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -90,18 +91,20 @@ class BudgetedModel:
         if self.record:
             from context.telemetry import current_model_context
 
-            self.record(
-                {
-                    "type": "context_budget",
-                    "agent_scope": _agent_scope.get(),
-                    "phase": phase,
-                    "tokens": estimate.tokens,
-                    "method": estimate.method,
-                    "estimated": estimate.estimated,
-                    "budget_tokens": self.budget_tokens,
-                    **current_model_context(),
-                }
-            )
+            entry = {
+                "type": "context_budget",
+                "agent_scope": _agent_scope.get(),
+                "phase": phase,
+                "tokens": estimate.tokens,
+                "method": estimate.method,
+                "estimated": estimate.estimated,
+                "budget_tokens": self.budget_tokens,
+                **current_model_context(),
+            }
+            try:
+                self.record(entry)
+            except Exception:
+                logging.getLogger(__name__).exception("Could not persist context budget telemetry")
         if estimate.tokens > self.budget_tokens:
             raise ContextBudgetExceeded(
                 budget_tokens=self.budget_tokens, estimate=estimate, phase=phase, response=response

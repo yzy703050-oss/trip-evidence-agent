@@ -17,7 +17,7 @@
 ### D2 — 子上下文限于一次委派
 
 信息子 Agent 保留局部 messages 与工具配对；其他子 Agent 同样只组装本次请求。复用 Agent 实例/客户端/提供商缓存不复用对话。工具审计仍按 agent scope 保存，不创建子 Agent state、摘要游标或 compaction。不同请求累计 token 费用不计作主上下文增长。
-委派不复制主 recent_messages/session_summary/history_summary；由当前任务、改写需求、偏好与明确业务资料提供必要事实，避免主压缩后旧快照仍传入子请求。
+委派不复制主 recent_messages/history_summary 聊天快照；由当前任务、改写需求、偏好与明确业务资料提供必要事实。已确认事实的 session_summary 可作为任务摘要显式传入，并从 MemoryManager 取压缩后的最新值，避免旧快照或上一子委派对话进入新调用。
 
 ### D3 — 完整轮次、连续主历史
 

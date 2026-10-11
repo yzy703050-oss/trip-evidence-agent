@@ -245,13 +245,16 @@ def project_model_context(context: dict) -> dict:
 
 def project_delegation_context(context: dict) -> dict:
     """A delegation receives task facts, not the main conversation snapshot."""
-    return _clean(
+    view = _clean(
         {
             key: value
             for key, value in context.items()
-            if key not in {"recent_messages", "session_summary", "history_summary"}
+            if key not in {"recent_messages", "history_summary"}
         }
     )
+    # Keep the public context shape while sending no main transcript.
+    view["recent_messages"] = []
+    return view
 
 
 def project_session_message(event: dict) -> dict | None:

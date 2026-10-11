@@ -433,6 +433,9 @@ class ExecutionHarness:
                 'user_preferences': deepcopy(run.effective_preferences), 'travel_conditions': deepcopy(run.travel_conditions),
                 'previous_results': self._child_previous_results(run.results),
                 'requested_domains': task.get('requested_domains', []), 'task_goal': task.get('expected_output', '')}
+            if self.memory_manager:
+                latest = self.memory_manager.get_compacted_context()['summary']
+                child_context['session_summary'] = latest or child_context.get('session_summary', '')
             with model_scope(turn_id=run.turn_id), model_stage(f'agent:{name}'):
                 if name == 'information_query' and hasattr(agent, 'run'):
                     data = await agent.run(child_context, run)
