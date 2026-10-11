@@ -135,7 +135,8 @@ def test_legacy_user_json_migrates_once_without_deleting_source(tmp_path):
         "好的",
     ]
     assert (tmp_path / "alice" / "profile.json").exists()
-    assert (tmp_path / "alice" / "trips.json").exists()
+    assert not (tmp_path / "alice" / "trips.json").exists()
+    assert list((tmp_path / "alice" / "workflows").glob("history_*.json"))
     assert (tmp_path / "alice" / "sessions" / "s1" / "events.jsonl").exists()
     assert json.loads(old_path.read_text(encoding="utf-8")) == legacy
 

@@ -12,6 +12,7 @@ from pathlib import Path
 import logging
 
 from .session_store import SessionStore, atomic_json_write, storage_component
+from .workflow_store import WorkflowStore
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +39,19 @@ class LongTermMemory:
         self.user_dir = Path(storage_path) / self.user_id
         self.profile_path = self.user_dir / "profile.json"
         self.trips_path = self.user_dir / "trips.json"
+        self.workflow_store = WorkflowStore(storage_path, self.user_id)
 
         # 确保存储目录存在
         self.user_dir.mkdir(parents=True, exist_ok=True)
 
         # 加载或初始化数据
         self.data = self._load()
+        if self.trips_path.exists():
+            rows = json.loads(self.trips_path.read_text(encoding='utf-8')).get('trip_history', [])
+            self.workflow_store.import_history(rows, 'trips.json')
+        elif os.path.exists(self.db_path):
+            rows = json.loads(Path(self.db_path).read_text(encoding='utf-8')).get('trip_history', [])
+            self.workflow_store.import_history(rows, 'legacy-user.json')
         logger.info(f"Long-term memory initialized for user: {user_id}")
 
     def _load(self) -> Dict[str, Any]:
@@ -161,11 +169,10 @@ class LongTermMemory:
         }
 
     def _save(self):
-        """Persist profile and trips independently; never rewrite legacy JSON."""
+        """Persist the profile only; travel records live in WorkflowStore."""
         self.data["updated_at"] = datetime.now().isoformat()
         profile = {key: value for key, value in self.data.items() if key not in {"chat_history", "trip_history"}}
         atomic_json_write(self.profile_path, profile)
-        atomic_json_write(self.trips_path, {"trip_history": self.data["trip_history"]})
 
     def save_preference(self, pref_type: str, value: Any, *, source: str = "agent"):
         """
@@ -296,37 +303,8 @@ class LongTermMemory:
         return messages[-limit:] if limit else messages
 
     def save_trip_history(self, trip_info: Dict[str, Any]):
-        """
-        保存行程历史
-
-        Args:
-            trip_info: 行程信息
-        """
-        workflow_id = trip_info.get('workflow_id')
-        previous = next((r for r in self.data['trip_history'] if workflow_id and r.get('workflow_id')==workflow_id),None)
-        if previous is not None:
-            previous.update(trip_info)
-            self._save()
-            return
-        trip_record = {
-            "trip_id": f"trip_{len(self.data['trip_history']) + 1}",
-            "timestamp": datetime.now().isoformat(),
-            **trip_info
-        }
-
-        self.data["trip_history"].append(trip_record)
-
-        # 更新统计信息
-        self.data["statistics"]["total_trips"] += 1
-
-        # 更新常去目的地统计
-        destination = trip_info.get("destination")
-        if destination:
-            freq = self.data["statistics"]["frequent_destinations"]
-            freq[destination] = freq.get(destination, 0) + 1
-
-        self._save()
-        logger.info(f"Saved trip history: {trip_record['trip_id']}")
+        """Compatibility entry for standalone historical plans."""
+        self.workflow_store.save_history(trip_info)
 
     def get_trip_history(self, limit: int = 10) -> List[Dict[str, Any]]:
         """
@@ -338,7 +316,7 @@ class LongTermMemory:
         Returns:
             行程列表
         """
-        return self.data["trip_history"][-limit:] if limit else self.data["trip_history"]
+        return self.workflow_store.list_history(limit)
 
     def get_frequent_destinations(self, top_n: int = 5) -> List[tuple]:
         """
@@ -350,7 +328,7 @@ class LongTermMemory:
         Returns:
             [(destination, count), ...]
         """
-        freq = self.data["statistics"]["frequent_destinations"]
+        freq = self._history_destinations()
         sorted_dest = sorted(freq.items(), key=lambda x: x[1], reverse=True)
         return sorted_dest[:top_n]
 
@@ -363,10 +341,21 @@ class LongTermMemory:
         """获取统计信息"""
         statistics = self.data["statistics"].copy()
         statistics["total_messages"] = len(self.get_chat_history())
+        statistics['total_trips'] = len(self.get_trip_history(None))
+        statistics['frequent_destinations'] = self._history_destinations()
         return statistics
+
+    def _history_destinations(self):
+        counts = {}
+        for row in self.get_trip_history(None):
+            destination = row.get('destination')
+            if destination:
+                counts[destination] = counts.get(destination, 0) + 1
+        return counts
 
     def clear_history(self):
         """清空历史记录（保留偏好）"""
+        self.workflow_store.clear_history()
         sessions_dir = self.user_dir / "sessions"
         if sessions_dir.exists():
             shutil.rmtree(sessions_dir)
