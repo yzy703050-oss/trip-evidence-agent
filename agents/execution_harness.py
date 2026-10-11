@@ -1,4 +1,5 @@
 """Deterministic main-agent runtime: dependencies, forwarding and shared state."""
+from context.context_budget import ContextBudgetExceeded, CONTEXT_BUDGET_MESSAGE
 import asyncio
 from copy import deepcopy
 import json
@@ -9,6 +10,7 @@ from agents.itinerary_module import guard_final_itinerary
 from context.telemetry import model_stage, model_scope
 from travel_data.result_guard import guard_information_result, grounded_answer, valid_source
 from utils.response_renderer import finalize_business_result
+from agents.context_projection import project_delegation_context
 
 
 def merge_preference_updates(current, changes):
@@ -104,6 +106,8 @@ class ExecutionHarness:
         from config import WORKFLOW_LIMITS
         try:
             result = await asyncio.wait_for(self._run_turn(context,run),timeout=WORKFLOW_LIMITS['turn_timeout'])
+        except ContextBudgetExceeded as exc:
+            return self.budget_stop(run, exc)
         except asyncio.TimeoutError:
             result={**self._error('turn_timeout',run),'status':'partial','stop_reason':'turn_timeout',
                     'final_answer':'本轮时间上限已到，已有结果已保留，可以继续修改。'}
@@ -131,8 +135,34 @@ class ExecutionHarness:
                         }), timeout=15.0)
                     result['final_answer'] = render_reply_template(reply['template'], facts)
                     result['reply_style'] = 'model'
+                except ContextBudgetExceeded as exc:
+                    return self.budget_stop(run, exc)
                 except Exception:
                     result['final_answer'] = facts['fallback']
+        return result
+
+    def budget_stop(self, run, exc):
+        """Finish the user turn without any business-model fallback."""
+        result = {**self._error('context_budget_exceeded', run), 'status': 'partial',
+                  'stop_reason': 'context_budget_exceeded', 'final_answer': CONTEXT_BUDGET_MESSAGE,
+                  'budget': {'agent_scope': exc.agent_scope, 'phase': exc.phase,
+                             'tokens': exc.estimate.tokens, 'method': exc.estimate.method,
+                             'estimated': exc.estimate.estimated, 'budget_tokens': exc.budget_tokens}}
+        if run.workflow is not None:
+            from context.workflow_store import WorkflowConflictError
+            w = deepcopy(run.workflow)
+            if w.get('stop_reason') != 'context_budget_exceeded':
+                w.update(status='partial', stop_reason='context_budget_exceeded')
+                if run.candidates is not None:
+                    w['candidate_cache'] = run.candidates.snapshot()
+                if self.memory_manager:
+                    try:
+                        w = self.memory_manager.workflow_store.save(w, expected_revision=w['revision'])
+                    except (OSError, WorkflowConflictError):
+                        result['state_save_failed'] = True
+            result.update(workflow=w, workflow_id=w['id'], workflow_revision=w['revision'],
+                          finalization_method='workflow')
+        self._persist(result, run)
         return result
 
     async def _run_turn(self, context, run):
@@ -176,6 +206,8 @@ class ExecutionHarness:
             if (context.get('pending_workflow_match') and decision.get('resume_workflow_id') in
                     {w['id'] for w in context['pending_workflow_match']['candidates']}):
                 decision['reuse_saved_workflow'] = True
+        except ContextBudgetExceeded:
+            raise
         except Exception:
             return self._error('invalid_plan', run)
         decision, match_result = await self._match_new_workflow(decision, context, run)
@@ -208,7 +240,16 @@ class ExecutionHarness:
             ready = [row for row in remaining if set(row['depends_on']) <= done]
             priority = min(row['priority'] for row in ready)
             batch = [row for row in ready if row['priority'] == priority]
-            results = await asyncio.gather(*(self._execute(row, context, run) for row in batch))
+            results = await asyncio.gather(*(self._execute(row, context, run) for row in batch), return_exceptions=True)
+            stopped = next((r for r in results if isinstance(r, ContextBudgetExceeded)), None)
+            if stopped is not None:
+                for task, result in zip(batch, results):
+                    if isinstance(result, dict):
+                        run.results.append({'agent_name': task['agent_name'], 'priority': task['priority'], 'result': result})
+                raise stopped
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
             for task, result in zip(batch, results):
                 run.results.append({'agent_name': task['agent_name'], 'priority': task['priority'],
                                     'answer_role': task.get('answer_role', 'answer'), 'result': result})
@@ -301,6 +342,8 @@ class ExecutionHarness:
                         'target': {'workflow_id': selected['id'], 'task_ids': [t['id'] for t in selected['tasks']],
                                    'components': ['train', 'hotel']}}
             return decision, None
+        except ContextBudgetExceeded:
+            raise
         except Exception:
             return decision, self._error('invalid_workflow_match', run)
 
@@ -374,13 +417,21 @@ class ExecutionHarness:
         except (ValueError, TypeError, KeyError, ArithmeticError):
             return {**self._error('invalid_workflow_proposal', run), 'stop_reason': 'invalid_workflow_proposal'}
 
+    @staticmethod
+    def _child_previous_results(results):
+        from agents.context_projection import project_child_result
+        return [{**{k: deepcopy(v) for k,v in row.items() if k != 'result'},
+                 'result': {**{k: deepcopy(v) for k,v in row['result'].items() if k != 'data'},
+                            'data': project_child_result(row['result'].get('data', {}))}}
+                for row in results]
+
     async def _execute(self, task, context, run):
         name = task['agent_name']
         try:
             agent = self.agent_registry[name]
-            child_context = {**deepcopy(context), 'effective_preferences': deepcopy(run.effective_preferences),
+            child_context = {**project_delegation_context(context), 'effective_preferences': deepcopy(run.effective_preferences),
                 'user_preferences': deepcopy(run.effective_preferences), 'travel_conditions': deepcopy(run.travel_conditions),
-                'previous_results': deepcopy(run.results),
+                'previous_results': self._child_previous_results(run.results),
                 'requested_domains': task.get('requested_domains', []), 'task_goal': task.get('expected_output', '')}
             with model_scope(turn_id=run.turn_id), model_stage(f'agent:{name}'):
                 if name == 'information_query' and hasattr(agent, 'run'):
@@ -388,7 +439,7 @@ class ExecutionHarness:
                 else:
                     response = await agent.reply(Msg('Harness', json.dumps({'context': child_context,
                         'reason': task.get('reason', ''), 'expected_output': task.get('expected_output', ''),
-                        'previous_results': deepcopy(run.results)}, ensure_ascii=False), 'user'))
+                        'previous_results': self._child_previous_results(run.results)}, ensure_ascii=False), 'user'))
                     data = json.loads(response.content) if isinstance(response.content, str) else response.content
             if not isinstance(data, dict):
                 raise ValueError('agent returned non-object')
@@ -398,6 +449,8 @@ class ExecutionHarness:
             elif status == 'ok':
                 status = 'success'
             return {'status': status, 'data': data}
+        except ContextBudgetExceeded:
+            raise
         except Exception:
             return {'status': 'error', 'data': {'status': 'error', 'message': '任务执行失败。'}}
 
@@ -434,6 +487,8 @@ class ExecutionHarness:
         try:
             with model_scope(turn_id=run.turn_id):
                 return await self.main_agent.finalize(final_context)
+        except ContextBudgetExceeded:
+            raise
         except Exception:
             return {'action': 'error', 'error_code': 'final_model_error'}
 

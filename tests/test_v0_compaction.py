@@ -6,6 +6,14 @@ from context.compaction import select_safe_prefix
 from context.memory_manager import MemoryManager
 
 
+def test_compaction_count_includes_projected_business_summary():
+    from context.compaction import estimate_tokens
+
+    event = _event(1, "old", "message", "答复", role="assistant", final=True)
+    with_facts = {**event, "result_summary": {"travel_conditions": {"constraints": "条件" * 50}}}
+    assert estimate_tokens(with_facts) > estimate_tokens(event)
+
+
 def _event(seq, turn, kind, content="x", **extra):
     return {
         "seq": seq,
@@ -71,10 +79,12 @@ def test_active_turn_stages_never_form_session_cut():
 
 
 def test_unfinished_old_turn_blocks_prefix():
-    events = [_event(1, "unfinished", "message", "old" * 40, role="user"),
-              _event(2, "completed", "message", "q", role="user"),
-              _event(3, "completed", "message", "a", role="assistant", final=True),
-              _event(4, "active", "message", "q", role="user")]
+    events = [
+        _event(1, "unfinished", "message", "old" * 40, role="user"),
+        _event(2, "completed", "message", "q", role="user"),
+        _event(3, "completed", "message", "a", role="assistant", final=True),
+        _event(4, "active", "message", "q", role="user"),
+    ]
     assert select_safe_prefix(events, 20, token_counter=lambda event: len(event["content"])) is None
 
 
@@ -82,8 +92,13 @@ def test_legacy_mid_turn_summary_keeps_uncovered_messages(tmp_path):
     memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
     turn = memory.start_turn("旧目标")
     memory.record_message("assistant", "未覆盖答复", turn, final=True)
-    memory.session_store.write_state({"summary": "旧摘要", "covered_through_seq": 1,
-        "checkpoint": {"goal": "旧目标", "active_turn_id": turn}})
+    memory.session_store.write_state(
+        {
+            "summary": "旧摘要",
+            "covered_through_seq": 1,
+            "checkpoint": {"goal": "旧目标", "active_turn_id": turn},
+        }
+    )
     for index in range(12):
         turn = memory.start_turn(f"q{index}")
         memory.record_message("assistant", f"a{index}", turn, final=True)
@@ -95,13 +110,17 @@ def test_legacy_mid_turn_summary_keeps_uncovered_messages(tmp_path):
 
 def test_summary_failure_keeps_coverage(tmp_path):
     memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
-    for i in range(3):
+    for _ in range(3):
         turn = memory.start_turn("q" * 40)
         memory.record_message("assistant", "a" * 40, turn, final=True)
     original = memory.session_store.read_state()
+
     def fail(_previous, _events):
         raise RuntimeError("summary unavailable")
-    state = memory.compact_if_needed(100, summarizer=fail, token_counter=lambda e: len(e["content"]))
+
+    state = memory.compact_if_needed(
+        100, summarizer=fail, token_counter=lambda e: len(e["content"])
+    )
     assert state == original
     assert memory.session_store.read_state() == original
     assert len(memory.get_compacted_context()["recent_messages"]) == 6

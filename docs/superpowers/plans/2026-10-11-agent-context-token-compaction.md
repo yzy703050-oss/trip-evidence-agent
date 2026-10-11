@@ -162,3 +162,6 @@ git diff --check
 2026-10-11：用户选择单代理。Task 1 RED 4 failed / GREEN 17 passed。使用短临时目录规避 Windows 路径长度限制；工作分支 codex/agent-context-token-compaction。
 Task 2：RED 4 failed，GREEN 26 passed（compaction、memory_context、cli_session_resume）；切点只允许连续完整旧轮末，摘要后核算预算再写游标。
 Task 3：RED 2 failed/1 passed，GREEN 85 passed/1 skipped。真实 main initialize/step/finalize 与主摘要输入不含工具原文标记；同实例第二次子调用不继承首任务，来源/选择回归通过。短目录全量复核 Task 1 时 652 passed/3 skipped。
+
+Task 4：预算包装、流式最终快照、主请求重建、main/child/summary作用域、异常传播、已有结果保存与确切分段文案已接线。compileall通过，52项计数/历史/模型/恢复等非超限定向回归通过；整套既有回归660 passed/3 skipped后，复核补充委派隔离RED→GREEN，114 passed/1 skipped。按用户要求未运行超限停止及分段提示专项测试或手工触发。
+实施复核：修复新导入循环、保持子结果包装协议与query_run完成状态。主历史预算计数纳入result_summary（RED→GREEN）；兼容上下文文本入口也采用投影（RED→GREEN）。委派不再复制主历史，避免主压缩后的旧快照进入子调用（RED→GREEN）。

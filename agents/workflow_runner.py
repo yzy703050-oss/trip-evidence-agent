@@ -1,4 +1,5 @@
 """Bounded main-agent decisions over durable, task-scoped travel state."""
+from context.context_budget import ContextBudgetExceeded
 import asyncio
 from copy import deepcopy
 from dataclasses import dataclass
@@ -13,7 +14,7 @@ from agents.planning_conditions import prepare_task
 from context.telemetry import model_scope
 from context.workflow_store import WorkflowConflictError
 from travel_data.candidates import CandidateStore
-from agents.context_projection import project_child_result, project_domain_result, project_workflow_context
+from agents.context_projection import project_child_result, project_domain_result, project_workflow_context, project_delegation_context
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,14 @@ class WorkflowRunner:
             return self._envelope('error', 'workflow_revision_conflict', '规划已被另一会话更新，请按最新版本继续。')
         except OSError:
             return self._envelope('error', 'workflow_save_failed', '状态保存失败，已停止；不会自动重放外部查询。')
+        except ContextBudgetExceeded:
+            self.w.update(status='partial', stop_reason='context_budget_exceeded')
+            try:
+                self._save()
+            except (OSError, WorkflowConflictError):
+                # Retain the in-memory evidence; never replay a provider request.
+                self.run_state.workflow = self.w
+            raise
         except Exception:
             return self._stop('error', 'workflow_execution_error', '本轮执行失败，已保留可保存的规划状态。')
 
@@ -180,7 +189,7 @@ class WorkflowRunner:
                         'mode': action.get('mode', 'query_candidates'), 'purpose': task.get('purpose'),
                         'goal': action['goal'], 'query_requests': action['query_requests'],
                         'requested_domains': list(dict.fromkeys(r['domain'] for r in action['query_requests']))},
-                        'context': self._model_context()}, task_id=task['id'])
+                        'context': project_delegation_context(self._model_context())}, task_id=task['id'])
                 with model_scope(turn_id=self.run_state.turn_id, workflow_id=self.w['id'], task_id=task['id'],
                                  task_revision=task['revision'], message_id=request['message_id']):
                     result = await self.info.run(request, self.run_state)

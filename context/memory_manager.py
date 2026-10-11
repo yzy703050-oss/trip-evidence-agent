@@ -2,6 +2,7 @@
 记忆管理器 (Memory Manager)
 统一管理两层记忆，提供简单的API
 """
+from context.context_budget import ContextBudgetExceeded, budget_scope
 from typing import Dict, Any, List, Optional
 from .short_term_memory import ShortTermMemory
 from .long_term_memory import LongTermMemory
@@ -260,6 +261,8 @@ class MemoryManager:
                 summary = summarizer(state.get("summary", ""), selected)
                 if self._summary_fits(summary, events, cutoff, token_budget, token_counter):
                     return self._save_compaction(state, cutoff, summary)
+            except ContextBudgetExceeded:
+                raise
             except Exception:
                 logger.exception("Could not compact session context; raw events remain available")
                 return state
@@ -277,10 +280,13 @@ class MemoryManager:
                 f"已有摘要：{state.get('summary', '')}\n"
                 f"待压缩主消息：{json.dumps(selected, ensure_ascii=False)}")
             try:
-                response = await self.llm_model([{"role": "user", "content": prompt}])
-                summary = await _read_model_text(response)
+                with budget_scope("summary"):
+                    response = await self.llm_model([{"role": "user", "content": prompt}])
+                    summary = await _read_model_text(response)
                 if self._summary_fits(summary, events, cutoff, token_budget, token_counter):
                     return self._save_compaction(state, cutoff, summary)
+            except ContextBudgetExceeded:
+                raise
             except Exception:
                 logger.exception("Could not compact session context; raw events remain available")
                 return state
@@ -316,8 +322,8 @@ class MemoryManager:
         """
         return {
             "short_term": {
-                "recent_dialogue": self.short_term.get_recent_context(5),
-                "context_string": self.short_term.get_context_string(5),
+                "recent_dialogue": self.get_compacted_context()["recent_messages"],
+                "context_string": self.short_term.get_context_string(None),
                 "statistics": self.short_term.get_statistics()
             },
             "long_term": {
@@ -358,7 +364,7 @@ class MemoryManager:
             lines.append("")
 
         # 短期记忆（当前会话）
-        context_str = self.short_term.get_context_string(3)
+        context_str = self.short_term.get_context_string(None)
         if context_str != "无历史对话":
             lines.append("【当前会话对话】")
             lines.append(context_str)
@@ -403,8 +409,11 @@ class MemoryManager:
                         f"旧摘要：{summary}\n新增消息：{'；'.join(lines)}\n摘要："
                     )
                     try:
-                        response = await self.llm_model([{"role": "user", "content": prompt}])
-                        summary = (await _read_model_text(response)).strip()
+                        with budget_scope("summary"):
+                            response = await self.llm_model([{"role": "user", "content": prompt}])
+                            summary = (await _read_model_text(response)).strip()
+                    except ContextBudgetExceeded:
+                        raise
                     except Exception:
                         logger.exception("Could not summarize prior session %s", directory.name)
                 if not summary:

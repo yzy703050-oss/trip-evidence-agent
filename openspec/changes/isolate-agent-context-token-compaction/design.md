@@ -17,6 +17,7 @@
 ### D2 — 子上下文限于一次委派
 
 信息子 Agent 保留局部 messages 与工具配对；其他子 Agent 同样只组装本次请求。复用 Agent 实例/客户端/提供商缓存不复用对话。工具审计仍按 agent scope 保存，不创建子 Agent state、摘要游标或 compaction。不同请求累计 token 费用不计作主上下文增长。
+委派不复制主 recent_messages/session_summary/history_summary；由当前任务、改写需求、偏好与明确业务资料提供必要事实，避免主压缩后旧快照仍传入子请求。
 
 ### D3 — 完整轮次、连续主历史
 
@@ -27,6 +28,7 @@ MemoryManager 返回摘要边界之后的全部主消息。旧轮内 checkpoint 
 
 `config.py` 显式配置 `memory_context_budget_tokens`，默认 6000（沿用初始值，尚未校准）。新增 `context/context_budget.py`，提供可注入 TokenCounter、输入计数和 ContextBudgetExceeded。预算覆盖实际消息、指令、业务投影和 tools，不把输出上限 8192 当上下文窗口。
 计数器接口允许模型兼容 tokenizer；初始离线默认使用保守 UTF-8 估算，记录 estimated 与方法名，使用实际 usage 校准，不宣称精确 token 或绝对硬窗口保障。不在业务请求时下载分词器或调用网络预估。
+默认按规范 JSON 的 UTF-8 字节数除以 3 向上取整；没有校准的模型 tokenizer 时仅作为估算。静态核对发现除以 2 会使现有主指令本身超过 6000 初始值，因此不采用该比例。模型 usage 与预算估算各自记录。
 MainAgent 集中请求构建：组装真实提示词，若超预算则仅压缩完整旧主轮次、重建输入并复查。子 Agent 只检查，不压缩。实际 API 包装提供调用前最终检查和完整输出后的复查；流式快照只计最终完整输出，不累加快照。不同调用不累计输入费用作为上下文。
 显式区分 main/child/summary 作用域；维护摘要调用不递归触发摘要，仍检查模型硬输入限制。摘要尝试次数有界；不能达到预算时保留原边界并结束本轮。
 

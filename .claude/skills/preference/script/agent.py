@@ -3,6 +3,7 @@
 职责：收集用户的长期偏好
 如"我的家在XXX"、"我喜欢XXX酒店"
 """
+from context.context_budget import ContextBudgetExceeded
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
 from typing import Optional, Union, List
@@ -126,6 +127,8 @@ class PreferenceAgent(AgentBase):
                     raise ValueError(f"Failed to parse JSON. Error: {e}")
             else:
                 raise ValueError("No JSON found in response")
+        except ContextBudgetExceeded:
+            raise
         except Exception as e:
             logger.error(f"Preference collection failed: {e}")
             result = {"has_preferences": False, "error": str(e)}

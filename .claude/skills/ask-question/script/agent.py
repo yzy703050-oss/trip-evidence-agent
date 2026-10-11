@@ -16,6 +16,7 @@ RAG知识库智能体 RAGKnowledgeAgent
 安装：
 pip install milvus sentence-transformers
 """
+from context.context_budget import ContextBudgetExceeded
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
 from typing import Optional, Union, List, Dict
@@ -441,6 +442,8 @@ class RAGKnowledgeAgent(AgentBase):
                     except:
                         pass
 
+            except ContextBudgetExceeded:
+                raise
             except Exception as e:
                 logger.error(f"Error generating answer with LLM: {e}")
                 answer = f"知识库中找到相关信息，但生成答案时出错：{str(e)}"

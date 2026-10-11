@@ -89,7 +89,10 @@ async def test_resume_rebinds_messages_agents_and_telemetry_without_model_call(
     assert app._agent_cache == {}
     assert app.memory_manager.session_store.read_runs() == []
     await app.model([])
-    assert len(app.memory_manager.session_store.read_runs()) == 1
+    assert (
+        len([r for r in app.memory_manager.session_store.read_runs() if r["type"] == "model_call"])
+        == 1
+    )
     assert SessionStore(tmp_path, "alice", "current").read_runs() == []
     app.memory_manager.start_turn("继续")
     assert app.memory_manager.session_store.read_events()[-1]["content"] == "继续"
@@ -133,18 +136,18 @@ def test_empty_resume_list_does_not_ask(tmp_path, monkeypatch):
     monkeypatch.setattr("cli.Prompt.ask", lambda *a, **kw: pytest.fail("空列表不应询问"))
     assert app.resume_session() is False
     output = app.console.file.getvalue()
-    assert '直接开始聊天' in output and '以后' in output
+    assert "直接开始聊天" in output and "以后" in output
 
 
 def test_new_conversation_is_available_after_reopening(tmp_path):
     app = app_for(tmp_path)
-    app.memory_manager.long_term.set_user_preference('home_location', '重庆')
-    app.memory_manager.start_turn('我明天想去上海玩')
-    reopened = MemoryManager('alice', 'another', storage_path=str(tmp_path))
-    assert reopened.long_term.get_preference('home_location') == '重庆'
-    rows = SessionStore.list_sessions(tmp_path, 'alice')
-    assert [(r['session_id'], r['title']) for r in rows] == [('current', '我明天想去上海玩')]
-    assert SessionStore.list_sessions(tmp_path, 'bob') == []
+    app.memory_manager.long_term.set_user_preference("home_location", "重庆")
+    app.memory_manager.start_turn("我明天想去上海玩")
+    reopened = MemoryManager("alice", "another", storage_path=str(tmp_path))
+    assert reopened.long_term.get_preference("home_location") == "重庆"
+    rows = SessionStore.list_sessions(tmp_path, "alice")
+    assert [(r["session_id"], r["title"]) for r in rows] == [("current", "我明天想去上海玩")]
+    assert SessionStore.list_sessions(tmp_path, "bob") == []
 
 
 def test_corrupt_session_is_not_offered_for_restore(tmp_path):

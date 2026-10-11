@@ -13,6 +13,7 @@
 - 用户询问："我之前说过什么偏好？"
 - 用户询问："我上次去北京是什么时候？"
 """
+from context.context_budget import ContextBudgetExceeded
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
 from typing import Optional, Union, List, Dict
@@ -109,6 +110,8 @@ class MemoryQueryAgent(AgentBase):
                 chat_summary = await self.memory_manager.get_long_term_summary_async(
                     max_messages=30, query=user_query
                 )
+            except ContextBudgetExceeded:
+                raise
             except Exception as e:
                 logger.warning(f"Failed to get chat summary: {e}")
                 chat_summary = ""
@@ -196,6 +199,8 @@ class MemoryQueryAgent(AgentBase):
 
             return Msg(name=self.name, content=json.dumps(result, ensure_ascii=False), role="assistant")
 
+        except ContextBudgetExceeded:
+            raise
         except Exception as e:
             logger.error(f"Memory query failed: {e}")
             import traceback

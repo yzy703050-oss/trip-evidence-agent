@@ -21,14 +21,24 @@ def test_main_result_history_projects_reply_without_tool_payload(tmp_path):
 
     memory = MemoryManager("alice", "s1", storage_path=str(tmp_path))
     turn = memory.start_turn("查票")
-    original = memory.record_message("assistant", json.dumps({
-        "status": "completed", "final_answer": "已查到车票", "results": {
-            "information_query": {"raw": "PRIVATE_TOOL_MARKER"}}}), turn,
-        final=True, metadata={"format": "main_result"})
+    original = memory.record_message(
+        "assistant",
+        json.dumps(
+            {
+                "status": "completed",
+                "final_answer": "已查到车票",
+                "results": {"information_query": {"raw": "PRIVATE_TOOL_MARKER"}},
+            }
+        ),
+        turn,
+        final=True,
+        metadata={"format": "main_result"},
+    )
     context = memory.get_compacted_context()
     assert "PRIVATE_TOOL_MARKER" not in json.dumps(context, ensure_ascii=False)
     assert context["recent_messages"][-1]["content"] == "已查到车票"
     assert memory.session_store.read_events()[-1] == original
+    assert "PRIVATE_TOOL_MARKER" not in memory.get_context_for_agent()
 
 
 def test_session_resume_keeps_complete_turns_and_isolates_other_sessions(tmp_path):

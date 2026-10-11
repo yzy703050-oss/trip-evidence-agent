@@ -3,8 +3,10 @@ import importlib
 
 def test_input_count_includes_instructions_business_and_tools():
     context_budget = importlib.import_module("context.context_budget")
-    messages = [{"role": "system", "content": "instructions"},
-                {"role": "user", "content": "business facts"}]
+    messages = [
+        {"role": "system", "content": "instructions"},
+        {"role": "user", "content": "business facts"},
+    ]
     tools = [{"type": "function", "function": {"name": "search", "parameters": {}}}]
     seen = []
 

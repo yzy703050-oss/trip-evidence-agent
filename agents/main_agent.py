@@ -6,6 +6,7 @@ from context.telemetry import model_stage
 from utils.json_parser import robust_json_parse
 from utils.skill_loader import SkillLoader
 from agents.context_projection import project_model_context
+from context.context_budget import BudgetedModel, ContextBudgetExceeded, budget_scope, count_input_tokens, response_message
 
 CAPABILITIES = {
     'preference': '提取长期偏好变更，临时要求不存为长期偏好',
@@ -18,9 +19,55 @@ INTENTS = [kind for kind in ('ask', 'plan', 'update', 'control') if kind in INTE
 
 
 class MainAgent:
-    def __init__(self, model, skill_loader=None):
+    def __init__(self, model, skill_loader=None, memory_manager=None):
         self.model = model
+        self.memory_manager = memory_manager
         self.skill_loader = skill_loader or SkillLoader()
+
+    @staticmethod
+    def _messages(prompt, view):
+        return [{'role': 'user', 'content': prompt.replace('__MAIN_CONTEXT__', json.dumps(view, ensure_ascii=False, default=str))}]
+
+    def _refresh_history(self, context):
+        view = project_model_context(context)
+        if self.memory_manager:
+            snapshot = self.memory_manager.get_compacted_context()
+            view['session_summary'] = snapshot['summary']
+            view['recent_messages'] = [m for m in snapshot['recent_messages']
+                                      if m.get('turn_id') != self.memory_manager.current_turn_id]
+        return view
+
+    async def _request(self, build_messages, *, context, stage, **kwargs):
+        with budget_scope(stage):
+            view = self._refresh_history(context)
+            messages = build_messages(view)
+            if isinstance(self.model, BudgetedModel):
+                await self._compact_request(build_messages, view, kwargs.get('tools'))
+                messages = build_messages(self._refresh_history(context))
+            try:
+                return await collect_model_turn(await self.model(messages, **kwargs))
+            except ContextBudgetExceeded as exc:
+                if exc.phase != 'output' or exc.agent_scope != 'main' or self.memory_manager is None:
+                    raise
+                # The response already exists: replace only completed old history,
+                # then reuse that response rather than issuing the business request again.
+                await self._compact_request(build_messages, self._refresh_history(context), kwargs.get('tools'), exc.response)
+                rebuilt = build_messages(self._refresh_history(context))
+                self.model.check([*rebuilt, response_message(exc.response)], kwargs.get('tools'), phase='output', response=exc.response)
+                return await collect_model_turn(exc.response)
+
+    async def _compact_request(self, build_messages, view, tools, response=None):
+        extra = [response_message(response)] if response is not None else []
+        counter = self.model.counter
+        estimate = count_input_tokens([*build_messages(view), *extra], tools, counter=counter)
+        if estimate.tokens <= self.model.budget_tokens or self.memory_manager is None:
+            return
+        fixed = dict(view, session_summary='', recent_messages=[])
+        fixed_tokens = count_input_tokens([*build_messages(fixed), *extra], tools, counter=counter).tokens
+        remaining = self.model.budget_tokens - fixed_tokens
+        if remaining > 0:
+            await self.memory_manager.compact_if_needed_async(remaining,
+                token_counter=lambda event: count_input_tokens([event], counter=counter).tokens)
 
     async def plan(self, context: dict) -> dict:
         return await self.initialize(context)
@@ -47,10 +94,8 @@ clarify列出候选编号、路线、日期和可区分信息；编号必须遵�
 用户正在回答pending_workflow_match的问题时，结合question与候选顺序理解“第一份”等回答。
 不得将旧聊天内容或旧规划条件当作本轮已经确认的新要求。'''
         with model_stage('main:workflow_match'):
-            turn = await collect_model_turn(await self.model([
-                {'role': 'user', 'content': prompt},
-                {'role': 'user', 'content': json.dumps(context, ensure_ascii=False, default=str)},
-            ]))
+            turn = await self._request(lambda view: [{'role':'user','content':prompt},
+                {'role':'user','content':json.dumps(view, ensure_ascii=False, default=str)}], context=context, stage='main')
         return validate_match(robust_json_parse(turn.text), context['candidates'])
 
     async def initialize(self, context: dict) -> dict:
@@ -143,9 +188,9 @@ ask解释已有方案/查询状态时，已有依据能直接答复时必须 dir
 查询已保存偏好使用memory_query，不调度preference；若effective_preferences已含明确答案可直接答复，缺少所需历史时才查询memory_query。preference仅执行用户明确的长期偏好写入，读取不等于更新。
 换一家或替换组件必须使用replace，可同时带condition_updates筛选品牌；即使新旧品牌一样仍要替换候选，不用change/supplement代替。
 购买车票不等于采纳建议：要求买票/订房/退改签时control+direct，明确当前无法执行，禁止travel_update/adopt/resume_workflow_id及任何前置查询。
-上下文：{json.dumps(context, ensure_ascii=False, default=str)}'''
+上下文：__MAIN_CONTEXT__'''
         with model_stage('main:plan'):
-            turn = await collect_model_turn(await self.model([{'role': 'user', 'content': prompt}]))
+            turn = await self._request(lambda view: self._messages(prompt, view), context=context, stage='main')
         try:
             return self._initial_decision(turn.text)
         except (ValueError,TypeError,ArithmeticError) as exc:
@@ -156,7 +201,7 @@ ask解释已有方案/查询状态时，已有依据能直接答复时必须 dir
             if getattr(self.model,'model_name','').startswith('deepseek'):
                 options={'extra_body':{'thinking':{'type':'disabled'}}}
             with model_stage('main:repair_decision'):
-                repaired=await collect_model_turn(await self.model([{'role':'user','content':prompt},{'role':'user','content':correction}],**options))
+                repaired=await self._request(lambda view: self._messages(prompt, view) + [{'role':'user','content':correction}], context=context, stage='main', **options)
             return self._initial_decision(repaired.text)
 
     @staticmethod
@@ -217,9 +262,9 @@ arrival_date/arrival_before查询使用train_search_by_arrival由信息获取调
 没有新信息不要重复同一动作。达到预算/不能补齐资料时finish partial，保留已有草稿。
 本轮只安排交通住宿，不生成活动或天气攻略查询。
 工作流指南：{guide}
-上下文：{json.dumps(context, ensure_ascii=False, default=str)}'''
+上下文：__MAIN_CONTEXT__'''
         with model_stage('main:step'):
-            turn = await collect_model_turn(await self.model([{'role': 'user', 'content': prompt}]))
+            turn = await self._request(lambda view: self._messages(prompt, view), context=context, stage='main')
         return robust_json_parse(turn.text)
 
     async def repair_proposal(self, context, proposal, error):
@@ -238,7 +283,7 @@ hotel_quote_required默认省略；仅明确来自user/context/preference的报�
 校验错误：{error}
 原提案：{json.dumps(proposal,ensure_ascii=False,default=str)}'''
         with model_stage('main:repair_proposal'):
-            turn = await collect_model_turn(await self.model([{'role': 'user', 'content': prompt}]))
+            turn = await self._request(lambda view: self._messages(prompt, view), context=context, stage='main')
         value = robust_json_parse(turn.text)
         return value.get('workflow_proposal', value)
 
@@ -258,9 +303,9 @@ departure_time_after/departure_time_before/available_only/candidate_offset/refre
 location_ref=guide:<事实下标> 或 suggestion:city_walk/museum/meal/rest，不自行编造报价、库存和地点。
 结果不足要说明，RAG 无知识/错误不代表制度允许。已有来源不能凭空补造。
 行程指南：{guide or ''}
-上下文：{json.dumps(context, ensure_ascii=False, default=str)}'''
+上下文：__MAIN_CONTEXT__'''
         with model_stage('main:itinerary' if itinerary else 'main:finalize'):
-            turn = await collect_model_turn(await self.model([{'role': 'user', 'content': prompt}]))
+            turn = await self._request(lambda view: self._messages(prompt, view), context=context, stage='main')
         return validate_final(robust_json_parse(turn.text))
 
     async def compose_workflow_reply(self, context: dict) -> dict:
@@ -281,9 +326,9 @@ reply_facts.required中的每个占位符都必须出现一次，不能遗漏、
 不说已订票、已订房、免费、保证、已核实全程；status=partial时不能宣称所有安排已经完成。
 不输出内部状态、草稿、来源、接口链接、查询时间或“非用户确认”。不必说明“这是大模型生成的”。
 不写“这趟行程可以这样安排”或机械罗列字段，可以用短句与自然段，让人容易读懂。
-上下文：''' + json.dumps(context, ensure_ascii=False, default=str)
+上下文：__MAIN_CONTEXT__'''
         with model_stage('main:reply'):
-            turn = await collect_model_turn(await self.model([{'role': 'user', 'content': prompt}]))
+            turn = await self._request(lambda view: self._messages(prompt, view), context=context, stage='main')
         value = robust_json_parse(turn.text)
         if not isinstance(value, dict) or set(value) != {'template'}:
             raise ValueError('invalid workflow reply')

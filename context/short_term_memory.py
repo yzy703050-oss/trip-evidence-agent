@@ -42,11 +42,10 @@ class ShortTermMemory:
 
     def get_recent_context(self, n_turns: int | None = None) -> list[dict[str, Any]]:
         """Only user-facing messages are suitable for general Agent context."""
+        from agents.context_projection import project_session_message
         return [
-            item for item in self.get_events(n_turns)
-            if item.get("scope") == "session"
-            and item.get("type") == "message"
-            and item.get("role") in {"user", "assistant"}
+            view for item in self.get_events(n_turns)
+            if (view := project_session_message(item)) is not None
         ]
 
     def get_context_string(self, n_turns: int = 5) -> str:

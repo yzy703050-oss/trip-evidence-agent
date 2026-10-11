@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from typing import Any
 from agents.context_projection import project_session_message
@@ -12,7 +11,7 @@ from context.context_budget import count_input_tokens
 def estimate_tokens(event: dict[str, Any]) -> int:
     """Conservative fallback when the configured model exposes no tokenizer."""
     payload = {
-        key: event.get(key) for key in ("content", "tool_calls", "name", "status") if key in event
+        key: event[key] for key in ("content", "result_summary") if key in event
     }
     return count_input_tokens([payload]).tokens
 
