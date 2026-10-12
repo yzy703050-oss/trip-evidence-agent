@@ -62,4 +62,4 @@
 
 ## 归档与分支收尾
 
-已执行 OpenSpec archive，归档至 openspec/changes/archive/2026-10-12-sqlite-agent-storage，同步正式规格。随后 openspec validate --all --strict：7 项通过、0 项失败。用户已选择推送 codex/readme-agent-diagrams 并创建指向 main 的 PR；提交及 PR 结果在实际完成后补记。
+已执行 OpenSpec archive，归档至 openspec/changes/archive/2026-10-12-sqlite-agent-storage，同步正式规格。随后 openspec validate --all --strict：7 项通过、0 项失败。按用户选择发布 codex/readme-agent-diagrams，并创建指向 main 的 [PR #11](https://github.com/yzy703050-oss/trip-evidence-agent/pull/11)。命令行 GitHub 连接失败后改用连接器，快进更新分支；远端代码文件树 94f6c261bded0db187c2e417d92e416a93d3014f 与本地已测试提交完全一致。本次补记仅修改三个流程文档，不改变产品代码。

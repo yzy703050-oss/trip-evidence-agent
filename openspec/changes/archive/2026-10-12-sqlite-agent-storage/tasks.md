@@ -28,6 +28,6 @@
 
 ## 6. 归档与分支收尾
 
-- [ ] 6.1 仅在任务、测试、评审和规格核对完成后执行 OpenSpec archive，同步正式规格并确认结果在工作分支；依用户选择执行分支收尾。
+- [x] 6.1 仅在任务、测试、评审和规格核对完成后执行 OpenSpec archive，同步正式规格并确认结果在工作分支；依用户选择执行分支收尾。
 
-实施/测试/人工规格核对证据：docs/development/2026-10-12-sqlite-storage-validation.md；完整离线回归 737 passed、3 skipped。OpenSpec archive 已执行并同步正式规格；用户已选择推送当前分支并创建 PR，分支收尾待实际执行。
+实施/测试/人工规格核对证据：docs/development/2026-10-12-sqlite-storage-validation.md；完整离线回归 737 passed、3 skipped。OpenSpec archive 已执行并同步正式规格；当前分支已通过 GitHub 连接器发布，PR #11 已创建：https://github.com/yzy703050-oss/trip-evidence-agent/pull/11。远端文件树与已测试本地版本一致。

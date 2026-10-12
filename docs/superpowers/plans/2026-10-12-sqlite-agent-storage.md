@@ -140,7 +140,7 @@
 - [x] 文档说明新存储路径、首次迁移/源保留/禁止旧后端同时写入、备份 API 用法和回退边界；忽略用户数据库及 journal 临时文件。路线图“立即修改”完成证据与未来事项分开。
 - [x] 实际运行 `python -m pytest -q`；`python -m ruff check context agents/context_projection.py agents/execution_harness.py cli.py evals utils`（按已有项目基线处理，记录预存问题）；`python -m compileall -q context agents cli.py evals utils`；`git diff --check`；`openspec validate sqlite-agent-storage --strict`。不触发真实供应商或用户豁免的专项测试。所有通过才勾选；若环境缺工具，记录并使用已安装项目工具，不隐藏失败。
 - [x] 单代理进行整体自审；多子代理按用户选择提供规格和质量独立评审。逐项表格对应 specs 需求/场景、实现文件、测试和实测证据；检查 plan 和 OpenSpec 全部任务。当前 schema 无 verify 工作流，明确记录人工核对，不声称执行 CLI verify。
-- [ ] 前置全部通过后执行 OpenSpec archive 同步正式规格，核实 archive 文件；再依 superpowers:finishing-a-development-branch 展示合并/PR/保留分支选择，执行用户选择。归档不替代测试。
+- [x] 前置全部通过后执行 OpenSpec archive 同步正式规格，核实 archive 文件；再依 superpowers:finishing-a-development-branch 展示合并/PR/保留分支选择，执行用户选择。归档不替代测试。
 
 ## Execution and evidence
 
@@ -149,3 +149,5 @@
 - 计划自审：所有三份 specs 已映射，低层/迁移/门面接口没有构造循环；两份状态写入任务共用 StateConflictError；Review Focus 五项均有具体测试；规格与计划无新增产品行为差异。
 
 实施补充接口：SessionStore.latest_user_turn/latest_message_seq/clear_context；read_runs 增加 after_run_seq/through_run_seq；SQLiteStorage.ensure_session/next_state_revision 使用保留的 state_clock 防止重建版本复用。复核依据与红绿测试见 docs/development/2026-10-12-sqlite-storage-validation.md。Task 6 归档及分支收尾步骤以实际记录为准，尚未执行时不得视为完成。
+
+收尾结果：OpenSpec archive 已执行，归档后严格校验 7 项通过。用户选择发布当前分支并创建 PR，已通过 GitHub 连接器完成 PR #11：https://github.com/yzy703050-oss/trip-evidence-agent/pull/11。代码发布树 94f6c261bded0db187c2e417d92e416a93d3014f 与已测试的本地提交一致。
