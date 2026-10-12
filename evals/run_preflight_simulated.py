@@ -183,7 +183,7 @@ async def evaluate(output,only=None,*,resume_memory=None,thinking=None):
             result=dict(status='error',stop_reason=type(exc).__name__)
         elapsed=(perf_counter()-started)*1000
         memory.record_message('assistant',json.dumps(result,ensure_ascii=False),run.turn_id,final=True)
-        calls=[c for c in memory.session_store.read_runs() if c.get('type')=='model_call' and c.get('turn_id')==run.turn_id]
+        calls=memory.session_store.read_runs(turn_id=run.turn_id, event_type='model_call')
         assessment = assess(case,result,run,previous.get(user))
         intent_assessment = assess_intents(case, responses)
         assessment['checks'].update(intent_assessment['checks'])

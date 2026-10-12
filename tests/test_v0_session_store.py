@@ -10,21 +10,19 @@ from context.long_term_memory import LongTermMemory
 from context.session_store import SessionStore
 
 
-def test_interrupted_last_write_is_preserved_separately_and_next_event_remains_readable(tmp_path):
-    store = SessionStore(tmp_path, "alice", "s1")
-    store.append(
-        {"turn_id": "t1", "type": "message", "scope": "session", "role": "user", "content": "完整"}
-    )
-    with store.events_path.open("ab") as handle:
-        handle.write(b'{"turn_id":"interrupted"')
-
-    assert [event["seq"] for event in SessionStore(tmp_path, "alice", "s1").read_events()] == [1]
-    saved = store.append(
-        {"turn_id": "t2", "type": "message", "scope": "session", "role": "user", "content": "继续"}
-    )
-    assert saved["seq"] == 2
-    assert [event["seq"] for event in store.read_events()] == [1, 2]
-    assert b"interrupted" in store.events_path.with_suffix(".jsonl.corrupt").read_bytes()
+def test_interrupted_legacy_tail_is_preserved_and_next_database_event_is_readable(tmp_path):
+    directory = resolve_user_directory(tmp_path, 'alice') / 'sessions/s1'
+    directory.mkdir(parents=True)
+    source = directory / 'events.jsonl'
+    row = {'user_id':'alice','session_id':'s1','seq':1,'turn_id':'t1','type':'message','scope':'session','role':'user','content':'完整'}
+    original = (json.dumps(row)+'\n').encode('utf-8') + b'{"turn_id":"interrupted"'
+    source.write_bytes(original)
+    store = SessionStore(tmp_path,'alice','s1')
+    assert [event['seq'] for event in store.read_events()] == [1]
+    saved = store.append({'turn_id':'t2','type':'message','scope':'session','role':'user','content':'继续'})
+    assert saved['seq'] == 2
+    assert [event['seq'] for event in store.read_events()] == [1,2]
+    assert source.read_bytes() == original
 
 
 def test_session_events_survive_restart_in_append_order(tmp_path):
@@ -135,10 +133,12 @@ def test_legacy_user_json_migrates_once_without_deleting_source(tmp_path):
         "去北京",
         "好的",
     ]
-    assert (resolve_user_directory(tmp_path, "alice") / "profile.json").exists()
+    assert memory.db_path.exists()
+    assert memory.data["statistics"]["total_queries"] == 2
     assert not (resolve_user_directory(tmp_path, "alice") / "trips.json").exists()
-    assert list((resolve_user_directory(tmp_path, "alice") / "workflows").glob("history_*.json"))
-    assert (resolve_user_directory(tmp_path, "alice") / "sessions" / "s1" / "events.jsonl").exists()
+    with memory.storage.connection() as conn:
+        assert conn.execute('SELECT COUNT(*) FROM travel_history').fetchone()[0] == 1
+    assert len(SessionStore(tmp_path,'alice','s1').read_events()) == 2
     assert json.loads(old_path.read_text(encoding="utf-8")) == legacy
 
     reopened = LongTermMemory("alice", str(tmp_path))

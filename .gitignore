@@ -43,6 +43,8 @@ data/rag_knowledge/
 data/models/
 data/memory/*.json
 data/memory/*/
+data/memory/**/*.sqlite3*
+data/memory/**/.sqlite-backup-*
 .claude/skills/ask-question/data/rag_knowledge/
 data/preferences/*.json
 !data/preferences/.gitkeep

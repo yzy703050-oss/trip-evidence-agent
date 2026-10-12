@@ -10,6 +10,7 @@ import os
 import logging
 from time import perf_counter
 from typing import Optional
+from sqlite3 import Error as SQLiteError
 
 # 添加项目根目录到路径
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -212,7 +213,7 @@ class TripEvidenceCLI:
                     self.console.print('上次聊到：' + chosen['last_user_message'], markup=False)
                     return True
                 self.console.print('请输入列表中的编号，或回车取消。', markup=False)
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError, SQLiteError):
             self.console.print('这段对话暂时无法恢复，当前对话保持不变。', markup=False)
             return False
 
@@ -297,7 +298,8 @@ class TripEvidenceCLI:
         self.last_result = result
         self._display_agents_called(result)
         self._display_results(result)
-        self.memory_manager.record_message('assistant', json.dumps(result, ensure_ascii=False), turn_id,
+        from agents.context_projection import project_session_result
+        self.memory_manager.record_message('assistant', json.dumps(project_session_result(result), ensure_ascii=False), turn_id,
             final=True, metadata={'format': 'main_result', 'finalization_method': result['finalization_method']})
         return result['status'] != 'error'
 

@@ -24,7 +24,7 @@ def test_manual_profile_value_is_visible_and_not_overwritten_by_agent(tmp_path):
     reopened = LongTermMemory("alice", str(tmp_path))
     assert reopened.get_preference("hotel_brands") == ["汉庭"]
     assert (
-        json.loads(reopened.profile_path.read_text(encoding="utf-8"))["preferences"][0]["source"]
+        reopened.data["preferences"][0]["source"]
         == "user"
     )
     reopened.delete_user_preference("hotel_brands")

@@ -130,7 +130,7 @@ async def run_live(output, case_ids=None):
         except Exception:
             result = {'status': 'error', 'stop_reason': 'cli_exception'}
         turn_id = getattr(getattr(app, 'current_run', None), 'turn_id', None)
-        calls = [r for r in app.memory_manager.session_store.read_runs() if r.get('type') == 'model_call' and r.get('turn_id') == turn_id]
+        calls = app.memory_manager.session_store.read_runs(turn_id=turn_id, event_type='model_call')
         tools = deepcopy(getattr(getattr(app, 'current_run', None), 'tool_requests', []))
         record = {'id': case['id'], 'query': query, 'evaluation': evaluate_result(result, expected_tasks=case.get('tasks')),
                   'model_calls': len(calls), 'tool_calls': len(tools), 'external_requests': sum(not t.get('cache_hit') and bool(t.get('query')) for t in tools),

@@ -21,37 +21,49 @@ def test_case_distinct_users_cannot_share_any_memory(tmp_path):
     assert str(first.long_term.user_dir).casefold() != str(other.long_term.user_dir).casefold()
 
 
-@pytest.mark.parametrize("kind", ["identity", "event", "state", "run"])
+@pytest.mark.parametrize('kind', ['identity','event','state','run'])
 def test_foreign_owner_is_rejected(tmp_path, kind):
-    store = SessionStore(tmp_path, "alice", "s1")
-    if kind == "identity":
-        path = store.session_dir.parents[1] / "identity.json"
-        path.write_text(json.dumps({"user_id": "bob", "version": 1}), encoding="utf-8")
+    store = SessionStore(tmp_path,'alice','s1')
+    row = {'user_id':'bob','session_id':'s1','seq':1}
+    if kind == 'identity':
+        with store.storage.transaction() as conn:
+            conn.execute("UPDATE metadata SET value='bob' WHERE key='owner'")
         with pytest.raises(ValueError):
-            SessionStore(tmp_path, "alice", "s1")
-    else:
-        path = {"event": store.events_path, "state": store.state_path, "run": store.runs_path}[kind]
-        value = {"user_id": "bob", "session_id": "s1", "seq": 1}
-        path.write_text(json.dumps(value) + "\n", encoding="utf-8")
-        with pytest.raises(ValueError):
-            {"event": store.read_events, "state": store.read_state, "run": store.read_runs}[kind]()
-
-
-@pytest.mark.parametrize("kind", ["identity", "event", "state", "run"])
-def test_non_object_records_are_rejected_as_invalid_data(tmp_path, kind):
-    store = SessionStore(tmp_path, "alice", "s1")
-    path = {
-        "identity": store.user_dir / "identity.json",
-        "event": store.events_path,
-        "state": store.state_path,
-        "run": store.runs_path,
-    }[kind]
-    path.write_text("[]\n", encoding="utf-8")
-    with pytest.raises(ValueError):
-        if kind == "identity":
-            SessionStore(tmp_path, "alice", "s1")
+            SessionStore(tmp_path,'alice','s1')
+        return
+    if kind == 'event':
+        store.append({'type':'message','scope':'session','role':'user','content':'q'})
+    elif kind == 'run':
+        store.append_run({'type':'model_call'})
+    with store.storage.transaction() as conn:
+        if kind == 'state':
+            conn.execute('UPDATE sessions SET state_json=? WHERE id=?', (json.dumps(row),'s1'))
         else:
-            {"event": store.read_events, "state": store.read_state, "run": store.read_runs}[kind]()
+            table = 'events' if kind == 'event' else 'runs'
+            conn.execute('UPDATE '+table+' SET payload_json=?', (json.dumps(row),))
+    with pytest.raises(ValueError):
+        {'event':store.read_events,'state':store.read_state,'run':store.read_runs}[kind]()
+
+
+@pytest.mark.parametrize('kind', ['identity','event','state','run'])
+def test_non_object_records_are_rejected_as_invalid_data(tmp_path, kind):
+    store = SessionStore(tmp_path,'alice','s1')
+    if kind == 'event':
+        store.append({'type':'message','scope':'session','role':'user','content':'q'})
+    elif kind == 'run':
+        store.append_run({'type':'model_call'})
+    with store.storage.transaction() as conn:
+        if kind == 'identity':
+            conn.execute("UPDATE metadata SET value='[]' WHERE key='owner'")
+        elif kind == 'state':
+            conn.execute("UPDATE sessions SET state_json='[]' WHERE id='s1'")
+        else:
+            conn.execute("UPDATE "+('events' if kind=='event' else 'runs')+" SET payload_json='[]'")
+    with pytest.raises(ValueError):
+        if kind == 'identity':
+            SessionStore(tmp_path,'alice','s1')
+        else:
+            {'event':store.read_events,'state':store.read_state,'run':store.read_runs}[kind]()
 
 
 def test_legacy_profile_does_not_claim_unowned_sessions(tmp_path):
@@ -154,36 +166,23 @@ def test_wrong_case_delete_does_not_remove_another_legacy_user(tmp_path):
     assert source.exists()
 
 
-def test_failed_profile_import_retries_without_overwriting_newer_profile(tmp_path, monkeypatch):
-    import context.session_store as module
-
-    source = tmp_path / "alice" / "profile.json"
+def test_failed_profile_import_retries_without_overwriting_newer_profile(tmp_path):
+    import sqlite3
+    from context.sqlite_storage import SQLiteStorage
+    source = tmp_path/'alice/profile.json'
     source.parent.mkdir()
-    source.write_text(
-        json.dumps(
-            {"user_id": "alice", "preferences": [{"type": "home_location", "value": "重庆"}]}
-        ),
-        encoding="utf-8",
-    )
+    source.write_text(json.dumps({'user_id':'alice','preferences':[{'type':'home_location','value':'重庆'}]}),encoding='utf-8')
     before = source.read_bytes()
-    original = module.atomic_json_write
-
-    def fail(path, value):
-        if path.name == "profile.json":
-            raise OSError("interrupted import")
-        original(path, value)
-
-    monkeypatch.setattr(module, "atomic_json_write", fail)
-    with pytest.raises(OSError):
-        MemoryManager("alice", "new", storage_path=str(tmp_path))
-    monkeypatch.setattr(module, "atomic_json_write", original)
-    memory = MemoryManager("alice", "new", storage_path=str(tmp_path))
-    assert memory.long_term.get_preference("home_location") == "重庆"
-    memory.long_term.set_user_preference("home_location", "北京")
-    assert (
-        MemoryManager("alice", "new", storage_path=str(tmp_path)).long_term.get_preference(
-            "home_location"
-        )
-        == "北京"
-    )
+    db = SQLiteStorage(tmp_path,'alice')
+    with db.transaction() as conn:
+        conn.execute("CREATE TRIGGER fail BEFORE INSERT ON profiles BEGIN SELECT RAISE(ABORT,'interrupted import'); END")
+    with pytest.raises(sqlite3.IntegrityError, match='interrupted import'):
+        MemoryManager('alice','new',storage_path=str(tmp_path))
+    with db.transaction() as conn:
+        assert conn.execute('SELECT COUNT(*) FROM preferences').fetchone()[0] == 0
+        conn.execute('DROP TRIGGER fail')
+    memory = MemoryManager('alice','new',storage_path=str(tmp_path))
+    assert memory.long_term.get_preference('home_location') == '重庆'
+    memory.long_term.set_user_preference('home_location','北京')
+    assert MemoryManager('alice','new',storage_path=str(tmp_path)).long_term.get_preference('home_location') == '北京'
     assert source.read_bytes() == before

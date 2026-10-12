@@ -70,26 +70,27 @@ async def test_resume_loads_only_selected_workflow_after_summary_selection(tmp_p
     assert loaded and set(loaded) == {target}
 
 
-def test_missing_or_corrupt_index_rebuilds_once_and_is_user_isolated(tmp_path, monkeypatch):
-    memory = MemoryManager("alice", "one", str(tmp_path))
-    saved = memory.workflow_store.save(populated_workflow(), expected_revision=None)
-    path = memory.workflow_store.index.path
-    path.write_text("{broken", encoding="utf-8")
-    assert memory.get_known_workflows()[0]["id"] == saved["id"]
-    monkeypatch.setattr(
-        memory.workflow_store, "load", lambda *_: pytest.fail("index was not repaired")
-    )
-    assert memory.get_known_workflows()[0]["id"] == saved["id"]
-    assert MemoryManager("bob", "two", str(tmp_path)).get_known_workflows() == []
+def test_explicit_index_rebuild_is_user_isolated(tmp_path, monkeypatch):
+    memory = MemoryManager('alice','one',str(tmp_path))
+    saved = memory.workflow_store.save(populated_workflow(),expected_revision=None)
+    with memory.workflow_store.storage.transaction() as conn:
+        conn.execute("UPDATE trip_plans SET summary_json='{broken'")
+    with pytest.raises(ValueError):
+        memory.get_known_workflows()
+    assert memory.workflow_store.index.rebuild()[0]['id'] == saved['id']
+    monkeypatch.setattr(memory.workflow_store,'load',lambda *_: pytest.fail('discovery read full snapshot'))
+    assert memory.get_known_workflows()[0]['id'] == saved['id']
+    assert MemoryManager('bob','two',str(tmp_path)).get_known_workflows() == []
 
 
-@pytest.mark.parametrize("broken", ["{}", "[]", "{broken"])
-def test_structurally_corrupt_index_is_rebuilt_once(tmp_path, monkeypatch, broken):
-    memory = MemoryManager("alice", "one", str(tmp_path))
-    saved = memory.workflow_store.save(populated_workflow(), expected_revision=None)
-    memory.workflow_store.index.path.write_text(broken, encoding="utf-8")
-    assert memory.get_known_workflows()[0]["id"] == saved["id"]
-    monkeypatch.setattr(
-        memory.workflow_store, "load", lambda *_: pytest.fail("second discovery read full snapshot")
-    )
-    assert memory.get_known_workflows()[0]["revision"] == saved["revision"]
+@pytest.mark.parametrize('broken', ['{}','[]','{broken'])
+def test_structurally_corrupt_index_requires_explicit_rebuild(tmp_path, monkeypatch, broken):
+    memory = MemoryManager('alice','one',str(tmp_path))
+    saved = memory.workflow_store.save(populated_workflow(),expected_revision=None)
+    with memory.workflow_store.storage.transaction() as conn:
+        conn.execute('UPDATE trip_plans SET summary_json=?',(broken,))
+    with pytest.raises(ValueError):
+        memory.get_known_workflows()
+    memory.workflow_store.index.rebuild()
+    monkeypatch.setattr(memory.workflow_store,'load',lambda *_: pytest.fail('second discovery read full snapshot'))
+    assert memory.get_known_workflows()[0]['revision'] == saved['revision']

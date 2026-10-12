@@ -150,10 +150,16 @@ def test_new_conversation_is_available_after_reopening(tmp_path):
     assert SessionStore.list_sessions(tmp_path, "bob") == []
 
 
-def test_corrupt_session_is_not_offered_for_restore(tmp_path):
+def test_corrupt_session_restore_fails_without_rebinding(tmp_path, monkeypatch):
     memory = previous(tmp_path)
-    memory.session_store.events_path.write_text("{broken}\n", encoding="utf-8")
-    assert SessionStore.list_sessions(tmp_path, "alice") == []
+    with memory.session_store.storage.transaction() as conn:
+        conn.execute("UPDATE sessions SET state_json='invalid' WHERE id='old'")
+    assert SessionStore.list_sessions(tmp_path,'alice')[0]['session_id'] == 'old'
+    app = app_for(tmp_path)
+    before = app.memory_manager
+    monkeypatch.setattr('cli.Prompt.ask', lambda *a, **kw: '1')
+    assert app.resume_session() is False
+    assert app.memory_manager is before and app.session_id == 'current'
 
 
 @pytest.mark.asyncio

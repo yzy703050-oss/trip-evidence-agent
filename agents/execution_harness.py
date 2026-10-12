@@ -4,6 +4,7 @@ from context.resource_budget import ModelCallLimitExceeded
 import asyncio
 from copy import deepcopy
 import json
+from sqlite3 import Error as SQLiteError
 
 from agentscope.message import Msg
 from agents.contracts import validate_plan, validate_feedback
@@ -127,7 +128,7 @@ class ExecutionHarness:
                 from context.workflow_store import WorkflowConflictError
                 w=deepcopy(run.workflow); w.update(status='partial',stop_reason='turn_timeout')
                 try: w=self.memory_manager.workflow_store.save(w,expected_revision=w['revision'])
-                except (OSError,WorkflowConflictError): return finalize_business_result(self._error('workflow_save_failed',run))
+                except (OSError,SQLiteError,WorkflowConflictError): return finalize_business_result(self._error('workflow_save_failed',run))
                 result.update(finalization_method='workflow',workflow=w,workflow_id=w['id'],workflow_revision=w['revision'])
         result = finalize_business_result(result)
         if (result.get('workflow') and result.get('validated_plan')
@@ -170,7 +171,7 @@ class ExecutionHarness:
                 if self.memory_manager:
                     try:
                         w = self.memory_manager.workflow_store.save(w, expected_revision=w['revision'])
-                    except (OSError, WorkflowConflictError):
+                    except (OSError, SQLiteError, WorkflowConflictError):
                         result['state_save_failed'] = True
             result.update(workflow=w, workflow_id=w['id'], workflow_revision=w['revision'],
                           finalization_method='workflow')
@@ -237,7 +238,7 @@ class ExecutionHarness:
                     return self._error('workflow_revision_conflict',run)
                 w.update(status='needs_input',checkpoint=dict(kind='feedback_scope',question=scope['question'],expected_workflow_revision=w['revision']+1),stop_reason='feedback_scope_required')
                 try: w=self.memory_manager.workflow_store.save(w,expected_revision=w['revision'])
-                except (WorkflowConflictError,OSError): return self._error('workflow_save_failed',run)
+                except (WorkflowConflictError,OSError,SQLiteError): return self._error('workflow_save_failed',run)
                 return dict(status='needs_input',finalization_method='direct',final_answer=scope['question'],workflow_id=w['id'],workflow=w,results=[],domain_results={},missing_fields=[])
             return {'status': 'ok', 'finalization_method': 'direct', 'final_answer': decision['final_answer'],
                     'results': [], 'domain_results': {}, 'missing_fields': []}
@@ -298,13 +299,10 @@ class ExecutionHarness:
     def _save_match_question(self, pending):
         if self.memory_manager:
             store = self.memory_manager.session_store
-            with store._lock:
-                state = store.read_state()
-                if pending is None:
-                    state.pop('pending_workflow_match', None)
-                else:
-                    state['pending_workflow_match'] = pending
-                store.write_state(state)
+            if pending is None:
+                store.update_state({}, remove_keys=('pending_workflow_match',))
+            else:
+                store.update_state({'pending_workflow_match': pending})
 
     async def _match_new_workflow(self, decision, context, run):
         """Do not save a new workflow until the model has compared user-owned trips."""
@@ -420,7 +418,7 @@ class ExecutionHarness:
             return await runner.run(context, run, workflow)
         except WorkflowConflictError:
             return {**self._error('workflow_revision_conflict', run), 'stop_reason': 'workflow_revision_conflict'}
-        except OSError:
+        except (OSError, SQLiteError):
             return {**self._error('workflow_save_failed', run), 'stop_reason': 'workflow_save_failed'}
         except (ValueError, TypeError, KeyError, ArithmeticError):
             return {**self._error('invalid_workflow_proposal', run), 'stop_reason': 'invalid_workflow_proposal'}

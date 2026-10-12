@@ -1,4 +1,5 @@
 """Readable projection of canonical travel snapshots; never used to restore facts."""
+
 import json
 import logging
 import os
@@ -12,59 +13,137 @@ logger = logging.getLogger(__name__)
 
 class TripMemory:
     def __init__(self, root, user_id):
-        from context.user_storage import resolve_user_directory
-        self.directory=resolve_user_directory(root, user_id)
-        self.path=self.directory/'trip.md'
+        from context.user_storage import user_storage_key
+
+        self.directory = Path(root) / user_storage_key(user_id)
+        self.path = self.directory / "trip.md"
 
     def rebuild(self, workflow_store):
         from context.workflow_store import _file_lock
-        with _file_lock(self.directory/'trip-summary.lock'):
-            indexed = hasattr(workflow_store, 'list_summaries')
-            workflows=workflow_store.list_summaries() if indexed else workflow_store.list_all()
-            lines=['# 保存的旅行方案', '', 'JSON 工作流是权威状态；本文件为可重建摘要。规划不代表已经出行或预订。', '']
-            recent_inactive=0
+
+        with _file_lock(self.directory / "trip-summary.lock"):
+            indexed = hasattr(workflow_store, "list_summaries")
+            workflows = workflow_store.list_summaries() if indexed else workflow_store.list_all()
+            lines = [
+                "# 保存的旅行方案",
+                "",
+                "数据库行程是权威状态；本文件为可重建摘要。规划不代表已经出行或预订。",
+                "",
+            ]
+            recent_inactive = 0
             for w in workflows:
-                lines.extend(['## '+w['id'], f"revision: {w['revision']}", f"status: {w['status']}",
-                              'record_kind: planned_itinerary', 'route: '+ ' → '.join([w['tasks'][0].get('origin') or '出发地待补充']+[t['destination'] for t in w['tasks']]),
-                              'conditions: '+json.dumps(w['confirmed_conditions'],ensure_ascii=False),
-                              'recent_change: '+json.dumps(w.get('last_update',{}),ensure_ascii=False)])
-                if w['status'] not in {'running','needs_input','partial'}:
-                    recent_inactive+=1
-                    if recent_inactive>5:
-                        lines.extend(['详细任务见 workflows/'+w['id']+'.json',''])
+                lines.extend(
+                    [
+                        "## " + w["id"],
+                        f"revision: {w['revision']}",
+                        f"status: {w['status']}",
+                        "record_kind: planned_itinerary",
+                        "route: "
+                        + " → ".join(
+                            (
+                                [w["tasks"][0].get("origin") or "出发地待补充"]
+                                if w["tasks"]
+                                else ["路线待补充"]
+                            )
+                            + [t.get("destination") or "目的地待补充" for t in w["tasks"]]
+                        ),
+                        "conditions: "
+                        + json.dumps(w.get("confirmed_conditions", {}), ensure_ascii=False),
+                        "recent_change: "
+                        + json.dumps(w.get("last_update", {}), ensure_ascii=False),
+                    ]
+                )
+                if w["status"] not in {"running", "needs_input", "partial"}:
+                    recent_inactive += 1
+                    if recent_inactive > 5:
+                        lines.extend(["详细任务见数据库行程 " + w["id"], ""])
                         continue
-                for t in w['tasks']:
+                for t in w["tasks"]:
                     if indexed:
-                        lines.append('- '+json.dumps(t, ensure_ascii=False))
+                        lines.append("- " + json.dumps(t, ensure_ascii=False))
                         continue
-                    draft=t.get('draft_plan') or {}
-                    selections={}
-                    for domain in ('train','hotel'):
-                        ref=draft.get(domain+'_selection')
-                        row=w['results_by_query'].get(ref.get('query_id')) if ref else None
-                        item=next((i for i in row['items'] if i['id']==ref.get('candidate_id')),None) if row else None
-                        if item: selections[domain]={k:item.get(k) for k in ('id','train_number','hotel_name','departure_at','arrival_at','source') if k in item}
-                    lines.append('- '+json.dumps(dict(task_id=t['id'],revision=t['revision'],status=t['status'],
-                        purpose=t.get('purpose','unspecified'),requires_hotel=t['requires_hotel'],conditions=t['conditions'],
-                        field_sources=t['field_sources'],schedule=draft.get('schedule',{}),selected=selections,
-                        gaps=t['issues'],summary=t['summary']),ensure_ascii=False))
-                lines.append('')
-            legacy=workflow_store.list_history(include_workflows=False) if indexed else workflow_store.list_history()
-            ids={w['id'] for w in workflows}
-            for index,record in enumerate(legacy):
-                if record.get('workflow_id') in ids: continue
-                lines.extend(['## legacy:'+str(record.get('trip_id',index)), json.dumps(record,ensure_ascii=False), ''])
-            text='\n'.join(lines)+'\n'
-            if self.path.exists() and self.path.read_text(encoding='utf-8')==text: return
-            self.directory.mkdir(parents=True,exist_ok=True)
-            name=None
+                    draft = t.get("draft_plan") or {}
+                    selections = {}
+                    for domain in ("train", "hotel"):
+                        ref = draft.get(domain + "_selection")
+                        row = w["results_by_query"].get(ref.get("query_id")) if ref else None
+                        item = (
+                            next(
+                                (i for i in row["items"] if i["id"] == ref.get("candidate_id")),
+                                None,
+                            )
+                            if row
+                            else None
+                        )
+                        if item:
+                            selections[domain] = {
+                                k: item.get(k)
+                                for k in (
+                                    "id",
+                                    "train_number",
+                                    "hotel_name",
+                                    "departure_at",
+                                    "arrival_at",
+                                    "source",
+                                )
+                                if k in item
+                            }
+                    lines.append(
+                        "- "
+                        + json.dumps(
+                            dict(
+                                task_id=t["id"],
+                                revision=t["revision"],
+                                status=t["status"],
+                                purpose=t.get("purpose", "unspecified"),
+                                requires_hotel=t["requires_hotel"],
+                                conditions=t["conditions"],
+                                field_sources=t["field_sources"],
+                                schedule=draft.get("schedule", {}),
+                                selected=selections,
+                                gaps=t["issues"],
+                                summary=t["summary"],
+                            ),
+                            ensure_ascii=False,
+                        )
+                    )
+                lines.append("")
+            legacy = (
+                workflow_store.list_history(include_workflows=False)
+                if indexed
+                else workflow_store.list_history()
+            )
+            ids = {w["id"] for w in workflows}
+            for index, record in enumerate(legacy):
+                if record.get("workflow_id") in ids:
+                    continue
+                lines.extend(
+                    [
+                        "## legacy:" + str(record.get("trip_id", index)),
+                        json.dumps(record, ensure_ascii=False),
+                        "",
+                    ]
+                )
+            text = "\n".join(lines) + "\n"
+            if self.path.exists() and self.path.read_text(encoding="utf-8") == text:
+                return
+            self.directory.mkdir(parents=True, exist_ok=True)
+            name = None
             try:
-                with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=self.directory,delete=False) as f:
-                    name=f.name; f.write(text); f.flush(); os.fsync(f.fileno())
-                os.replace(name,self.path)
+                with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", dir=self.directory, delete=False
+                ) as f:
+                    name = f.name
+                    f.write(text)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(name, self.path)
             finally:
-                if name and os.path.exists(name): os.unlink(name)
+                if name and os.path.exists(name):
+                    os.unlink(name)
 
     def repair(self, workflow_store):
-        try: self.rebuild(workflow_store)
-        except (OSError,ValueError): logger.exception('Trip summary update failed; canonical workflows remain available')
+        try:
+            self.rebuild(workflow_store)
+        except (OSError, ValueError):
+            logger.exception("Trip summary update failed; canonical workflows remain available")

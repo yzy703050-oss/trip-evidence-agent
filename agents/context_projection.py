@@ -328,6 +328,15 @@ def project_delegation_context(context: dict) -> dict:
     return view
 
 
+def project_session_result(result: dict) -> dict:
+    """Persist reply and facts while retaining the caller's complete result."""
+    return {key: _clean(deepcopy(result[key])) for key in (
+        'final_answer', 'status', 'finalization_method', 'workflow_id',
+        'workflow_revision', 'travel_conditions', 'itinerary',
+        'error_code', 'error', 'stop_reason',
+    ) if key in result}
+
+
 def project_session_message(event: dict) -> dict | None:
     if (
         event.get("scope") != "session"
@@ -337,7 +346,7 @@ def project_session_message(event: dict) -> dict | None:
         return None
     projected = {
         key: deepcopy(event[key])
-        for key in ("seq", "turn_id", "scope", "type", "role", "content", "final", "result_summary")
+        for key in ("seq", "turn_id", "scope", "type", "role", "content", "final", "result_summary", "timestamp")
         if key in event
     }
     if (

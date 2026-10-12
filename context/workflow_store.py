@@ -1,4 +1,4 @@
-"""User-isolated workflow snapshots with atomic writes and process-safe CAS."""
+"""Transactional workflow snapshots, summaries and compatible travel history."""
 
 from contextlib import contextmanager
 from copy import deepcopy
@@ -11,7 +11,7 @@ from pathlib import Path
 import threading
 import uuid
 
-from context.session_store import atomic_json_write, storage_component
+from context.session_store import storage_component
 
 _guard = threading.Lock()
 _locks = {}
@@ -54,76 +54,99 @@ def _file_lock(path):
 
 class WorkflowStore:
     def __init__(self, root, user_id):
-        from context.user_storage import resolve_user_directory
-        self.user_id = storage_component(user_id)
-        self.directory = resolve_user_directory(root, user_id) / "workflows"
+        from context.sqlite_storage import SQLiteStorage
         from context.trip_memory import TripMemory
-
-        self.trip_memory = TripMemory(root, user_id)
         from context.workflow_index import WorkflowIndex
+
+        self.user_id = storage_component(user_id)
+        self.storage = SQLiteStorage(root, user_id)
+        self.storage.ensure_ready()
+        self.directory = self.storage.directory / "workflows"  # legacy input only
+        self.trip_memory = TripMemory(root, user_id)
         self.index = WorkflowIndex(self)
 
-    def _path(self, workflow_id):
-        return self.directory / f"{storage_component(workflow_id)}.json"
-
-    @staticmethod
-    def _read(path):
-        if not path.exists():
-            return None
-        value = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(value, dict) and value.get("record_type") == "travel_history":
-            if type(value.get("revision")) is not int or not isinstance(value.get("history"), dict):
-                raise ValueError("invalid travel history record")
+    def load(self, workflow_id):
+        storage_component(workflow_id)
+        with self.storage.connection() as conn:
+            row = conn.execute(
+                "SELECT content_json FROM trip_plans WHERE id=?", (workflow_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            value = json.loads(row[0])
+            self._validate(value, workflow_id)
             return value
+
+    def _validate(self, value, identity):
+        if not isinstance(value, dict) or value.get("user_id") != self.user_id:
+            raise ValueError("workflow owner mismatch")
         if (
-            not isinstance(value, dict)
+            value.get("id") != identity
             or type(value.get("revision")) is not int
             or not isinstance(value.get("tasks"), list)
         ):
             raise ValueError("invalid workflow snapshot")
-        return value
-
-    def load(self, workflow_id):
-        path = self._path(workflow_id)
-        with _file_lock(path.with_suffix(".lock")):
-            value = self._read(path)
-            if value is not None and value.get('user_id') != self.user_id:
-                raise ValueError('workflow owner mismatch')
-            if value is not None and value.get("id") != workflow_id:
-                raise ValueError("workflow snapshot identity mismatch")
-            if value and value.get("record_type") == "travel_history":
-                return None
-            return value
 
     def save(self, workflow, *, expected_revision):
+        from context.sqlite_storage import encode
+        from context import workflow_index
+
         value = deepcopy(workflow)
-        if value.get('user_id', self.user_id) != self.user_id:
-            raise ValueError('workflow owner mismatch')
-        value['user_id'] = self.user_id
-        path = self._path(value["id"])
-        with _file_lock(path.with_suffix(".lock")):
-            current = self._read(path)
-            if current is not None and current.get('user_id') != self.user_id:
-                raise ValueError('workflow owner mismatch')
-            if current and current.get("record_type") == "travel_history":
-                raise WorkflowConflictError("history record cannot become an executable workflow")
+        if value.get("user_id", self.user_id) != self.user_id:
+            raise ValueError("workflow owner mismatch")
+        value["user_id"] = self.user_id
+        identity = storage_component(value["id"])
+        with self.storage.transaction() as conn:
+            current = conn.execute(
+                "SELECT revision FROM trip_plans WHERE id=?", (identity,)
+            ).fetchone()
             if current is None:
                 if expected_revision is not None:
                     raise WorkflowConflictError("workflow no longer exists")
+                if conn.execute("SELECT 1 FROM travel_history WHERE id=?", (identity,)).fetchone():
+                    raise WorkflowConflictError(
+                        "history record cannot become an executable workflow"
+                    )
                 revision = 1
             else:
-                if type(expected_revision) is not int or current["revision"] != expected_revision:
+                if type(expected_revision) is not int or current[0] != expected_revision:
                     raise WorkflowConflictError("workflow revision changed")
                 revision = expected_revision + 1
             value["revision"] = revision
-            value.setdefault("created_at", datetime.now(timezone.utc).isoformat())
-            value["updated_at"] = datetime.now(timezone.utc).isoformat()
-            atomic_json_write(path, value)
-        try:
-            self.index.update(value)
-        except (OSError, ValueError):
-            logging.getLogger(__name__).exception('Canonical workflow saved; summary index update failed and requires rebuild')
-            raise
+            self._validate(value, identity)
+            now = datetime.now(timezone.utc).isoformat()
+            value.setdefault("created_at", now)
+            value["updated_at"] = now
+            summary = encode(workflow_index.workflow_summary(value))
+            content = encode(value)
+            if current:
+                changed = conn.execute(
+                    "UPDATE trip_plans SET revision=?,status=?,updated_at=?,summary_json=?,content_json=? WHERE id=? AND revision=?",
+                    (
+                        revision,
+                        value.get("status"),
+                        now,
+                        summary,
+                        content,
+                        identity,
+                        expected_revision,
+                    ),
+                ).rowcount
+                if changed != 1:
+                    raise WorkflowConflictError("workflow revision changed")
+            else:
+                conn.execute(
+                    "INSERT INTO trip_plans VALUES (?,?,?,?,?,?,?)",
+                    (
+                        identity,
+                        revision,
+                        value.get("status"),
+                        value["created_at"],
+                        now,
+                        summary,
+                        content,
+                    ),
+                )
         self.trip_memory.repair(self)
         return value
 
@@ -131,89 +154,71 @@ class WorkflowStore:
         return self.index.list()
 
     def list_all(self):
-        if not self.directory.exists():
-            return []
-        values = [
-            value
-            for path in sorted(self.directory.glob("*.json"))
-            if path.name != ".history-state.json" and (value := self.load(path.stem))
-        ]
-        return sorted(
-            values,
-            key=lambda w: w.get("updated_at") or str(self._path(w["id"]).stat().st_mtime),
-            reverse=True,
-        )
+        with self.storage.connection() as conn:
+            values = [
+                json.loads(row[0])
+                for row in conn.execute(
+                    "SELECT content_json FROM trip_plans ORDER BY updated_at DESC,id"
+                )
+            ]
+        for value in values:
+            self._validate(value, value.get("id"))
+        return values
 
     def list_active(self):
-        if not self.directory.exists():
-            return []
-        values = self.list_all()
-        return [
-            value
-            for value in values
-            if value and value["status"] in {"running", "needs_input", "partial"}
-        ]
+        with self.storage.connection() as conn:
+            values = [
+                json.loads(row[0])
+                for row in conn.execute(
+                    "SELECT content_json FROM trip_plans WHERE status IN ('running','needs_input','partial') ORDER BY updated_at DESC,id"
+                )
+            ]
+        for value in values:
+            self._validate(value, value.get("id"))
+        return values
 
-    def _history_state(self):
-        path = self.directory / ".history-state.json"
-        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    def _write_history(self, conn, record, *, importing=False, import_index=None):
+        from context.storage_migration import history_identity
+        from context.sqlite_storage import encode
 
-    def _write_history(self, record, *, importing=False, import_index=None):
         if not isinstance(record, dict):
             raise ValueError("invalid travel history")
         row = deepcopy(record)
-        # Hash external identities rather than using them as filesystem paths.
-        if row.get("workflow_id"):
-            identity = ["workflow", row["workflow_id"]]
-        elif row.get("trip_id"):
-            identity = ["trip", row["trip_id"]]
-        else:
-            if importing:
-                identity = ["legacy", import_index, row]
-            else:
-                row["trip_id"] = "trip_" + uuid.uuid4().hex
-                identity = ["trip", row["trip_id"]]
-        digest = hashlib.sha256(
-            json.dumps(identity, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        ).hexdigest()
-        record_id = "history_" + digest
-        path = self._path(record_id)
-        current = self._read(path)
+        if not importing and not row.get("workflow_id") and not row.get("trip_id"):
+            row["trip_id"] = "trip_" + uuid.uuid4().hex
+        record_id = history_identity(row, import_index)
+        current = conn.execute(
+            "SELECT revision,payload_json FROM travel_history WHERE id=?", (record_id,)
+        ).fetchone()
+        if current and importing:
+            return
         if current:
-            if current.get("record_type") != "travel_history":
-                raise WorkflowConflictError("history identity collides with workflow")
-            if importing:
-                return
-            row = {**current["history"], **row}
+            row = {**json.loads(current[1]), **row}
         now = datetime.now(timezone.utc).isoformat()
         if not importing:
             row.setdefault("trip_id", record_id)
             row.setdefault("timestamp", now)
-        atomic_json_write(
-            path,
-            {
-                "id": record_id,
-                "user_id": self.user_id,
-                "record_type": "travel_history",
-                "revision": current["revision"] + 1 if current else 1,
-                "updated_at": now,
-                "history": row,
-            },
+        conn.execute(
+            "INSERT INTO travel_history VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,updated_at=excluded.updated_at,payload_json=excluded.payload_json",
+            (record_id, current[0] + 1 if current else 1, now, encode(row)),
         )
 
     def save_history(self, record):
         if not isinstance(record, dict):
             raise ValueError("invalid travel history")
-        with _file_lock(self.directory / ".history.lock"):
-            if any(w["id"] == record.get("workflow_id") for w in self.list_all()):
-                return  # The canonical workflow already holds the latest plan.
-            self._write_history(record)
+        with self.storage.transaction() as conn:
+            if conn.execute(
+                "SELECT 1 FROM trip_plans WHERE id=?", (record.get("workflow_id"),)
+            ).fetchone():
+                return
+            self._write_history(conn, record)
 
     def import_history(self, records, source):
-        with _file_lock(self.directory / ".history.lock"):
-            state = self._history_state()
-            imported = state.get("imported_sources", [])
-            if source in imported:
+        from context.sqlite_storage import metadata, set_metadata
+
+        with self.storage.transaction() as conn:
+            key = "history_import:" + source
+            if metadata(conn, key) == "1":
                 return
             if not isinstance(records, list):
                 raise ValueError("invalid legacy travel history")
@@ -221,20 +226,20 @@ class WorkflowStore:
             for index, record in enumerate(records):
                 if not isinstance(record, dict):
                     raise ValueError("invalid legacy travel record")
-                key = self._legacy_key(record)
+                key_id = self._legacy_key(record)
                 revision = record.get("workflow_revision", 0)
                 revision = revision if type(revision) is int else 0
-                if key is not None and (key not in latest or revision >= latest[key][1]):
-                    latest[key] = (index, revision)
-            ids = {w["id"] for w in self.list_all()}
+                if key_id is not None and (key_id not in latest or revision >= latest[key_id][1]):
+                    latest[key_id] = (index, revision)
             for index, record in enumerate(records):
-                key = self._legacy_key(record)
-                if key is not None and index != latest[key][0]:
+                key_id = self._legacy_key(record)
+                if key_id is not None and index != latest[key_id][0]:
                     continue
-                if record.get("workflow_id") not in ids:
-                    self._write_history(record, importing=True, import_index=index)
-            state["imported_sources"] = [*imported, source]
-            atomic_json_write(self.directory / ".history-state.json", state)
+                if not conn.execute(
+                    "SELECT 1 FROM trip_plans WHERE id=?", (record.get("workflow_id"),)
+                ).fetchone():
+                    self._write_history(conn, record, importing=True, import_index=index)
+            set_metadata(conn, key, "1")
 
     @staticmethod
     def _legacy_key(record):
@@ -263,33 +268,34 @@ class WorkflowStore:
         }
 
     def list_history(self, limit=None, *, include_workflows=True):
-        with _file_lock(self.directory / ".history.lock"):
-            cutoff = self._history_state().get("cleared_before", "")
-            workflows = self.list_all() if include_workflows else self.list_summaries()
-            ids = {w["id"] for w in workflows}
-            entries = [
-                (w.get("updated_at", ""), self._history_view(w))
-                for w in workflows
-                if include_workflows and w["status"] == "completed"
-            ]
-            for path in sorted(self.directory.glob("history_*.json")):
-                with _file_lock(path.with_suffix(".lock")):
-                    value = self._read(path)
-                if value and value.get("record_type") == "travel_history":
-                    if value.get("id") != path.stem:
-                        raise ValueError("travel history identity mismatch")
-                    row = value["history"]
-                    if row.get("workflow_id") not in ids:
-                        entries.append((value["updated_at"], deepcopy(row)))
-            rows = [
-                row
-                for updated, row in sorted(entries, key=lambda pair: pair[0])
-                if updated > cutoff
-            ]
+        from context.sqlite_storage import metadata
+
+        with self.storage.connection() as conn:
+            conn.execute("BEGIN")
+            cutoff = metadata(conn, "history_cleared_before", "")
+            entries = []
+            if include_workflows:
+                for row in conn.execute(
+                    "SELECT updated_at,content_json FROM trip_plans WHERE status='completed' AND updated_at>?",
+                    (cutoff,),
+                ):
+                    value = json.loads(row[1])
+                    self._validate(value, value.get("id"))
+                    entries.append((row[0], self._history_view(value)))
+            for row in conn.execute(
+                "SELECT updated_at,payload_json FROM travel_history WHERE updated_at>? ORDER BY updated_at,id",
+                (cutoff,),
+            ):
+                value = json.loads(row[1])
+                if not conn.execute(
+                    "SELECT 1 FROM trip_plans WHERE id=?", (value.get("workflow_id"),)
+                ).fetchone():
+                    entries.append((row[0], value))
+            rows = [row for _, row in sorted(entries, key=lambda pair: pair[0])]
             return rows[-limit:] if limit else rows
 
     def clear_history(self):
-        with _file_lock(self.directory / ".history.lock"):
-            state = self._history_state()
-            state["cleared_before"] = datetime.now(timezone.utc).isoformat()
-            atomic_json_write(self.directory / ".history-state.json", state)
+        from context.sqlite_storage import set_metadata
+
+        with self.storage.transaction() as conn:
+            set_metadata(conn, "history_cleared_before", datetime.now(timezone.utc).isoformat())
