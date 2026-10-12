@@ -26,7 +26,7 @@ def test_residence_is_required_and_saved_as_user_fact(tmp_path, monkeypatch):
     assert "必须填写" in app.console.file.getvalue()
     reopened = LongTermMemory("alice", str(tmp_path))
     assert reopened.get_preference("home_location") == "上海"
-    profile = json.loads(reopened.profile_path.read_text(encoding="utf8"))
+    profile = reopened.data
     assert {"type": "home_location", "value": "上海", "source": "user"} in profile["preferences"]
 
 

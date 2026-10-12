@@ -1,17 +1,10 @@
-"""Append-only, session-scoped records for the V0 CLI."""
+"""Indexed SQLite events and revisioned state for user-isolated sessions."""
 
 from __future__ import annotations
 
-import json
-import os
-import threading
 from datetime import datetime, timezone
+import json
 from pathlib import Path
-from typing import Any
-
-
-_locks_guard = threading.Lock()
-_path_locks: dict[Path, threading.RLock] = {}
 
 
 def storage_component(value: str) -> str:
@@ -23,166 +16,300 @@ def storage_component(value: str) -> str:
     return value
 
 
-def atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
-    """Replace state files only after a complete JSON document exists."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
-    try:
-        with temporary.open("w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    """Recover only a truncated final line; reject corruption in complete lines."""
-    if not path.exists():
-        return []
-    raw = path.read_bytes()
-    lines = raw.splitlines(keepends=True)
-    records = []
-    offset = 0
-    for index, line in enumerate(lines):
-        try:
-            if line.strip():
-                records.append(json.loads(line))
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            if index != len(lines) - 1 or line.endswith(b"\n"):
-                raise
-            backup = path.with_suffix(path.suffix + ".corrupt")
-            with backup.open("ab") as handle:
-                handle.write(line + b"\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            with path.open("r+b") as handle:
-                handle.truncate(offset)
-                handle.flush()
-                os.fsync(handle.fileno())
-            break
-        offset += len(line)
-    if records and raw and not raw.endswith(b"\n") and offset == len(raw):
-        with path.open("ab") as handle:
-            handle.write(b"\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-    return records
-
-
 class SessionStore:
-    """One ordered event log and one compacted state for a user session."""
+    """Indexed events and revisioned state for one user session."""
 
     @classmethod
     def list_sessions(cls, root, user_id, limit=20):
-        from context.user_storage import resolve_user_directory
+        from context.sqlite_storage import SQLiteStorage
         from zoneinfo import ZoneInfo
+
+        db = SQLiteStorage(root, user_id)
+        db.ensure_ready()
+        with db.connection() as conn:
+            values = list(
+                conn.execute(
+                    "SELECT id,title,updated_at,last_user_message FROM sessions WHERE title<>'' ORDER BY updated_at DESC,id LIMIT ?",
+                    (-1 if limit is None else limit,),
+                )
+            )
         rows = []
-        for path in (resolve_user_directory(root, user_id) / 'sessions').glob('*/events.jsonl'):
+        for row in values:
             try:
-                store = cls(root, user_id, path.parent.name)
-                store.read_state()
-                messages = [event for event in store.read_events() if event.get('scope') == 'session' and event.get('type') == 'message']
-                user_messages = [event for event in messages if event.get('role') == 'user' and isinstance(event.get('content'), str) and event['content'].strip()]
-                if not user_messages:
-                    continue
-                timestamps = []
-                for event in messages:
-                    try:
-                        value = datetime.fromisoformat(event.get('timestamp', ''))
-                        if value.tzinfo is None:
-                            value = value.replace(tzinfo=timezone.utc)
-                        timestamps.append(value)
-                    except (ValueError, TypeError):
-                        continue
-                updated = max(timestamps).astimezone(ZoneInfo('Asia/Shanghai')) if timestamps else None
-                title = ' '.join(user_messages[0]['content'].split())
-                rows.append({'session_id': store.session_id, 'title': title[:36] + ('…' if len(title) > 36 else ''),
-                             'updated_at': updated.isoformat() if updated else '',
-                             'last_user_message': user_messages[-1]['content']})
-            except (ValueError, OSError, KeyError, TypeError):
-                continue
-        return sorted(rows, key=lambda row: row['updated_at'], reverse=True)[:limit]
+                timestamp = datetime.fromisoformat(row[2])
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
+                updated = timestamp.astimezone(ZoneInfo("Asia/Shanghai")).isoformat()
+            except (ValueError, TypeError):
+                updated = ""
+            rows.append(
+                {
+                    "session_id": row[0],
+                    "title": row[1],
+                    "updated_at": updated,
+                    "last_user_message": row[3],
+                }
+            )
+        return sorted(rows, key=lambda row: row["updated_at"], reverse=True)
 
     def __init__(self, root: str | Path, user_id: str, session_id: str):
+        from context.sqlite_storage import SQLiteStorage, ensure_session
+
         self.user_id = storage_component(user_id)
         self.session_id = storage_component(session_id)
-        from context.user_storage import resolve_user_directory
-        self.user_dir = resolve_user_directory(root, self.user_id)
-        self.session_dir = self.user_dir / "sessions" / self.session_id
-        self.events_path = self.session_dir / "events.jsonl"
-        self.runs_path = self.session_dir / "runs.jsonl"
-        self.state_path = self.session_dir / "state.json"
-        self.session_dir.mkdir(parents=True, exist_ok=True)
-        lock_key = self.events_path.resolve()
-        with _locks_guard:
-            self._lock = _path_locks.setdefault(lock_key, threading.RLock())
-
-    def read_events(self) -> list[dict[str, Any]]:
-        with self._lock:
-            records = _read_jsonl(self.events_path)
-            for record in records:
-                self._validate_owner(record)
-            return records
+        self.storage = SQLiteStorage(root, user_id)
+        self.storage.ensure_ready()
+        self.user_dir = self.storage.directory
+        with self.storage.transaction() as conn:
+            ensure_session(conn, self.session_id)
 
     def _validate_owner(self, record):
-        if not isinstance(record, dict) or record.get('user_id') != self.user_id or record.get('session_id') != self.session_id:
-            raise ValueError('session record identity mismatch')
+        if (
+            not isinstance(record, dict)
+            or record.get("user_id") != self.user_id
+            or record.get("session_id") != self.session_id
+        ):
+            raise ValueError("session record identity mismatch")
 
-    def append(self, event: dict[str, Any]) -> dict[str, Any]:
-        """Persist one event; repeated event_id values are idempotent."""
-        with self._lock:
-            existing = self.read_events()
-            event_id = event.get("event_id")
-            if event_id is not None:
-                for item in existing:
-                    if item.get("event_id") == event_id:
-                        return item
-            record = dict(event)
-            record["seq"] = existing[-1]["seq"] + 1 if existing else 1
+    def _input(self, value):
+        if not isinstance(value, dict):
+            raise ValueError("invalid session record")
+        if (
+            value.get("user_id", self.user_id) != self.user_id
+            or value.get("session_id", self.session_id) != self.session_id
+        ):
+            raise ValueError("session record identity mismatch")
+        return {**value, "user_id": self.user_id, "session_id": self.session_id}
+
+    def _decode(self, payload):
+        record = json.loads(payload)
+        self._validate_owner(record)
+        return record
+
+    def read_events(self, *, after_seq=0, scope=None, event_type=None, role=None, turn_id=None):
+        clauses, params = ["session_id=?", "seq>?"], [self.session_id, after_seq]
+        for field, value in (
+            ("scope", scope),
+            ("type", event_type),
+            ("role", role),
+            ("turn_id", turn_id),
+        ):
+            if value is not None:
+                clauses.append(field + "=?")
+                params.append(value)
+        with self.storage.connection() as conn:
+            return [
+                self._decode(row[0])
+                for row in conn.execute(
+                    "SELECT payload_json FROM events WHERE "
+                    + " AND ".join(clauses)
+                    + " ORDER BY seq",
+                    params,
+                )
+            ]
+
+    def append(self, event):
+        from context.storage_migration import insert_event
+        from context.sqlite_storage import ensure_session
+
+        record = self._input(event)
+        with self.storage.transaction() as conn:
+            if record.get("event_id") is not None:
+                previous = conn.execute(
+                    "SELECT payload_json FROM events WHERE session_id=? AND event_id=?",
+                    (self.session_id, record["event_id"]),
+                ).fetchone()
+                if previous:
+                    return self._decode(previous[0])
+            ensure_session(conn, self.session_id)
+            record["seq"] = (
+                conn.execute(
+                    "SELECT last_seq FROM sessions WHERE id=?", (self.session_id,)
+                ).fetchone()[0]
+                + 1
+            )
             record.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
-            record["session_id"] = self.session_id
-            record['user_id'] = self.user_id
-            encoded = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
-            self.session_dir.mkdir(parents=True, exist_ok=True)
-            with self.events_path.open("a", encoding="utf-8", newline="\n") as handle:
-                handle.write(encoded)
-                handle.flush()
-                os.fsync(handle.fileno())
-            return record
+            insert_event(conn, record)
+        return record
 
-    def read_state(self) -> dict[str, Any]:
-        with self._lock:
-            if not self.state_path.exists():
-                return {}
-            with self.state_path.open("r", encoding="utf-8") as handle:
-                state = json.load(handle)
-                self._validate_owner(state)
-                return state
+    def read_runs(self, *, turn_id=None, event_type=None, after_run_seq=0, through_run_seq=None):
+        clauses, params = ["session_id=?"], [self.session_id]
+        clauses.append("run_seq>?")
+        params.append(after_run_seq)
+        if through_run_seq is not None:
+            clauses.append("run_seq<=?")
+            params.append(through_run_seq)
+        for field, value in (("turn_id", turn_id), ("type", event_type)):
+            if value is not None:
+                clauses.append(field + "=?")
+                params.append(value)
+        with self.storage.connection() as conn:
+            return [
+                self._decode(row[0])
+                for row in conn.execute(
+                    "SELECT payload_json FROM runs WHERE "
+                    + " AND ".join(clauses)
+                    + " ORDER BY run_seq",
+                    params,
+                )
+            ]
 
-    def read_runs(self) -> list[dict[str, Any]]:
-        with self._lock:
-            records = _read_jsonl(self.runs_path)
-            for record in records:
-                self._validate_owner(record)
-            return records
+    def append_run(self, event):
+        from context.sqlite_storage import encode, ensure_session
 
-    def append_run(self, event: dict[str, Any]) -> dict[str, Any]:
-        with self._lock:
-            previous = self.read_runs()
-            record = dict(event)
-            record["run_seq"] = previous[-1]["run_seq"] + 1 if previous else 1
-            record["session_id"] = self.session_id
-            record['user_id'] = self.user_id
+        record = self._input(event)
+        with self.storage.transaction() as conn:
+            if record.get("event_id") is not None:
+                previous = conn.execute(
+                    "SELECT payload_json FROM runs WHERE session_id=? AND event_id=?",
+                    (self.session_id, record["event_id"]),
+                ).fetchone()
+                if previous:
+                    return self._decode(previous[0])
+            ensure_session(conn, self.session_id)
+            record["run_seq"] = (
+                conn.execute(
+                    "SELECT last_run_seq FROM sessions WHERE id=?", (self.session_id,)
+                ).fetchone()[0]
+                + 1
+            )
             record.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
-            self.session_dir.mkdir(parents=True, exist_ok=True)
-            with self.runs_path.open("a", encoding="utf-8", newline="\n") as handle:
-                handle.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            return record
+            conn.execute(
+                "INSERT INTO runs VALUES (?,?,?,?,?,?,?)",
+                (
+                    self.session_id,
+                    record["run_seq"],
+                    record.get("event_id"),
+                    record.get("turn_id"),
+                    record.get("type"),
+                    record.get("task_id"),
+                    encode(record),
+                ),
+            )
+            conn.execute(
+                "UPDATE sessions SET last_run_seq=? WHERE id=?",
+                (record["run_seq"], self.session_id),
+            )
+        return record
 
-    def write_state(self, state: dict[str, Any]) -> None:
-        with self._lock:
-            atomic_json_write(self.state_path, {**state, 'user_id': self.user_id, 'session_id': self.session_id})
+    def _state(self, conn):
+        row = conn.execute(
+            "SELECT state_json,state_revision FROM sessions WHERE id=?", (self.session_id,)
+        ).fetchone()
+        if row is None:
+            from context.sqlite_storage import metadata
+
+            return {
+                "user_id": self.user_id,
+                "session_id": self.session_id,
+                "state_revision": int(metadata(conn, "state_clock", "0")) + 1,
+            }
+        state = json.loads(row[0])
+        if not isinstance(state, dict):
+            raise ValueError("invalid session state")
+        if state:
+            self._validate_owner(state)
+        return {
+            **state,
+            "user_id": self.user_id,
+            "session_id": self.session_id,
+            "state_revision": row[1],
+        }
+
+    def read_state(self):
+        with self.storage.connection() as conn:
+            return self._state(conn)
+
+    def _patch(self, conn, patch, remove_keys, expected_revision, *, replace=False):
+        from context.sqlite_storage import (
+            StateConflictError,
+            encode,
+            ensure_session,
+            next_state_revision,
+        )
+
+        patch = self._input(patch)
+        ensure_session(conn, self.session_id)
+        current = self._state(conn)
+        revision = current["state_revision"]
+        if expected_revision is not None and revision != expected_revision:
+            raise StateConflictError("session state revision changed")
+        current = {} if replace else current
+        for key in remove_keys:
+            current.pop(key, None)
+        current.update(patch)
+        current["state_revision"] = next_state_revision(conn)
+        conn.execute(
+            "UPDATE sessions SET state_json=?,state_revision=? WHERE id=?",
+            (encode(current), current["state_revision"], self.session_id),
+        )
+        return current
+
+    def update_state(self, patch, *, remove_keys=(), expected_revision=None):
+        with self.storage.transaction() as conn:
+            return self._patch(conn, patch, remove_keys, expected_revision)
+
+    def write_state(self, state):
+        with self.storage.transaction() as conn:
+            self._patch(conn, state, (), state.get("state_revision"), replace=True)
+
+    def add_active_workflow(self, workflow_id):
+        storage_component(workflow_id)
+        with self.storage.transaction() as conn:
+            ids = list(self._state(conn).get("active_workflow_ids", []))
+            if workflow_id not in ids:
+                ids.append(workflow_id)
+            return self._patch(
+                conn, {"active_workflow_ids": ids, "active_workflow_id": workflow_id}, (), None
+            )
+
+    def latest_seq(self):
+        with self.storage.connection() as conn:
+            row = conn.execute(
+                "SELECT last_seq FROM sessions WHERE id=?", (self.session_id,)
+            ).fetchone()
+            return row[0] if row else 0
+
+    def pending_tool_calls(self, *, after_seq=0):
+        with self.storage.connection() as conn:
+            return [
+                {**json.loads(row[0]), "turn_id": row[1], "scope": row[2]}
+                for row in conn.execute(
+                    "SELECT payload_json,turn_id,scope FROM tool_calls WHERE session_id=? AND result_seq IS NULL AND call_seq>? ORDER BY call_seq,call_id",
+                    (self.session_id, after_seq),
+                )
+            ]
+
+    def latest_message_seq(self):
+        with self.storage.connection() as conn:
+            return conn.execute(
+                "SELECT COALESCE(MAX(seq),0) FROM events WHERE session_id=? AND scope='session' AND type='message' AND role IN ('user','assistant')",
+                (self.session_id,),
+            ).fetchone()[0]
+
+    def latest_user_turn(self):
+        with self.storage.connection() as conn:
+            row = conn.execute(
+                "SELECT turn_id FROM events WHERE session_id=? AND scope='session' AND type='message' AND role='user' ORDER BY seq DESC LIMIT 1",
+                (self.session_id,),
+            ).fetchone()
+            return row[0] if row else None
+
+    def clear_context(self):
+        with self.storage.transaction() as conn:
+            row = conn.execute(
+                "SELECT last_seq FROM sessions WHERE id=?", (self.session_id,)
+            ).fetchone()
+            seq = row[0] if row else 0
+            return self._patch(
+                conn,
+                {
+                    "cleared_through_seq": seq,
+                    "covered_through_seq": seq,
+                    "summary": "",
+                    "session_summary": "",
+                    "session_summary_through_seq": seq,
+                },
+                ("checkpoint",),
+                None,
+            )

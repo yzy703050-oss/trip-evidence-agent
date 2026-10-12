@@ -64,7 +64,8 @@ def test_legacy_import_is_idempotent_readonly_and_not_resumable(tmp_path):
         assert memory.long_term.get_trip_history() == rows
         assert memory.get_known_workflows() == []
         assert memory.get_active_workflows() == []
-    assert list((resolve_user_directory(tmp_path, "alice") / "workflows").glob("history_*.json"))
+    assert len(memory.long_term.get_trip_history(None)) == 1
+    assert memory.long_term.db_path.exists()
     assert source.read_bytes() == before
 
 
@@ -78,29 +79,24 @@ def test_existing_workflow_wins_over_old_history_copy(tmp_path):
     assert reopened.workflow_store.load(workflow["id"]) == workflow
 
 
-def test_import_failure_retries_without_duplicates(tmp_path, monkeypatch):
-    import context.workflow_store as module
-
-    rows = [{"trip_id": "one", "destination": "上海"}, {"trip_id": "two", "destination": "北京"}]
-    source = legacy_source(tmp_path, rows)
-    original = module.atomic_json_write
-    writes = 0
-
-    def fail_second(path, value):
-        nonlocal writes
-        if path.name.startswith("history_"):
-            writes += 1
-            if writes == 2:
-                raise OSError("interrupted migration")
-        original(path, value)
-
-    monkeypatch.setattr(module, "atomic_json_write", fail_second)
-    with pytest.raises(OSError, match="interrupted migration"):
-        LongTermMemory("alice", str(tmp_path))
-    monkeypatch.setattr(module, "atomic_json_write", original)
-    memory = LongTermMemory("alice", str(tmp_path))
-    assert sorted(r["trip_id"] for r in memory.get_trip_history()) == ["one", "two"]
-    assert json.loads(source.read_text(encoding="utf-8"))["trip_history"] == rows
+def test_import_failure_retries_without_duplicates(tmp_path):
+    import sqlite3
+    from context.sqlite_storage import SQLiteStorage, metadata
+    rows = [{'trip_id':'one','destination':'上海'},{'trip_id':'two','destination':'北京'}]
+    source = legacy_source(tmp_path,rows)
+    before = source.read_bytes()
+    db = SQLiteStorage(tmp_path,'alice')
+    with db.transaction() as conn:
+        conn.execute("CREATE TRIGGER fail BEFORE INSERT ON travel_history WHEN (SELECT COUNT(*) FROM travel_history)=1 BEGIN SELECT RAISE(ABORT,'interrupted migration'); END")
+    with pytest.raises(sqlite3.IntegrityError, match='interrupted migration'):
+        LongTermMemory('alice',str(tmp_path))
+    with db.transaction() as conn:
+        assert conn.execute('SELECT COUNT(*) FROM travel_history').fetchone()[0] == 0
+        assert metadata(conn,'migration_complete') is None
+        conn.execute('DROP TRIGGER fail')
+    memory = LongTermMemory('alice',str(tmp_path))
+    assert sorted(r['trip_id'] for r in memory.get_trip_history()) == ['one','two']
+    assert source.read_bytes() == before
 
 
 def test_parallel_imports_and_save_keep_unique_history(tmp_path):
@@ -110,7 +106,7 @@ def test_parallel_imports_and_save_keep_unique_history(tmp_path):
             pool.map(lambda _: LongTermMemory("alice", str(tmp_path)).get_trip_history(), range(2))
         )
     assert all(len(rows) == 1 for rows in histories)
-    assert len(list((resolve_user_directory(tmp_path, "alice") / "workflows").glob("history_*.json"))) == 1
+    assert len(LongTermMemory("alice",str(tmp_path)).get_trip_history(None)) == 1
 
 
 def test_identical_legacy_records_without_ids_are_not_lost(tmp_path):
@@ -193,7 +189,8 @@ def test_compatibility_history_saves_use_unified_storage_and_limit(tmp_path):
     assert len(memory.get_trip_history(None)) == 2
     assert memory.get_statistics()["total_trips"] == 2
     assert not (resolve_user_directory(tmp_path, "alice") / "trips.json").exists()
-    assert len(list((resolve_user_directory(tmp_path, "alice") / "workflows").glob("history_*.json"))) == 2
+    with memory.storage.connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM travel_history").fetchone()[0] == 2
 
 
 @pytest.mark.asyncio

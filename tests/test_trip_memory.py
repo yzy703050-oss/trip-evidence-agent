@@ -81,4 +81,4 @@ def test_active_trips_do_not_displace_five_recent_completed_details(tmp_path):
     for index in range(11):
         section=text.split('## workflow_'+str(index)+'\n')[1].split('\n## ')[0]
         assert '详细任务见' not in section
-    assert '详细任务见 workflows/workflow_11.json' in text
+    assert '详细任务见数据库行程 workflow_11' in text

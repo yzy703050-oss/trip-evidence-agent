@@ -37,11 +37,12 @@ def test_workflow_path_is_validated(tmp_path, bad):
 
 
 def test_atomic_write_failure_keeps_original(tmp_path, monkeypatch):
-    import context.workflow_store as module
+    import sqlite3
     store = WorkflowStore(tmp_path, 'alice'); w = store.save(populated_workflow(), expected_revision=None)
-    def fail(*args): raise OSError('offline write failure')
-    monkeypatch.setattr(module, 'atomic_json_write', fail)
-    with pytest.raises(OSError): store.save(w, expected_revision=w['revision'])
+    with store.storage.transaction() as conn:
+        conn.execute("CREATE TRIGGER fail BEFORE UPDATE ON trip_plans BEGIN SELECT RAISE(ABORT,'offline write failure'); END")
+    with pytest.raises(sqlite3.IntegrityError, match='offline write failure'):
+        store.save(w, expected_revision=w['revision'])
     assert store.load(w['id']) == w
 
 

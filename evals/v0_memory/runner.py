@@ -126,13 +126,20 @@ def evaluate_case(
     judge: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Evaluate the last completed run, or the case's explicit turn_id."""
-    events = store.read_events()
-    runs = store.read_runs()
-    query_runs = [record for record in runs if record.get("type") == "query_run"]
+    query_runs = store.read_runs(event_type='query_run')
     turn_id = case.get("turn_id") or (query_runs[-1].get("turn_id") if query_runs else None)
     if not turn_id:
         raise ValueError("No recorded turn exists for this evaluation case")
-    turn_events = [event for event in events if event.get("turn_id") == turn_id]
+    turn_events = store.read_events(turn_id=turn_id)
+    selected_run = next((row for row in reversed(query_runs) if row.get('turn_id') == turn_id), {})
+    end_seq = selected_run.get('run_seq', 0)
+    prior_seq = max((row['run_seq'] for row in query_runs if row['run_seq'] < end_seq), default=0)
+    # Old metering records have no turn_id. Their observed run interval is
+    # authoritative; SQL bounds preserve them without reading unrelated runs.
+    runs = (
+        store.read_runs(after_run_seq=prior_seq, through_run_seq=end_seq)
+        if end_seq else store.read_runs(turn_id=turn_id)
+    )
     plan_records = [
         record
         for record in runs

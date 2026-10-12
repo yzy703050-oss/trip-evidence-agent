@@ -140,6 +140,22 @@ python cli.py
 
 ## 当前边界
 
+用户持久化数据保存在 `data/memory/<用户身份哈希>/agent.sqlite3`。SQLite 保存偏好、会话状态、事件、运行观测与完整行程；短期记忆仍在内存中，从摘要和未覆盖的主消息按需组装。行程与小结一起提交，事件追加使用独立序号和幂等约束，新最终回复只保存答复、必要事实和行程 ID/版本。
+
+首次访问某个用户时自动迁移其旧 JSON/JSONL 数据；来源文件保留原字节，迁移失败不会进入业务执行，可排除原因后重试。迁移完成后只写数据库，不再同步旧文件。请停止旧版本程序后再启动新版；旧文件保留的是迁移前状态，直接运行旧版无法读到此后的更新。`trip.md` 是可重建导出，数据库才是权威状态。清空历史保留偏好；删除业务数据保留最小迁移标记，避免旧文件再次导入。
+
+备份应使用 SQLite 的一致备份接口，不要在写入时直接复制数据库：
+
+```python
+from context.sqlite_storage import SQLiteStorage
+
+storage = SQLiteStorage('data/memory', '你的用户ID')
+storage.ensure_ready()
+storage.backup_to('data/memory/backups/user-backup.sqlite3')
+```
+
+恢复时先停止程序，将备份替换到同一用户的数据库路径；先备份当前数据库。迁移原文件的后续清理、AgentScope 移除和面向用户的行程详情查询另行规划。存储验证见 [改造记录](docs/development/2026-10-12-sqlite-storage-validation.md)。
+
 当前规划主要提供火车与酒店地点建议，不执行购票、订房或景点活动安排；酒店地点查询不提供房价、空房和退改承诺。现有生产火车接口尚不可用，模拟测试的数据不代表真实可购买的票或房间。
 
 ## 开发与文档
