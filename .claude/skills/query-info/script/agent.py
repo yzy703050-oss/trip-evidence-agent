@@ -10,7 +10,8 @@ from agentscope.agent import AgentBase
 from agentscope.message import Msg
 from agents.contracts import RunState
 from agents.model_io import collect_model_turn, to_assistant_tool_message, to_tool_message
-from context.telemetry import model_stage
+from context.telemetry import model_stage, model_scope, current_model_context
+from context.resource_budget import is_calibrating, successful_information_result
 from utils.json_parser import robust_json_parse
 from utils.skill_loader import SkillLoader
 from travel_data.tools import ToolExecutor, TOOL_DOMAINS
@@ -39,6 +40,18 @@ class InformationQueryAgent(AgentBase):
         return Msg(self.name, json.dumps(result, ensure_ascii=False), 'assistant')
 
     async def run(self, context, run):
+        with model_scope(child_invocation_id=uuid4().hex):
+            result = await self._run(context, run)
+            if successful_information_result(result):
+                run.successful_info_executions += 1
+                if getattr(self.memory_manager, 'session_store', None):
+                    self.memory_manager.session_store.append_run({
+                        'type': 'information_delegation', 'status': 'success', 'turn_id': run.turn_id,
+                        'task_id': run.current_task_id if context.get('type') == 'task_request' else None,
+                        **current_model_context()})
+            return result
+
+    async def _run(self, context, run):
         started = perf_counter()
         workflow_mode = context.get('type') == 'task_request'
         task_request = context.get('task', {}) if workflow_mode else {}
@@ -57,18 +70,19 @@ class InformationQueryAgent(AgentBase):
         feedback = context.get('feedback') or {}
         messages = [{'role': 'system', 'content': self.skill_loader.get_skill_content('query-info') or '根据原文整理条件，使用工具查询并总结。'},
             {'role': 'user', 'content': json.dumps({**context, 'effective_preferences': run.effective_preferences,
-                'travel_conditions': run.travel_conditions, 'domain_results': run.domain_results}, ensure_ascii=False)}]
+                'travel_conditions': {} if workflow_mode else run.travel_conditions,
+                'domain_results': {} if workflow_mode else run.domain_results}, ensure_ascii=False)}]
         summary, limited, tool_count, model_count = '', False, 0, 0
         seen_ids = set()
         final_payload = {}
-        for _ in range(run.limits.info_model_calls):
+        while is_calibrating() or model_count < run.limits.info_model_calls:
             try:
                 with model_stage('agent:information_query'):
                     schemas = self.tool_executor.schemas()
                     if workflow_mode:
                         schemas = [s for s in schemas if TOOL_DOMAINS[s['function']['name']] in requested]
-                    model_count += 1
                     turn = await collect_model_turn(await self.model(messages, tools=schemas, tool_choice='auto'))
+                    model_count += 1
                 if not turn.tool_calls:
                     final_payload = robust_json_parse(turn.text)
                     summary = final_payload.get('summary', '')
@@ -114,6 +128,8 @@ class InformationQueryAgent(AgentBase):
                 for call, result in zip(turn.tool_calls, results):
                     messages.append(to_tool_message(call['id'], result))
                     self._record_tool(run, call, result)
+                if not any(allowed):
+                    break
             except ContextBudgetExceeded:
                 raise
             except Exception:
@@ -186,6 +202,8 @@ class InformationQueryAgent(AgentBase):
             result['message'] = '信息获取未完成：模型响应无效或执行达到上限。'
         if not summary:
             result['summary'] = grounded_answer(result)
+        result['execution'] = {'model_calls': model_count, 'tool_calls': tool_count,
+                               'stop_reason': 'info_limit_or_invalid_response' if limited else None}
         return result
 
     def _record_tool(self, run, call, result):

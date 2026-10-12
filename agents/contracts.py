@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import math
 from decimal import Decimal
 import re
+from config import RUN_LIMITS
 
 AGENTS = {'preference', 'memory_query', 'rag_knowledge', 'information_query'}
 INTENT_TYPES = frozenset({'ask', 'plan', 'update', 'control'})
@@ -32,14 +33,15 @@ def validate_constraints(value):
 
 @dataclass(frozen=True)
 class RunLimits:
-    info_model_calls: int = 6
+    info_model_calls: int = field(default_factory=lambda: RUN_LIMITS['info_model_calls'])
     info_tool_calls: int = 10
     feedback_rounds: int = 1
     tool_timeout: float = 30.0
     candidate_limit: int = 5
+    info_executions_per_run: int = field(default_factory=lambda: RUN_LIMITS['info_executions_per_run'])
 
     def __post_init__(self):
-        for name in ('info_model_calls', 'info_tool_calls', 'candidate_limit'):
+        for name in ('info_model_calls', 'info_tool_calls', 'candidate_limit', 'info_executions_per_run'):
             if type(getattr(self, name)) is not int or getattr(self, name) < 1:
                 raise ValueError('limits must be positive integers')
         if type(self.feedback_rounds) is not int or not 0 <= self.feedback_rounds <= 1:
@@ -63,6 +65,7 @@ class RunState:
     external_requests_by_task: dict = field(default_factory=dict)
     candidates: object = None
     info_executions: int = 0
+    successful_info_executions: int = 0
     tool_record_seq: int = 0
     workflow: dict | None = None
     current_task_id: str | None = None

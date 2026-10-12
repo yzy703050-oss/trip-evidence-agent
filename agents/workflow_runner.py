@@ -1,5 +1,6 @@
 """Bounded main-agent decisions over durable, task-scoped travel state."""
 from context.context_budget import ContextBudgetExceeded
+from context.resource_budget import ModelCallLimitExceeded, is_calibrating, successful_information_result
 import asyncio
 from copy import deepcopy
 from dataclasses import dataclass
@@ -11,10 +12,11 @@ from agents.workflow_contracts import task_by_id, validate_action, identifier, e
 from agents.workflow_queries import query_views
 from agents.workflow_guard import check_task, check_workflow, finalize_workflow
 from agents.planning_conditions import prepare_task
+from agents.workflow_repair import apply_repair, advance_repair
 from context.telemetry import model_scope
 from context.workflow_store import WorkflowConflictError
 from travel_data.candidates import CandidateStore
-from agents.context_projection import project_child_result, project_domain_result, project_workflow_context, project_delegation_context
+from agents.context_projection import project_child_result, project_domain_result, project_workflow_context, project_delegation_context, decision_requirements
 
 
 @dataclass(frozen=True)
@@ -25,8 +27,14 @@ class WorkflowLimits:
     tools_per_task: int = 10
     turn_timeout: float = 600.0
     evidence_max_age_seconds: float = 3600.0
+    main_decisions_per_turn: int | None = None
+    main_model_calls_per_turn: int | None = None
+    main_model_calls_per_task: int | None = None
 
     def __post_init__(self):
+        for name in ('main_decisions_per_turn', 'main_model_calls_per_turn', 'main_model_calls_per_task'):
+            val = getattr(self, name)
+            if val is not None and (type(val) is not int or val < 1): raise ValueError('invalid successful resource limit')
         for name in ('info_executions_per_task', 'main_steps_per_task', 'main_extra_steps', 'tools_per_task'):
             if type(getattr(self, name)) is not int or getattr(self, name) < 1: raise ValueError('invalid workflow limit')
         if not math.isfinite(self.turn_timeout) or self.turn_timeout <= 0: raise ValueError('invalid workflow timeout')
@@ -35,14 +43,16 @@ class WorkflowLimits:
 
 class WorkflowRunner:
     def __init__(self, main_agent, info_agent, memory_manager, *, limits=None, emit=None):
+        from config import WORKFLOW_LIMITS
         self.main, self.info, self.memory = main_agent, info_agent, memory_manager
-        self.limits, self.emit = limits or WorkflowLimits(), emit
+        self.limits, self.emit = limits or WorkflowLimits(**WORKFLOW_LIMITS), emit
 
     async def run(self, context, run, workflow):
         self.context, self.run_state, self.w = context, run, deepcopy(workflow)
         self.latest, self.last_message_id = None, None
         self.counts, self.seen = {}, set()
         self.main_calls = 0
+        self.decisions = 0
         self.invalid_actions = 0
         run.workflow = self.w
         run.candidates = CandidateStore()
@@ -60,6 +70,8 @@ class WorkflowRunner:
             return await asyncio.wait_for(self._loop(), timeout=self.limits.turn_timeout)
         except asyncio.TimeoutError:
             return self._stop('partial', 'turn_timeout', '本轮时间上限已到，已有结果已保留。')
+        except ModelCallLimitExceeded:
+            return self._stop('partial', 'main_model_call_limit', '本轮模型请求达到上限，已有草稿已保留。')
         except WorkflowConflictError:
             return self._envelope('error', 'workflow_revision_conflict', '规划已被另一会话更新，请按最新版本继续。')
         except OSError:
@@ -121,23 +133,23 @@ class WorkflowRunner:
                 'confirmed_conditions': deepcopy(self.w['confirmed_conditions']), 'effective_conditions': effective,
                 'field_sources': sources, 'effective_preferences': deepcopy(self.run_state.effective_preferences),
                 'preflight': prepared,
-                'previous_boundary': boundary, 'relevant_results': [project_domain_result(r, candidate_limit=self.run_state.limits.candidate_limit) for r in query_views(self.w, task['id'], limit=self.run_state.limits.candidate_limit)],
-                'latest_child_result': project_child_result(latest) if latest else None, 'issues': deepcopy(task['issues']),
-                'resources': {'main_calls_remaining': len(self.w['tasks'])*self.limits.main_steps_per_task+self.limits.main_extra_steps-self.main_calls,
+                'previous_boundary': boundary, 'relevant_results': [project_domain_result(r, candidate_limit=self.run_state.limits.candidate_limit, requirements=decision_requirements(self.context)) for r in query_views(self.w, task['id'], limit=self.run_state.limits.candidate_limit)],
+                'latest_child_result': project_child_result(latest, include_candidates=False) if latest else None, 'issues': deepcopy(task['issues']),
+                'resources': {'decisions_remaining': None if is_calibrating() else self._decision_limit()-getattr(self, 'decisions', 0),
                               'tools_remaining': self.run_state.workflow_tool_budget,
                               'task_info_remaining': self.limits.info_executions_per_task-self.counts.get(task['id'], 0)}}
 
     def _delegation_context(self):
         view = project_delegation_context(self._model_context())
-        if self.memory:
-            latest = self.memory.get_compacted_context()['summary']
-            view['session_summary'] = latest or view.get('session_summary', '')
         return view
 
+    def _decision_limit(self):
+        return self.limits.main_decisions_per_turn or len(self.w['tasks'])*self.limits.main_steps_per_task+self.limits.main_extra_steps
+
     async def _loop(self):
-        maximum = len(self.w['tasks'])*self.limits.main_steps_per_task+self.limits.main_extra_steps
+        maximum = self._decision_limit()
         feedback = None
-        for _ in range(maximum):
+        while is_calibrating() or self.decisions < maximum:
             context = self._model_context()
             task = context['current_task']
             if not task.get('origin') and 'train' in task.get('update_scope', ['train', 'hotel']):
@@ -151,13 +163,13 @@ class WorkflowRunner:
                 self._message({'type': 'required_conditions', 'missing_fields': ['origin'], 'question': question}, task_id=task['id'])
                 self._save()
                 return self._envelope('needs_input', 'user_input_required', question)
-            self.main_calls += 1
-            self.w['audit']['model_calls'] += 1
             context['action_feedback'] = feedback
             self.run_state.current_task_id = task['id']
             try:
                 with model_scope(turn_id=self.run_state.turn_id, workflow_id=self.w['id'], task_id=task['id'], task_revision=task['revision']):
                     raw_action = await self.main.step(context)
+                self.main_calls += 1
+                self.w['audit']['main_decisions_received'] = self.main_calls
                 self._message({'type': 'main_decision_received', 'decision': raw_action}, task_id=task['id'])
                 action = validate_action(raw_action, self.w)
             except (ValueError, KeyError, TypeError, ArithmeticError) as exc:
@@ -165,9 +177,16 @@ class WorkflowRunner:
                 if self.invalid_actions > 1:
                     return self._stop('error', 'invalid_workflow_action', '主 Agent 返回的动作无效，外部查询未继续。')
                 feedback = {'code': 'invalid_workflow_action', 'message': str(exc)[:300],
-                            'allowed_actions': ['dispatch', 'draft_task', 'ask_user', 'validate_workflow', 'finish']}
+                            'allowed_actions': ['dispatch', 'draft_task', 'repair_tasks', 'ask_user', 'validate_workflow', 'finish']}
                 continue
             self._message({'type': 'main_action', 'action': action}, task_id=task['id'])
+            self.decisions += 1
+            self.w['audit']['scheduling_decisions'] = self.w['audit'].get('scheduling_decisions', 0)+1
+            if self.memory:
+                self.memory.session_store.append_run({'type': 'workflow_decision', 'status': 'success',
+                    'turn_id': self.run_state.turn_id, 'workflow_id': self.w['id'], 'task_id': task['id'],
+                    'task_revision': task['revision'], 'action': action['action'], 'decision_number': self.decisions,
+                    'target_task_ids': action.get('task_ids', [])})
             # Ignore explanatory prose when deciding whether a decision makes progress.
             progress_action = {k: v for k, v in action.items() if k not in {'summary', 'final_answer', 'reason', 'analysis', 'goal'}}
             observation = {
@@ -185,11 +204,10 @@ class WorkflowRunner:
                           'query_requests':deepcopy(context['preflight']['query_requests'])}
                 continue
             if name == 'dispatch':
-                if self.counts.get(task['id'], 0) >= self.limits.info_executions_per_task:
+                if not is_calibrating() and self.counts.get(task['id'], 0) >= self.limits.info_executions_per_task:
                     return self._stop('partial', 'task_information_limit', '当前段已达到资料查询上限。')
                 if self.run_state.workflow_tool_budget <= 0:
                     return self._stop('partial', 'workflow_tool_limit', '本轮工具查询已达到上限。')
-                self.counts[task['id']] = self.counts.get(task['id'], 0)+1
                 current = task_by_id(self.w, task['id']); current['status'] = 'running'
                 self._save()
                 request = self._message({'type': 'task_request', 'task': {'id': task['id'], 'revision': task['revision'],
@@ -205,12 +223,22 @@ class WorkflowRunner:
                     self._message({'type': 'stale_task_result', 'result': result}, task_id=task['id'])
                     feedback = {'code': 'stale_task_result'}; continue
                 self.latest = self._message(result, task_id=task['id'])
+                if successful_information_result(result):
+                    self.counts[task['id']] = self.counts.get(task['id'], 0)+1
                 execution = result.get('execution', {})
                 self.w['audit']['info_executions'] += 1
-                self.w['audit']['model_calls'] += execution.get('model_calls', 0)
+                self.w['audit']['information_model_calls'] = self.w['audit'].get('information_model_calls', 0)+execution.get('model_calls', 0)
                 self.w['audit']['tool_calls'] += execution.get('tool_calls', 0)
                 self.run_state.results.append({'agent_name': 'information_query', 'priority': 2,
                     'result': {'status': result['status'], 'data': result}})
+                self._save()
+            elif name == 'repair_tasks':
+                try:
+                    self.w = apply_repair(self.w, action)
+                except ValueError as exc:
+                    if str(exc) == 'repair_no_progress':
+                        return self._stop('partial', 'no_progress', '重复修复没有改善冲突，已有方案已保留。')
+                    raise
                 self._save()
             elif name == 'draft_task':
                 current = task_by_id(self.w, task['id'])
@@ -223,7 +251,8 @@ class WorkflowRunner:
                     if value and current['field_sources'].get(key) not in {'user', 'context'}:
                         current['conditions'][key] = value
                         current['field_sources'][key] = 'proposal'
-                if current['status'] == 'draft':
+                advance_repair(self.w, task['id'])
+                if current['status'] == 'draft' and not (self.w.get('checkpoint') or {}).get('kind') == 'task_repair':
                     pending = next((t for t in self.w['tasks'] if t['status'] == 'pending'), None)
                     if pending:
                         self.w['current_task_id'] = pending['id']
@@ -246,6 +275,9 @@ class WorkflowRunner:
                 self._save()
                 return self._envelope('needs_input', 'user_input_required', action['question'])
             elif name == 'validate_workflow':
+                if (self.w.get('checkpoint') or {}).get('kind') == 'task_repair':
+                    feedback = {'code': 'repair_in_progress', 'message': '先完成修复根任务和依赖重验。'}
+                    continue
                 checked = check_workflow(self.w)
                 self.w['validation'] = checked
                 if checked['valid']: self.w = finalize_workflow(self.w, checked)

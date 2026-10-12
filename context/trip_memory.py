@@ -19,7 +19,8 @@ class TripMemory:
     def rebuild(self, workflow_store):
         from context.workflow_store import _file_lock
         with _file_lock(self.directory/'trip-summary.lock'):
-            workflows=workflow_store.list_all()
+            indexed = hasattr(workflow_store, 'list_summaries')
+            workflows=workflow_store.list_summaries() if indexed else workflow_store.list_all()
             lines=['# 保存的旅行方案', '', 'JSON 工作流是权威状态；本文件为可重建摘要。规划不代表已经出行或预订。', '']
             recent_inactive=0
             for w in workflows:
@@ -33,6 +34,9 @@ class TripMemory:
                         lines.extend(['详细任务见 workflows/'+w['id']+'.json',''])
                         continue
                 for t in w['tasks']:
+                    if indexed:
+                        lines.append('- '+json.dumps(t, ensure_ascii=False))
+                        continue
                     draft=t.get('draft_plan') or {}
                     selections={}
                     for domain in ('train','hotel'):
@@ -45,7 +49,7 @@ class TripMemory:
                         field_sources=t['field_sources'],schedule=draft.get('schedule',{}),selected=selections,
                         gaps=t['issues'],summary=t['summary']),ensure_ascii=False))
                 lines.append('')
-            legacy=workflow_store.list_history()
+            legacy=workflow_store.list_history(include_workflows=False) if indexed else workflow_store.list_history()
             ids={w['id'] for w in workflows}
             for index,record in enumerate(legacy):
                 if record.get('workflow_id') in ids: continue

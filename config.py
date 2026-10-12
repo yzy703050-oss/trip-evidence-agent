@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.deepseek.com"
     llm_input_usd_per_1m_tokens: float | None = Field(default=None, ge=0)
     llm_output_usd_per_1m_tokens: float | None = Field(default=None, ge=0)
-    memory_context_budget_tokens: int = Field(default=6000, gt=0)
+    memory_context_budget_tokens: int = Field(default=14854, gt=0)
 
 
 @lru_cache
@@ -38,7 +38,7 @@ LLM_CONFIG = {
     "input_usd_per_million": settings.llm_input_usd_per_1m_tokens,
     "output_usd_per_million": settings.llm_output_usd_per_1m_tokens,
     "temperature": 0.7,
-    "max_tokens": 8192,
+    "max_tokens": 1116,
     "thinking_mode": "disabled",
 }
 
@@ -79,6 +79,9 @@ RESILIENCE_CONFIG = {
     "health_check_timeout_sec": 10.0,      # 健康检查请求超时（秒）
 }
 
-RUN_LIMITS = dict(info_model_calls=6, info_tool_calls=10, feedback_rounds=1, tool_timeout=30.0, candidate_limit=5)
-WORKFLOW_LIMITS = dict(info_executions_per_task=3, main_steps_per_task=4, main_extra_steps=4,
+# Calibrated from docs/evals/2026-10-12-resource-calibration.json; compatibility step
+# fields below are only the fallback for callers without the explicit scheduling cap.
+RUN_LIMITS = dict(info_model_calls=4, info_executions_per_run=4, info_tool_calls=10, feedback_rounds=1, tool_timeout=30.0, candidate_limit=5)
+WORKFLOW_LIMITS = dict(info_executions_per_task=4, main_decisions_per_turn=24,
+                       main_model_calls_per_turn=28, main_model_calls_per_task=12, main_steps_per_task=4, main_extra_steps=4,
                        tools_per_task=10, turn_timeout=600.0, evidence_max_age_seconds=3600.0)

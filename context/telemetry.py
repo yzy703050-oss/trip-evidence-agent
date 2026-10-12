@@ -98,6 +98,9 @@ class MeteredModel:
             logger.exception("Could not persist model telemetry")
 
     async def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        from context.resource_budget import current_success_budget
+        budget, context = current_success_budget(), current_model_context()
+        if budget: budget.before(context)
         started = perf_counter()
         stage = _stage.get()
         try:
@@ -112,18 +115,24 @@ class MeteredModel:
                 first_chunk_ms = None
                 status = "success"
                 error = None
+                completed = False
                 try:
                     async for chunk in response:
                         if first_chunk_ms is None: first_chunk_ms=round((perf_counter()-started)*1000,3)
                         usage = getattr(chunk, "usage", None) or usage
                         yield chunk
+                    completed = True
+                    if budget: budget.success(context)
                 except Exception as exc:
                     status = "error"
                     error = str(exc)
                     raise
                 finally:
+                    if not completed and status == 'success':
+                        status, error = 'cancelled', 'stream not fully consumed'
                     self._write(started, stage, usage, status, error, first_chunk_ms)
 
             return measured_stream()
+        if budget: budget.success(context)
         self._write(started, stage, getattr(response, "usage", None), "success")
         return response

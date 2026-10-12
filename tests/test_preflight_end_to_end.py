@@ -140,7 +140,8 @@ async def test_explain_saved_trip_does_not_replan_or_query(tmp_path):
     r=Runtime(tmp_path); first=await r.turn()
     async def initialize(c):
         known=next(w for w in c['known_workflows'] if w['id']==first['workflow_id'])
-        assert known['saved_plan']['reconstructed_tasks'][0]['hotel']
+        assert known['summary'] and known['tasks'][0]['requires_hotel']
+        assert 'saved_plan' not in known and 'draft_plan' not in known['tasks'][0]
         return dict(response_mode='direct',agent_schedule=[],final_answer='根据已有酒店地点与出行条件作出的推荐，房价未知。')
     r.main.initialize=initialize; before=len(r.train.calls)
     result=await r.turn('为什么选这家酒店，不要改')

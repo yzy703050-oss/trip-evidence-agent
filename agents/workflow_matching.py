@@ -4,11 +4,11 @@ from copy import deepcopy
 
 def workflow_identity(workflow):
     fields = ('id', 'revision', 'status', 'original_query', 'created_at', 'updated_at',
-              'confirmed_conditions', 'field_sources')
+              'confirmed_conditions', 'field_sources', 'summary', 'task_count')
     value = {key: deepcopy(workflow.get(key)) for key in fields}
     value['tasks'] = [
         {key: deepcopy(task.get(key)) for key in
-         ('id', 'origin', 'destination', 'requires_hotel', 'conditions', 'field_sources')}
+         ('id', 'origin', 'destination', 'requires_hotel', 'conditions', 'field_sources', 'summary')}
         for task in workflow['tasks']
     ]
     return value

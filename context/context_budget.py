@@ -101,11 +101,14 @@ class BudgetedModel:
                 "budget_tokens": self.budget_tokens,
                 **current_model_context(),
             }
+            if response is not None:
+                entry['response_tokens'] = count_input_tokens([response_message(response)], counter=self.counter).tokens
             try:
                 self.record(entry)
             except Exception:
                 logging.getLogger(__name__).exception("Could not persist context budget telemetry")
-        if estimate.tokens > self.budget_tokens:
+        from context.resource_budget import is_calibrating
+        if estimate.tokens > self.budget_tokens and not is_calibrating():
             raise ContextBudgetExceeded(
                 budget_tokens=self.budget_tokens, estimate=estimate, phase=phase, response=response
             )

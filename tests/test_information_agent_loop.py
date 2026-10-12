@@ -47,12 +47,13 @@ async def test_multiple_tool_results_reach_same_agent():
 
 @pytest.mark.asyncio
 async def test_info_model_and_tool_limits():
+    from agents.contracts import RunLimits
     calls = []
     async def model(messages, **kwargs):
         calls.append(1)
         return SimpleNamespace(content=[{'type': 'tool_use', 'id': str(len(calls)),
             'name': 'weather_query', 'input': {'city': '北京', 'date': '2026-10-10'}}])
-    run = RunState('a')
+    run = RunState('a', limits=RunLimits(info_model_calls=6))
     result = await info_class()(model=model, tool_executor=ToolExecutor({}, Public())).run(
         {'requested_domains': ['weather']}, run)
     assert len(calls) == 6

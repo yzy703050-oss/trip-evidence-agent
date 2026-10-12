@@ -57,6 +57,8 @@ class MainAgent:
                 return await collect_model_turn(exc.response)
 
     async def _compact_request(self, build_messages, view, tools, response=None):
+        from context.resource_budget import is_calibrating
+        if is_calibrating(): return
         extra = [response_message(response)] if response is not None else []
         counter = self.model.counter
         estimate = count_input_tokens([*build_messages(view), *extra], tools, counter=counter)
@@ -229,8 +231,9 @@ dispatch: task_id、task_revision、goal、query_requests=[{{"domain":"train/hot
 draft_task: task_id、task_revision、draft_plan、summary；
 ask_user: question、reason、affected_task_ids、suggested_changes、resume_task_id；
 validate_workflow: workflow_revision、analysis；
+repair_tasks: workflow_revision、task_ids=[实际冲突相关的根任务ID]、components=[train/hotel/schedule]、conflict_codes=[程序阻塞问题code]、reason；可以选择前面的旧任务，程序控制重开及依赖重验。
 finish: status(completed/partial)、final_answer、gaps。
-只处理 current_task，不自行创建或改变任务ID、版本和状态。所有任务概览必须用于衔接判断。
+dispatch/draft只处理 current_task；repair_tasks 可以选择冲突相关的旧任务。不得自行创建或改变任务ID、版本、状态或固定条件。所有任务概览必须用于衔接判断。
 draft_plan={{"task_revision":1,"train_selection":{{"query_id":"已有查询ID","result_revision":1,"candidate_id":"已有候选ID"}},
 "hotel_selection":null,"schedule":{{"departure_at":null,"arrival_at":null,"check_in":null,"check_out":null,"next_departure_not_before":null}},
 "unverified_requirements":[]}}。酒店引用同样用query_id/result_revision/candidate_id，可加kind。
@@ -253,7 +256,7 @@ arrival_date/arrival_before查询使用train_search_by_arrival由信息获取调
 入住离店建议不是确认或订房；后续任务时间依前段离店及核实抵达边界调整，不能覆盖用户固定条件。
 去程未取得可靠抵达证据时，可结合计划出发日和nights提出拟入住/离店日期，实际arrival_at仍为null；提醒住宿随实际抵达调整，并按拟离店日继续查询回程，不能让去程失败阻塞可查询的回程。
 即使本段缺车次或抵达证据也draft_task保留hotel_selection及缺口，继续后段可执行查询，不能立刻finish阻塞全部任务。
-所有任务（包括部分草稿）都处理后再validate_workflow；不通过则finish partial。状态draft不代表可行，必须全程校验。
+所有任务（包括部分草稿）都处理后再validate_workflow；不通过时可选择相关旧任务repair_tasks修复，否则finish partial。不能通过repair_tasks改变用户固定日期、晚数、预算或路线；只重新选择授权组件或调整建议日期。状态draft不代表可行，必须全程校验。
 首次缺必要条件、供应商失败或重大冲突也先回复部分方案和调整建议，不ask_user索要个人字段；不能擅自改固定条件。
 交通规划的首段未指定出发地时，Harness已使用可用home_location作为默认起点；只有无可用起点才保存required_conditions断点并反问。其余缺省条件按已有规则处理。
 若起点已知、preflight.query_requests非空且本段尚未查询，必须先dispatch可执行领域。

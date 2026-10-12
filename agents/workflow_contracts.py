@@ -220,6 +220,7 @@ def validate_action(action, workflow):
         'draft_task': {'action', 'task_id', 'task_revision', 'draft_plan', 'summary'},
         'ask_user': {'action', 'question', 'reason', 'affected_task_ids', 'suggested_changes', 'resume_task_id'},
         'validate_workflow': {'action', 'workflow_revision', 'analysis'},
+        'repair_tasks': {'action', 'workflow_revision', 'task_ids', 'components', 'conflict_codes', 'reason'},
         'finish': {'action', 'status', 'final_answer', 'gaps'},
     }
     if name not in allowed:
@@ -258,6 +259,9 @@ def validate_action(action, workflow):
         if not isinstance(value.get('suggested_changes', []), list):
             raise ValueError('invalid suggestions')
         if value.get('resume_task_id') is not None: task_by_id(workflow, value['resume_task_id'])
+    elif name == 'repair_tasks':
+        from agents.workflow_repair import validate_repair
+        validate_repair(value, workflow)
     elif name == 'validate_workflow':
         if value.get('workflow_revision') != workflow['revision']:
             raise ValueError('stale workflow action')
@@ -320,5 +324,6 @@ def apply_user_update(workflow, updates):
         task = task_by_id(w, resume)
         if task['status'] == 'needs_input': task['status'] = 'pending'
         w['current_task_id'] = resume
-    w.update(status='running', checkpoint=None, stop_reason=None, validation=None)
+    repair_checkpoint = w.get('checkpoint') if not changed and (w.get('checkpoint') or {}).get('kind') == 'task_repair' else None
+    w.update(status='running', checkpoint=repair_checkpoint, stop_reason=None, validation=None)
     return w
