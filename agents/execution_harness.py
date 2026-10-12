@@ -1,5 +1,6 @@
 """Deterministic main-agent runtime: dependencies, forwarding and shared state."""
 from context.context_budget import ContextBudgetExceeded, CONTEXT_BUDGET_MESSAGE
+from context.resource_budget import ModelCallLimitExceeded
 import asyncio
 from copy import deepcopy
 import json
@@ -103,11 +104,22 @@ class ExecutionHarness:
         self.memory_manager, self.emit = memory_manager, emit
 
     async def run_turn(self, context, run):
+        from context.resource_budget import success_budget_scope
         from config import WORKFLOW_LIMITS
+        with success_budget_scope(main_per_turn=WORKFLOW_LIMITS.get('main_model_calls_per_turn'),
+                                  main_per_task=WORKFLOW_LIMITS.get('main_model_calls_per_task')):
+            return await self._run_with_limits(context, run)
+
+    async def _run_with_limits(self, context, run):
+        from config import WORKFLOW_LIMITS
+        from context.resource_budget import ModelCallLimitExceeded
         try:
             result = await asyncio.wait_for(self._run_turn(context,run),timeout=WORKFLOW_LIMITS['turn_timeout'])
         except ContextBudgetExceeded as exc:
             return self.budget_stop(run, exc)
+        except ModelCallLimitExceeded:
+            return finalize_business_result({**self._error('main_model_call_limit', run), 'status': 'partial',
+                                             'stop_reason': 'main_model_call_limit', 'final_answer': '本轮模型请求达到上限，已有资料已保留。'})
         except asyncio.TimeoutError:
             result={**self._error('turn_timeout',run),'status':'partial','stop_reason':'turn_timeout',
                     'final_answer':'本轮时间上限已到，已有结果已保留，可以继续修改。'}
@@ -173,22 +185,18 @@ class ExecutionHarness:
         context['ambiguous_date_options']=ambiguous_date_options(context['original_query'],context.get('current_time'))
         try:
             if self.memory_manager:
-                context['active_workflows'] = [{k: deepcopy(v) for k, v in w.items() if k not in {'results_by_query', 'candidate_cache'}}
-                                               for w in self.memory_manager.get_active_workflows()]
-                context['known_workflows'] = []
-                from agents.workflow_guard import check_workflow
-                for w in self.memory_manager.get_workflow_context(query=context['original_query']):
-                    context['known_workflows'].append({**{k:deepcopy(w[k]) for k in ('id','revision','status','original_query','confirmed_conditions','tasks','checkpoint')},
-                                                      'saved_plan':check_workflow(w)})
+                summaries = self.memory_manager.workflow_store.list_summaries()
+                active_ids = set(self.memory_manager.session_store.read_state().get('active_workflow_ids', []))
+                context['active_workflows'] = [deepcopy(w) for w in summaries if w['id'] in active_ids]
+                context['known_workflows'] = self.memory_manager.get_workflow_context(query=context['original_query'])
                 pending = self.memory_manager.session_store.read_state().get('pending_workflow_match')
                 if pending:
                     context['pending_workflow_match'] = pending
                     known_ids = {w['id'] for w in context['known_workflows']}
                     for candidate in pending['candidates']:
-                        w = self.memory_manager.workflow_store.load(candidate['id'])
+                        w = next((w for w in summaries if w['id'] == candidate['id']), None)
                         if w and w['id'] not in known_ids:
-                            context['known_workflows'].append({**{k:deepcopy(w[k]) for k in ('id','revision','status','original_query','confirmed_conditions','tasks','checkpoint')},
-                                                              'saved_plan':check_workflow(w)})
+                            context['known_workflows'].append(deepcopy(w))
                             known_ids.add(w['id'])
             initial = getattr(self.main_agent, 'initialize', self.main_agent.plan if hasattr(self.main_agent, 'plan') else None)
             with model_scope(turn_id=run.turn_id):
@@ -206,7 +214,7 @@ class ExecutionHarness:
             if (context.get('pending_workflow_match') and decision.get('resume_workflow_id') in
                     {w['id'] for w in context['pending_workflow_match']['candidates']}):
                 decision['reuse_saved_workflow'] = True
-        except ContextBudgetExceeded:
+        except (ContextBudgetExceeded, ModelCallLimitExceeded):
             raise
         except Exception:
             return self._error('invalid_plan', run)
@@ -308,7 +316,7 @@ class ExecutionHarness:
         from agents.planning_conditions import prepare_task
         from agents.workflow_guard import check_workflow
         try:
-            workflows = self.memory_manager.workflow_store.list_all()
+            workflows = self.memory_manager.workflow_store.list_summaries()
             if not workflows:
                 return decision, None
             proposed = create_workflow(decision['workflow_proposal'], context, require_stay_proposals=True)
@@ -332,7 +340,7 @@ class ExecutionHarness:
                     results=[], domain_results={}, missing_fields=[])
             if match['action'] == 'reuse':
                 selected = next(w for w in workflows if w['id'] == match['workflow_id'])
-                context['known_workflows'].append({**deepcopy(selected), 'saved_plan': check_workflow(selected)})
+                context['known_workflows'].append(deepcopy(selected))
                 decision = deepcopy(decision)
                 decision.pop('workflow_proposal', None)
                 decision['resume_workflow_id'] = selected['id']
@@ -342,7 +350,7 @@ class ExecutionHarness:
                         'target': {'workflow_id': selected['id'], 'task_ids': [t['id'] for t in selected['tasks']],
                                    'components': ['train', 'hotel']}}
             return decision, None
-        except ContextBudgetExceeded:
+        except (ContextBudgetExceeded, ModelCallLimitExceeded):
             raise
         except Exception:
             return decision, self._error('invalid_workflow_match', run)
@@ -452,7 +460,7 @@ class ExecutionHarness:
             elif status == 'ok':
                 status = 'success'
             return {'status': status, 'data': data}
-        except ContextBudgetExceeded:
+        except (ContextBudgetExceeded, ModelCallLimitExceeded):
             raise
         except Exception:
             return {'status': 'error', 'data': {'status': 'error', 'message': '任务执行失败。'}}
@@ -471,7 +479,8 @@ class ExecutionHarness:
                 feedback = validate_feedback(final, run.travel_conditions)
             except (ValueError, TypeError, ArithmeticError):
                 return self._feedback_stop('invalid_feedback', final, run)
-            if info is None or run.info_executions >= 2:
+            from context.resource_budget import is_calibrating
+            if info is None or (not is_calibrating() and run.successful_info_executions >= run.limits.info_executions_per_run):
                 return self._feedback_stop('information_limit', final, run)
             run.feedback_round += 1
             task = {'agent_name': 'information_query', 'priority': 2,
@@ -490,7 +499,7 @@ class ExecutionHarness:
         try:
             with model_scope(turn_id=run.turn_id):
                 return await self.main_agent.finalize(final_context)
-        except ContextBudgetExceeded:
+        except (ContextBudgetExceeded, ModelCallLimitExceeded):
             raise
         except Exception:
             return {'action': 'error', 'error_code': 'final_model_error'}

@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 import json
+import logging
 import hashlib
 import os
 from pathlib import Path
@@ -59,6 +60,8 @@ class WorkflowStore:
         from context.trip_memory import TripMemory
 
         self.trip_memory = TripMemory(root, user_id)
+        from context.workflow_index import WorkflowIndex
+        self.index = WorkflowIndex(self)
 
     def _path(self, workflow_id):
         return self.directory / f"{storage_component(workflow_id)}.json"
@@ -116,8 +119,16 @@ class WorkflowStore:
             value.setdefault("created_at", datetime.now(timezone.utc).isoformat())
             value["updated_at"] = datetime.now(timezone.utc).isoformat()
             atomic_json_write(path, value)
+        try:
+            self.index.update(value)
+        except (OSError, ValueError):
+            logging.getLogger(__name__).exception('Canonical workflow saved; summary index update failed and requires rebuild')
+            raise
         self.trip_memory.repair(self)
         return value
+
+    def list_summaries(self):
+        return self.index.list()
 
     def list_all(self):
         if not self.directory.exists():
@@ -251,15 +262,15 @@ class WorkflowStore:
             "summary": "\n".join(t.get("summary") or "" for t in tasks).strip(),
         }
 
-    def list_history(self, limit=None):
+    def list_history(self, limit=None, *, include_workflows=True):
         with _file_lock(self.directory / ".history.lock"):
             cutoff = self._history_state().get("cleared_before", "")
-            workflows = self.list_all()
+            workflows = self.list_all() if include_workflows else self.list_summaries()
             ids = {w["id"] for w in workflows}
             entries = [
                 (w.get("updated_at", ""), self._history_view(w))
                 for w in workflows
-                if w["status"] == "completed"
+                if include_workflows and w["status"] == "completed"
             ]
             for path in sorted(self.directory.glob("history_*.json")):
                 with _file_lock(path.with_suffix(".lock")):

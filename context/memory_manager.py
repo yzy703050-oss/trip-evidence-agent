@@ -3,6 +3,7 @@
 统一管理两层记忆，提供简单的API
 """
 from context.context_budget import ContextBudgetExceeded, budget_scope
+from context.resource_budget import ModelCallLimitExceeded
 from typing import Dict, Any, List, Optional
 from .short_term_memory import ShortTermMemory
 from .long_term_memory import LongTermMemory
@@ -85,12 +86,13 @@ class MemoryManager:
     def get_workflow_context(self, query=''):
         if self.references_history(query):
             return self.get_known_workflows(query=query)
-        return self.get_active_workflows()
+        ids = set(self.session_store.read_state().get('active_workflow_ids', []))
+        return [w for w in self.workflow_store.list_summaries() if w['id'] in ids]
 
     def get_known_workflows(self, query='', limit=5):
         if type(limit) is not int or limit<1: raise ValueError('invalid known workflow limit')
         self.workflow_store.trip_memory.repair(self.workflow_store)
-        values=self.workflow_store.list_all()
+        values=self.workflow_store.list_summaries()
         def score(w):
             cities={t.get(k) for t in w['tasks'] for k in ('origin','destination')}
             return sum(bool(city and city in query) for city in cities)+int(w['id'] in query)
@@ -261,7 +263,7 @@ class MemoryManager:
                 summary = summarizer(state.get("summary", ""), selected)
                 if self._summary_fits(summary, events, cutoff, token_budget, token_counter):
                     return self._save_compaction(state, cutoff, summary)
-            except ContextBudgetExceeded:
+            except (ContextBudgetExceeded, ModelCallLimitExceeded):
                 raise
             except Exception:
                 logger.exception("Could not compact session context; raw events remain available")
@@ -280,12 +282,13 @@ class MemoryManager:
                 f"已有摘要：{state.get('summary', '')}\n"
                 f"待压缩主消息：{json.dumps(selected, ensure_ascii=False)}")
             try:
-                with budget_scope("summary"):
+                from context.telemetry import model_stage
+                with budget_scope("summary"), model_stage('main:summary'):
                     response = await self.llm_model([{"role": "user", "content": prompt}])
                     summary = await _read_model_text(response)
                 if self._summary_fits(summary, events, cutoff, token_budget, token_counter):
                     return self._save_compaction(state, cutoff, summary)
-            except ContextBudgetExceeded:
+            except (ContextBudgetExceeded, ModelCallLimitExceeded):
                 raise
             except Exception:
                 logger.exception("Could not compact session context; raw events remain available")
