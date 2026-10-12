@@ -2,7 +2,7 @@
 
 基于 AgentScope 的命令行差旅助手，支持出行查询、用户偏好管理、差旅制度问答，以及多目的地旅程的规划、修改和恢复。
 
-**主 Agent 做决策，子 Agent 获取信息，Harness 校验并执行，workflow 保存旅程状态。**
+**主 Agent 做决策，子 Agent 获取信息，Harness 校验并执行，旅程计划保存安排与执行进度。**
 
 [核心能力](#核心能力) · [系统架构](#系统架构) · [旅程流程](#旅程流程) · [记忆与上下文](#记忆与上下文) · [快速开始](#快速开始)
 
@@ -29,7 +29,7 @@ flowchart TD
     I -->|摘要与必要结构化事实| H
     H -->|按需调度| A[偏好 / 记忆 / 制度问答 Agent]
     A -->|结果| H
-    H <-->|保存与恢复| W[(用户记忆与 workflow)]
+    H <-->|保存与恢复| W[(用户记忆与旅程计划)]
     H -->|最终回复或补充问题| CLI
 ```
 
@@ -46,12 +46,12 @@ flowchart TD
 
 ## 旅程流程
 
-一份 workflow 表示一趟旅程，其中每个 task 表示一段路线。例如“杭州 → 北京 → 上海 → 杭州”会形成三个有依赖的任务。每段任务保存条件、目标、查询结果、草稿和状态。
+一份**旅程计划（Trip Plan）**表示一趟旅程，其中每个 task 表示一段路线。例如“杭州 → 北京 → 上海 → 杭州”会形成三个有依赖的任务。每段任务保存条件、目标、查询结果、草稿和状态。代码中的 `workflow` 和 `workflows/` 存储目录对应这份旅程计划；工作流则指 Harness 推进这些任务的执行过程。
 
 ```mermaid
 flowchart TD
     U[用户需求] --> M[主 Agent 识别意图与目标旅程]
-    M --> W[Harness 新建或恢复 workflow]
+    M --> W[Harness 新建或恢复旅程计划]
     W --> D[主 Agent 决定当前任务下一步]
     D --> C{必要条件是否齐全}
     C -->|否| Q[保存断点并询问用户]
@@ -79,7 +79,7 @@ flowchart TD
 
 ### 渐进式披露与恢复
 
-完整 workflow 保存业务数据，模型接收的是精简视图。定位旅程先读独立的小结索引，选中后才加载对应完整 JSON；正常定位不会遍历读取所有完整旅程。
+完整旅程计划保存业务数据，模型接收的是精简视图。定位旅程先读独立的小结索引，选中后才加载对应完整 JSON；正常定位不会遍历读取所有完整旅程。
 
 ```mermaid
 sequenceDiagram
@@ -87,12 +87,12 @@ sequenceDiagram
     participant H as Harness
     participant S as 小结索引
     participant M as 主 Agent
-    participant W as Workflow 存储
+    participant W as 旅程计划存储
     U->>H: 继续上次的北京行程
     H->>S: 读取相关旅程小结
     S-->>H: ID、路线、状态和摘要
     H->>M: 用户需求与小结候选
-    M-->>H: 意图与目标 workflow ID
+    M-->>H: 意图与目标旅程 ID
     alt 能明确定位
         H->>W: 只加载选中的完整 JSON
         W-->>H: 任务、结果与恢复断点
@@ -159,4 +159,3 @@ python -m pytest -q
 | `tests/` | 离线回归测试 |
 
 [正式行为规格](openspec/specs/) · [开发说明](docs/development/2026-10-12-follow-up-context-and-workflow.md) · [验证记录](docs/superpowers/reviews/2026-10-12-compact-travel-context-verification.md)
-
