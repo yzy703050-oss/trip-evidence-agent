@@ -28,7 +28,7 @@ description: Use this skill when the user states or updates their preferences, e
 ```python
 import asyncio
 import json
-from agentscope.message import Msg
+from agents.runtime import Msg
 from agentscope.model import OpenAIChatModel
 from config_agentscope import init_agentscope
 from config import LLM_CONFIG

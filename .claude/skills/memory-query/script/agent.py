@@ -14,8 +14,8 @@
 - 用户询问："我上次去北京是什么时候？"
 """
 from context.context_budget import ContextBudgetExceeded
-from agentscope.agent import AgentBase
-from agentscope.message import Msg
+from agents.runtime import AgentBase
+from agents.runtime import Msg
 from typing import Optional, Union, List, Dict
 import json
 import logging

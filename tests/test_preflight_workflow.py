@@ -14,6 +14,36 @@ from workflow_support import populated_workflow
 
 
 class PreflightMain(WorkflowMain):
+    async def select_batch(self, context):
+        from datetime import date, timedelta
+        if type(self).step is not PreflightMain.step:
+            return await super().select_batch(context)
+        feedback = context.get('action_feedback') or {}
+        dependencies = [i for i in feedback.get('issues', []) if i['code'] == 'departure_before_previous_checkout']
+        if dependencies:
+            self.actions.append('repair_tasks')
+            return {'action': 'repair_tasks', 'workflow_revision': context['workflow']['revision'],
+                'task_ids': [dependencies[0]['task_ids'][-1]], 'components': ['train'],
+                'conflict_codes': ['departure_before_previous_checkout'], 'reason': '按实际抵达后的离店日期修复返程'}
+        # Build all drafts together rather than dispatch/draft/validate per segment.
+        drafts = []
+        for task in context['workflow']['tasks']:
+            rows = [r for r in context['task_results'] if r.get('task_id') == task['id']]
+            refs = {r['domain']: {'query_id': r['id'], 'result_revision': r['result_revision'], 'candidate_id': r['items'][0]['id']}
+                    for r in rows if r.get('items')}
+            schedule = {k: v for k, v in task['conditions'].items() if k in {'check_in', 'check_out'}}
+            train = next((r['items'][0] for r in rows if r['domain'] == 'train' and r['items']), None)
+            if task['requires_hotel'] and train and train.get('arrival_at'):
+                day = train['arrival_at'][:10]
+                schedule = {'check_in': day, 'check_out': (date.fromisoformat(day) + timedelta(days=task['conditions']['nights'])).isoformat()}
+            for domain, ref in context.get('preserved_selections', {}).get(task['id'], {}).items():
+                refs[domain] = ref
+            drafts.append({'task_id': task['id'], 'task_revision': task['revision'], 'draft_plan': {
+                'task_revision': task['revision'], 'train_selection': refs.get('train'), 'hotel_selection': refs.get('hotel'),
+                'schedule': schedule, 'unverified_requirements': []}})
+        self.actions.append('commit_batch')
+        return {'action': 'commit_batch', 'expected_workflow_revision': context['workflow']['revision'], 'draft_tasks': drafts}
+
     async def step(self, context):
         t = context['current_task']
         if t['status'] == 'pending':
@@ -55,6 +85,7 @@ def runtime(tmp_path, tasks, confirmed=None, *, session='s'):
     r.train = SimulatedTrainProvider(); r.hotel = SimulatedHotelProvider()
     r.info.model = PreflightInfoModel()
     r.info.tool_executor = ToolExecutor({'train_search': r.train, 'hotel_search': r.hotel})
+    r.harness.runner.executor = r.info.tool_executor
     return r
 
 
@@ -66,7 +97,7 @@ async def test_missing_origin_pauses_before_all_legs(tmp_path):
     assert result['status'] == 'needs_input'
     assert result['workflow']['checkpoint']['kind'] == 'required_conditions'
     assert not r.hotel.calls and not r.train.calls
-    assert [t['status'] for t in result['workflow']['tasks']] == ['needs_input', 'pending']
+    assert [t['status'] for t in result['workflow']['tasks']] == ['pending', 'pending']
     assert result['workflow']['tasks'][0]['conditions']['departure_date'] == '2026-10-17'
     assert 'origin' in result['missing_fields']
 
@@ -80,10 +111,10 @@ async def test_arrival_preflight_returns_bound_evidence_and_completes(tmp_path):
     t = result['workflow']['tasks'][0]
     assert t['conditions']['departure_date'] == '2026-10-18'
     assert t['field_sources']['departure_date'] == 'derived'
-    info = result['results'][0]['data']
-    assert info['readiness'] == 'ready' and info['date_options'][0]['arrival_at'][:10] == '2026-10-18'
-    assert info['execution']['external_requests'] == 2
-    assert info['query_results'][0]['task_id'] == t['id']
+    rows = [r for r in result['workflow']['results_by_query'].values() if r['task_id'] == t['id']]
+    assert any(r['domain'] == 'train' and r['items'][0]['arrival_at'][:10] == '2026-10-18' for r in rows)
+    assert len(r.hotel.calls) == 1
+    assert all(r['task_id'] == t['id'] for r in rows)
     assert '模拟' in result['final_answer']
 
 
@@ -158,6 +189,6 @@ async def test_resuming_partial_with_saved_query_does_not_require_query_again(tm
     r.main.resume={'id':first['workflow_id'],'update':{'task_updates':[]}}
     async def keep_partial(context):
         return dict(action='finish',status='partial',final_answer='已有酒店推荐，预算尚无法核实')
-    r.main.step=keep_partial
+    r.main.select_batch=keep_partial
     result=await r.turn('先保留现有部分方案')
     assert result['stop_reason']=='model_partial' and len(r.hotel.calls)==1

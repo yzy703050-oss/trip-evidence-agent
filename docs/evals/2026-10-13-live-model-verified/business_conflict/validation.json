@@ -1,0 +1,144 @@
+{
+  "valid": false,
+  "issues": [
+    {
+      "code": "task_not_draft",
+      "task_ids": [
+        "task_226b062552f14a2eaf43d8cd405ad12b"
+      ],
+      "blocking": true,
+      "message": "任务尚未形成当前版本草稿。",
+      "evidence": null
+    },
+    {
+      "code": "invalid_draft",
+      "task_ids": [
+        "task_226b062552f14a2eaf43d8cd405ad12b"
+      ],
+      "blocking": true,
+      "message": "草稿包含不支持的字段。",
+      "evidence": null
+    },
+    {
+      "code": "selection_not_ready",
+      "task_ids": [
+        "task_cc13f64910244d5992aab812c7361d96"
+      ],
+      "blocking": true,
+      "message": "查询草稿尚未选择方案。",
+      "evidence": null
+    },
+    {
+      "code": "invalid_draft",
+      "task_ids": [
+        "task_cc13f64910244d5992aab812c7361d96"
+      ],
+      "blocking": true,
+      "message": "草稿包含不支持的字段。",
+      "evidence": null
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_226b062552f14a2eaf43d8cd405ad12b"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "seat_class"
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_cc13f64910244d5992aab812c7361d96"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "seat_class"
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_226b062552f14a2eaf43d8cd405ad12b"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "train_max_total_cny"
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_cc13f64910244d5992aab812c7361d96"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "train_max_total_cny"
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_226b062552f14a2eaf43d8cd405ad12b"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "hotel_max_nightly_cny"
+    }
+  ],
+  "reconstructed_tasks": [
+    {
+      "task_id": "task_226b062552f14a2eaf43d8cd405ad12b",
+      "task_revision": 1,
+      "origin": "重庆",
+      "destination": "上海",
+      "purpose": "business",
+      "train": null,
+      "hotel": null,
+      "schedule": {
+        "departure_at": null,
+        "arrival_at": null,
+        "check_in": null,
+        "check_out": null,
+        "next_departure_not_before": null
+      }
+    },
+    {
+      "task_id": "task_cc13f64910244d5992aab812c7361d96",
+      "task_revision": 1,
+      "origin": "上海",
+      "destination": "重庆",
+      "purpose": "return",
+      "train": null,
+      "hotel": null,
+      "schedule": {
+        "departure_at": null,
+        "arrival_at": null,
+        "check_in": null,
+        "check_out": null,
+        "next_departure_not_before": null
+      }
+    }
+  ],
+  "budget": {
+    "known_subtotal_cny": "0",
+    "verified": false,
+    "missing_categories": [
+      {
+        "task_id": "task_226b062552f14a2eaf43d8cd405ad12b",
+        "category": "hotel"
+      },
+      {
+        "task_id": "task_226b062552f14a2eaf43d8cd405ad12b",
+        "category": "train"
+      },
+      {
+        "task_id": "task_cc13f64910244d5992aab812c7361d96",
+        "category": "train"
+      }
+    ],
+    "lines": []
+  },
+  "validated_revisions": {
+    "task_226b062552f14a2eaf43d8cd405ad12b": 1,
+    "task_cc13f64910244d5992aab812c7361d96": 1
+  },
+  "signature": "733d72f6b0ebc016e6cb390cea964fe38a494ed81c2174f26e7187a4bd3d9262"
+}

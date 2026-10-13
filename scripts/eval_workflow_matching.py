@@ -105,7 +105,7 @@ async def evaluate(args):
         from dotenv import load_dotenv
 
         load_dotenv(args.env_file, override=False)
-    from agentscope.model import OpenAIChatModel
+    from agents.openai_model import OpenAIChatModel
 
     from agents.main_agent import MainAgent
     from config import LLM_CONFIG, get_model_generate_kwargs

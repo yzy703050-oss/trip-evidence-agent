@@ -22,7 +22,7 @@ def _source(value):
 
 
 def _offer(item, kind):
-    value = dict(item)
+    value = {k: v for k, v in item.items() if k not in {'source_id', 'truncated_fields'}}
     value["source"] = _source(value.get("source"))
     if value["source"] is None:
         return None

@@ -1,0 +1,78 @@
+{
+  "case": "tourism_simulated",
+  "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是旅游，不查询企业政策，酒店只需提供地点，价格及空房未知请说明。",
+  "live_model": true,
+  "live_rag": false,
+  "supplier_mode": "simulation",
+  "supplier_request_count": 3,
+  "status": "completed",
+  "stop_reason": "validated",
+  "latency_ms": 5067.707,
+  "model_calls": 2,
+  "stage_counts": {
+    "main:plan": 1,
+    "main:select_batch": 1
+  },
+  "input_tokens": 6788,
+  "output_tokens": 727,
+  "token_usage_complete": true,
+  "tools": {
+    "train_search": 2,
+    "hotel_search": 1
+  },
+  "rag_search_count": 0,
+  "rag_latency_ms": 0,
+  "checks": {
+    "no_model_error": true,
+    "usage_available": true,
+    "no_proposal_repair": true,
+    "finite_stop": true,
+    "honest_supplier_result": true,
+    "no_policy_call": true,
+    "completed": true,
+    "global_valid": true,
+    "two_main_calls": true
+  },
+  "expected_behavior_success": true,
+  "optimization_success": true,
+  "task_success": true,
+  "final_answer": "去程从重庆西到上海虹桥，可选G9001，2026年10月15日 07:20出发，2026年10月15日 18:50抵达，二等座单人票价584.50元，查询时有票。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店，可以考虑全季酒店（上海模拟门店1）（模拟路100号）。\n\n回程从上海虹桥到重庆西，可选G9001，2026年10月17日 07:20出发，2026年10月17日 18:50抵达，二等座单人票价584.50元，查询时有票。\n\n已查到的费用合计1169.00元，其余费用还需确认。 酒店房价、空房和入住及退改规则需在订房时确认。 以下为模拟数据，仅用于测试。",
+  "model_usage": [
+    {
+      "type": "model_call",
+      "stage": "main:plan",
+      "model": "deepseek-flash",
+      "status": "success",
+      "error": null,
+      "latency_ms": 1532.686,
+      "ttft_ms": 725.274,
+      "input_tokens": 2260,
+      "output_tokens": 217,
+      "estimated_cost_usd": null,
+      "turn_id": "16dc14b01e884acd8e6823b34d9cf8cd",
+      "user_id": "tourism_simulated",
+      "session_id": "live",
+      "run_seq": 2,
+      "timestamp": "2026-10-13T07:36:50.607516+00:00"
+    },
+    {
+      "type": "model_call",
+      "stage": "main:select_batch",
+      "model": "deepseek-flash",
+      "status": "success",
+      "error": null,
+      "latency_ms": 3408.723,
+      "ttft_ms": 792.673,
+      "input_tokens": 4528,
+      "output_tokens": 510,
+      "estimated_cost_usd": null,
+      "turn_id": "16dc14b01e884acd8e6823b34d9cf8cd",
+      "workflow_id": "workflow_8270db93797d4f0f9454c5505cd15409",
+      "user_id": "tourism_simulated",
+      "session_id": "live",
+      "run_seq": 9,
+      "timestamp": "2026-10-13T07:36:54.100552+00:00"
+    }
+  ],
+  "total_tokens": 7515
+}

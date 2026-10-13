@@ -1,0 +1,53 @@
+[
+  {
+    "type": "model_call",
+    "stage": "agent:travel_policy",
+    "model": "deepseek-flash",
+    "status": "success",
+    "error": null,
+    "latency_ms": 3530.146,
+    "ttft_ms": 242.517,
+    "input_tokens": 988,
+    "output_tokens": 874,
+    "estimated_cost_usd": null,
+    "turn_id": "4f55aeaa10844fcd8c202f4995f7db66",
+    "user_id": "business_live",
+    "session_id": "live",
+    "run_seq": 2,
+    "timestamp": "2026-10-13T06:22:39.235865+00:00"
+  },
+  {
+    "type": "model_call",
+    "stage": "main:plan",
+    "model": "deepseek-flash",
+    "status": "success",
+    "error": null,
+    "latency_ms": 2562.927,
+    "ttft_ms": 536.495,
+    "input_tokens": 1464,
+    "output_tokens": 543,
+    "estimated_cost_usd": null,
+    "turn_id": "4f55aeaa10844fcd8c202f4995f7db66",
+    "user_id": "business_live",
+    "session_id": "live",
+    "run_seq": 5,
+    "timestamp": "2026-10-13T06:22:41.812278+00:00"
+  },
+  {
+    "type": "model_call",
+    "stage": "main:repair_proposal",
+    "model": "deepseek-flash",
+    "status": "success",
+    "error": null,
+    "latency_ms": 1818.506,
+    "ttft_ms": 406.103,
+    "input_tokens": 969,
+    "output_tokens": 488,
+    "estimated_cost_usd": null,
+    "turn_id": "4f55aeaa10844fcd8c202f4995f7db66",
+    "user_id": "business_live",
+    "session_id": "live",
+    "run_seq": 9,
+    "timestamp": "2026-10-13T06:22:43.646877+00:00"
+  }
+]

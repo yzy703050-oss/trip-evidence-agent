@@ -93,9 +93,9 @@ async def run_health_check(
         (success, message)
     """
     try:
-        from agentscope.model import OpenAIChatModel
+        from agents.openai_model import OpenAIChatModel
     except ImportError:
-        return False, "AgentScope not installed"
+        return False, "Project model runtime unavailable"
 
     try:
         from config import get_model_generate_kwargs

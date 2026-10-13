@@ -150,32 +150,13 @@ def decision_requirements(context):
 
 
 def project_domain_result(value: dict, *, candidate_limit: int = 5, requirements=None) -> dict:
-    view = _fields(value, DOMAIN_FIELDS - {'query', 'parameters', 'constraints', 'fetched_at'})
-    required = set(requirements or ())
-    if isinstance(value.get("items"), list):
-        items = []
-        for item in value['items'][:candidate_limit]:
-            domain = value.get('domain') or ('train' if 'train_number' in item else 'hotel' if 'hotel_name' in item else None)
-            if domain == 'train':
-                allowed = {'id', 'train_number', 'origin_station', 'destination_station', 'departure_at',
-                           'arrival_at', 'departure_time', 'arrival_time', 'seat_class', 'price_cny', 'availability', 'remaining'}
-            elif domain == 'hotel':
-                allowed = {'id', 'kind', 'hotel_name', 'address', 'city', 'availability'}
-                if item.get('kind') != 'hotel_place':
-                    allowed |= {'room_type', 'stay_total_cny', 'fees_included'}
-                allowed |= required & {'rating', 'distance_m', 'cancellation'}
-            else:
-                allowed = FACT_FIELDS
-            facts = _fields(item, allowed)
-            for key in ('departure', 'arrival'):
-                if facts.get(key + '_at'):
-                    facts.pop(key + '_time', None)
-            source = _source_view(item.get('source'))
-            if source and source != view.get('source'):
-                facts['source'] = source
-            items.append(facts)
-        view['items'] = items
-    return view
+    from travel_data.result_views import build_tool_result_view
+    domain = value.get('domain')
+    if domain is None:
+        first = next(iter(value.get('items', [])), {})
+        domain = 'train' if 'train_number' in first else 'hotel' if 'hotel_name' in first else 'weather' if 'date' in first else None
+    # Input query_views/candidate_view is already paged, so do not apply offset twice.
+    return build_tool_result_view(domain, value, limits={'candidate_limit': candidate_limit, 'offset': 0}, requirements=requirements)
 
 
 def project_child_result(result: dict, *, candidate_limit: int = 5, requirements=None, include_candidates=True) -> dict:
@@ -212,6 +193,7 @@ def project_workflow_context(
             "summary",
             "task_count",
             "confirmed_conditions",
+            "condition_strengths",
             "effective_preferences",
             "current_task_id",
             "checkpoint",
@@ -233,8 +215,11 @@ def project_workflow_context(
         "depends_on",
         "conditions",
         "field_sources",
+        "condition_strengths",
         "summary",
         "issues",
+        "draft_stage",
+        "update_scope",
     }
     view["tasks"] = [_fields(task, task_fields) for task in workflow.get("tasks", [])]
     for task in view['tasks']:
@@ -268,7 +253,7 @@ def project_model_context(context: dict) -> dict:
         view.pop('workflow_overview', None)
     if isinstance(context.get('current_task'), dict):
         view['current_task'] = _fields(context['current_task'], {'id', 'revision', 'status', 'origin', 'destination',
-            'purpose', 'purpose_source', 'requires_hotel', 'depends_on', 'conditions', 'field_sources',
+            'purpose', 'purpose_source', 'requires_hotel', 'depends_on', 'conditions', 'field_sources', 'condition_strengths',
             'summary', 'issues', 'draft_plan', 'update_scope', 'needs_dependency_check', 'rejected_candidates'})
     if isinstance(context.get('preflight'), dict):
         view['preflight'] = _fields(context['preflight'], {'readiness', 'missing_fields', 'query_requests', 'query_mode'})
@@ -284,6 +269,9 @@ def project_model_context(context: dict) -> dict:
         view["relevant_results"] = [
             project_domain_result(row, requirements=requirements) for row in context["relevant_results"]
         ]
+    for key in ('task_results', 'candidate_views'):
+        if isinstance(context.get(key), list):
+            view[key] = [project_domain_result(row, requirements=requirements) for row in context[key]]
     for key in ("results", "previous_results"):
         if isinstance(context.get(key), list):
             rows = []

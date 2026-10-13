@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "configuration_updated": false,
+  "active_limits": {
+    "info_executions_per_task": 4,
+    "main_decisions_per_turn": 24,
+    "main_model_calls_per_turn": 28,
+    "main_model_calls_per_task": 12,
+    "main_steps_per_task": 4,
+    "main_extra_steps": 4,
+    "tools_per_task": 10,
+    "turn_timeout": 600.0,
+    "evidence_max_age_seconds": 3600.0
+  },
+  "source": "production harness with offline scripted model responses and direct test providers",
+  "token_method": "utf8_conservative (estimated, not provider usage)",
+  "real_supplier_requests": 0,
+  "provider_usage": null,
+  "provider_hard_limits": "not verified by offline fixtures",
+  "independent_guards": {
+    "resilience": {
+      "max_retries": 3,
+      "retry_base_delay_sec": 1.0,
+      "retry_max_delay_sec": 30.0,
+      "circuit_failure_threshold": 5,
+      "circuit_recovery_timeout_sec": 60.0,
+      "circuit_half_open_successes": 2,
+      "health_check_timeout_sec": 10.0
+    },
+    "info_tool_calls": 10,
+    "tool_timeout": 30.0,
+    "candidate_limit": 5,
+    "tools_per_task": 10,
+    "turn_timeout": 600.0
+  },
+  "samples": [
+    {
+      "scenario": "single_destination_default_return",
+      "status": "completed",
+      "metrics": {
+        "context_tokens": 3695,
+        "output_tokens": 332,
+        "main_model_calls_per_turn": 2,
+        "main_model_calls_per_task": 0,
+        "info_model_calls": 0,
+        "main_decisions_per_turn": 1,
+        "info_executions_per_task": 0,
+        "info_executions_per_run": 0
+      },
+      "reply_style": "fallback",
+      "provider_calls": 3
+    },
+    {
+      "scenario": "three_segments",
+      "status": "completed",
+      "metrics": {
+        "context_tokens": 5241,
+        "output_tokens": 503,
+        "main_model_calls_per_turn": 2,
+        "main_model_calls_per_task": 0,
+        "info_model_calls": 0,
+        "main_decisions_per_turn": 1,
+        "info_executions_per_task": 0,
+        "info_executions_per_run": 0
+      },
+      "reply_style": "fallback",
+      "provider_calls": 5
+    },
+    {
+      "scenario": "five_segments",
+      "status": "completed",
+      "metrics": {
+        "context_tokens": 8370,
+        "output_tokens": 846,
+        "main_model_calls_per_turn": 2,
+        "main_model_calls_per_task": 0,
+        "info_model_calls": 0,
+        "main_decisions_per_turn": 1,
+        "info_executions_per_task": 0,
+        "info_executions_per_run": 0
+      },
+      "reply_style": "fallback",
+      "provider_calls": 9
+    },
+    {
+      "scenario": "same_trip_summary_matching",
+      "status": "completed",
+      "metrics": {
+        "context_tokens": 2528,
+        "output_tokens": 106,
+        "main_model_calls_per_turn": 1,
+        "main_model_calls_per_task": 0,
+        "info_model_calls": 0,
+        "main_decisions_per_turn": 0,
+        "info_executions_per_task": 0,
+        "info_executions_per_run": 0
+      },
+      "reply_style": "fallback",
+      "provider_calls": 0
+    },
+    {
+      "scenario": "resume_and_party_update",
+      "status": "completed",
+      "metrics": {
+        "context_tokens": 5254,
+        "output_tokens": 504,
+        "main_model_calls_per_turn": 2,
+        "main_model_calls_per_task": 0,
+        "info_model_calls": 0,
+        "main_decisions_per_turn": 1,
+        "info_executions_per_task": 0,
+        "info_executions_per_run": 0
+      },
+      "reply_style": "fallback",
+      "provider_calls": 3
+    },
+    {
+      "scenario": "cross_segment_middle_task_repair",
+      "status": "completed",
+      "metrics": {
+        "context_tokens": 5843,
+        "output_tokens": 504,
+        "main_model_calls_per_turn": 4,
+        "main_model_calls_per_task": 0,
+        "info_model_calls": 0,
+        "main_decisions_per_turn": 3,
+        "info_executions_per_task": 0,
+        "info_executions_per_run": 0
+      },
+      "reply_style": "fallback",
+      "provider_calls": 6
+    },
+    {
+      "scenario": "nonworkflow_direct_query",
+      "status": "ok",
+      "metrics": {
+        "context_tokens": 1922,
+        "output_tokens": 95,
+        "main_model_calls_per_turn": 1,
+        "main_model_calls_per_task": 0,
+        "info_model_calls": 0,
+        "main_decisions_per_turn": 0,
+        "info_executions_per_task": 0,
+        "info_executions_per_run": 0
+      },
+      "reply_style": null,
+      "provider_calls": 1
+    }
+  ],
+  "maxima": {
+    "context_tokens": {
+      "max": 8370,
+      "scenario": "five_segments",
+      "suggested_limit": 16740
+    },
+    "output_tokens": {
+      "max": 846,
+      "scenario": "five_segments",
+      "suggested_limit": 1692
+    },
+    "main_model_calls_per_turn": {
+      "max": 4,
+      "scenario": "cross_segment_middle_task_repair",
+      "suggested_limit": 8
+    },
+    "main_model_calls_per_task": {
+      "max": 0,
+      "scenario": "single_destination_default_return",
+      "suggested_limit": 0
+    },
+    "info_model_calls": {
+      "max": 0,
+      "scenario": "single_destination_default_return",
+      "suggested_limit": 0
+    },
+    "main_decisions_per_turn": {
+      "max": 3,
+      "scenario": "cross_segment_middle_task_repair",
+      "suggested_limit": 6
+    },
+    "info_executions_per_task": {
+      "max": 0,
+      "scenario": "single_destination_default_return",
+      "suggested_limit": 0
+    },
+    "info_executions_per_run": {
+      "max": 0,
+      "scenario": "single_destination_default_return",
+      "suggested_limit": 0
+    }
+  }
+}

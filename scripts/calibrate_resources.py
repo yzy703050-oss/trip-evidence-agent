@@ -1,4 +1,4 @@
-"""Offline calibration through production MainAgent/child/Runner and isolated fixture data.
+"""Offline calibration through production MainAgent/Runner/direct tools and isolated fixture data.
 
 No network or user-memory writes. JSON report is the evidence; configuration is
 updated separately after all scenario assertions succeed.
@@ -53,11 +53,17 @@ class FixtureModel:
             if self.nonworkflow:
                 value = dict(
                     response_mode="answer",
-                    finalization_mode="synthesize",
-                    agent_schedule=[
-                        dict(
-                            agent_name="information_query", requested_domains=["train"], priority=2
-                        )
+                    agent_schedule=[],
+                    query_plan=[
+                        {
+                            "domain": "train",
+                            "parameters": {
+                                "origin": "北京",
+                                "destination": "上海",
+                                "departure_date": "2026-10-11",
+                                "passengers": 1,
+                            },
+                        }
                     ],
                 )
             elif self.resume:
@@ -69,34 +75,23 @@ class FixtureModel:
                 )
                 if self.update is not None:
                     value["workflow_update"] = self.update
+            elif context.get('known_workflows'):
+                identity = context['known_workflows'][0]['id']
+                value = {'response_mode': 'workflow', 'agent_schedule': [], 'resume_workflow_id': identity,
+                    'workflow_match': {'action': 'reuse', 'workflow_id': identity, 'refresh': False}}
             else:
                 value = await self.controller.initialize(context)
         elif stage == "main:workflow_match":
             value = dict(action="reuse", workflow_id=context["candidates"][0]["id"], refresh=False)
-        elif stage == "main:step":
-            w, task = context["workflow"], context["current_task"]
-            if w.get("validation") and not w["validation"]["valid"]:
-                value = repair_action(w)
-            elif task["status"] == "pending":
-                requests = [
-                    r
-                    for r in context["preflight"]["query_requests"]
-                    if r["domain"] in task.get("update_scope", ["train", "hotel"])
-                ]
-                value = dict(
-                    action="dispatch",
-                    task_id=task["id"],
-                    task_revision=task["revision"],
-                    goal="查询当前段",
-                    query_requests=requests,
-                )
+        elif stage == "main:select_batch":
+            if (
+                any(i["blocking"] for i in context.get("action_feedback", {}).get("issues", []))
+                if context.get("action_feedback")
+                else False
+            ):
+                value = repair_action(context["workflow"])
             else:
-                value = await self.controller.step(context)
-                if value["action"] == "draft_task":
-                    for d in {"train", "hotel"} - set(task.get("update_scope", ["train", "hotel"])):
-                        value["draft_plan"][d + "_selection"] = deepcopy(
-                            task["draft_plan"][d + "_selection"]
-                        )
+                value = await self.controller.select_batch(context)
         elif stage == "main:reply":
             value = {
                 "template": "。".join(
@@ -160,15 +155,13 @@ class SampleRuntime:
         self.main = MainAgent(model, memory_manager=self.memory)
         self.memory.llm_model = model
         self.train, self.hotel = OfflineProvider("train"), OfflineProvider("hotel")
-        child = BudgetedModel(
-            MeteredModel(FixtureInfoModel(), record), budget_tokens=budget, record=record
-        )
-        self.info = info_class()(
-            model=child,
-            tool_executor=ToolExecutor({"train_search": self.train, "hotel_search": self.hotel}),
-            memory_manager=self.memory,
-        )
-        self.harness = ExecutionHarness(self.main, {"information_query": self.info}, self.memory)
+
+        class Registry(dict):
+            pass
+
+        registry = Registry()
+        registry.providers = {"train_search": self.train, "hotel_search": self.hotel}
+        self.harness = ExecutionHarness(self.main, registry, self.memory)
 
     async def turn(self, query="安排交通和酒店"):
         tid = self.memory.start_turn(query)
@@ -261,7 +254,7 @@ async def calibrate():
         await take("cross_segment_middle_task_repair", repair, expected_tasks=3)
         non = SampleRuntime(base / "non", proposal())
         non.raw.nonworkflow = True
-        await take("nonworkflow_candidate_page_cache_feedback", non, "只查北京去上海车票")
+        await take("nonworkflow_direct_query", non, "只查北京去上海车票")
         assert len(non.train.calls) == 1, "feedback must reuse cached provider result"
     maxima = {}
     for sample in samples:
@@ -270,12 +263,24 @@ async def calibrate():
                 maxima[key] = {
                     "max": value,
                     "scenario": sample["scenario"],
-                    "configured": value * 2,
+                    "suggested_limit": value * 2,
                 }
-    assert all(row["max"] > 0 for row in maxima.values()), maxima
+    assert all(
+        row["max"] > 0
+        for key, row in maxima.items()
+        if key
+        not in {
+            "info_model_calls",
+            "info_executions_per_task",
+            "info_executions_per_run",
+            "main_model_calls_per_task",
+        }
+    ), maxima
     return {
         "schema_version": 1,
-        "source": "production harness with offline scripted SDK responses and test providers",
+        "configuration_updated": False,
+        "active_limits": deepcopy(config.WORKFLOW_LIMITS),
+        "source": "production harness with offline scripted model responses and direct test providers",
         "token_method": "utf8_conservative (estimated, not provider usage)",
         "real_supplier_requests": 0,
         "provider_usage": None,

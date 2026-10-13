@@ -14,7 +14,7 @@ from travel_data.budget import build_budget
 def state_signature(workflow):
     payload = {'conditions': workflow['confirmed_conditions'],
                'tasks': [{k: t.get(k) for k in ('id', 'revision', 'origin', 'destination', 'purpose', 'requires_hotel', 'conditions', 'draft_plan', 'rejected_candidates', 'update_scope')}
-                         for t in workflow['tasks']], 'queries': workflow['results_by_query']}
+                         for t in workflow['tasks']], 'queries': workflow['results_by_query'], 'policy': workflow.get('policy_context')}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -145,6 +145,8 @@ def check_task(workflow, task_id, draft):
 def check_workflow(workflow):
     issues, plans, lines, missing = [], [], [], []
     for index, task in enumerate(workflow['tasks']):
+        if task.get('draft_stage') == 'query':
+            issues.append(issue('selection_not_ready', [task['id']], '查询草稿尚未选择方案。'))
         if task['status'] not in {'draft', 'validated'}:
             issues.append(issue('task_not_draft', [task['id']], '任务尚未形成当前版本草稿。'))
         checked = check_task(workflow, task['id'], task.get('draft_plan'))
@@ -175,6 +177,44 @@ def check_workflow(workflow):
     if end and plans and plans[-1]['schedule']['arrival_at'] and datetime.fromisoformat(plans[-1]['schedule']['arrival_at']).date().isoformat() > end:
         issues.append(issue('end_date_conflict', [workflow['tasks'][-1]['id']], '最后一段抵达日期超过用户可用日期。'))
     maximum = workflow['confirmed_conditions'].get('constraints', {}).get('total_budget_cny')
+    policy = workflow.get('policy_context')
+    if policy and (policy.get('status') != 'ok' or policy.get('missing_fields') or policy.get('conflicts')):
+        issues.append(issue('policy_unverified', [t['id'] for t in workflow['tasks']], '企业政策存在未核实条件或冲突。'))
+    if policy:
+        evidence_ids = {r.get('id') for r in policy.get('references', [])}
+        for constraint in policy.get('constraints', []):
+            if not constraint.get('hard'):
+                continue
+            for task, plan in zip(workflow['tasks'], plans):
+                scope = constraint.get('applicability', {})
+                if scope.get('city') and scope['city'] != task['destination']:
+                    continue
+                field = constraint.get('field')
+                if field and field.startswith('hotel_') and not task['requires_hotel']:
+                    continue
+                actual = None
+                try:
+                    if not constraint.get('evidence_ids') or not set(constraint['evidence_ids']) <= evidence_ids:
+                        raise ValueError('policy citation missing')
+                    effective, _ = effective_conditions(workflow['confirmed_conditions'], task['conditions'], {})
+                    if field == 'seat_class' and plan['train']:
+                        actual = plan['train'].get('seat_class')
+                    elif field == 'train_max_total_cny' and plan['train'] and plan['train'].get('price_cny') is not None:
+                        actual = Decimal(str(plan['train']['price_cny'])) * effective['passengers']
+                    elif field in {'hotel_max_total_cny', 'hotel_max_nightly_cny'} and plan['hotel'] and plan['hotel'].get('kind') != 'hotel_place':
+                        amount = plan['hotel'].get('stay_total_cny')
+                        if amount is not None:
+                            actual = Decimal(str(amount))
+                            if field == 'hotel_max_nightly_cny':
+                                actual /= (date.fromisoformat(plan['hotel']['check_out']) - date.fromisoformat(plan['hotel']['check_in'])).days
+                    if actual is None:
+                        raise ValueError('policy evidence unavailable')
+                    expected = constraint['value'] if field == 'seat_class' else Decimal(str(constraint['value']))
+                    failed = actual != expected if field == 'seat_class' else actual > expected
+                    if failed:
+                        issues.append(issue('policy_constraint_failed', [task['id']], '所选方案不符合企业强制约束。', evidence=constraint['id']))
+                except (ValueError, KeyError, TypeError, ArithmeticError):
+                    issues.append(issue('policy_constraint_unverified', [task['id']], '缺少验证企业强制约束的有效证据。', evidence=constraint.get('id')))
     if maximum is not None:
         if missing: issues.append(issue('total_budget_unknown', [t['id'] for t in workflow['tasks']], '全程费用有未知部分，不能验证预算。'))
         elif subtotal > Decimal(str(maximum)):

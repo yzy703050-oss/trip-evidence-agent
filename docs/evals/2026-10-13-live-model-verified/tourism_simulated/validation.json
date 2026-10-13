@@ -1,0 +1,159 @@
+{
+  "valid": true,
+  "issues": [
+    {
+      "code": "hotel_price_unknown",
+      "task_ids": [
+        "task_b71ed86e4de1445c95c462aa256a42e5"
+      ],
+      "blocking": false,
+      "message": "酒店地点不提供房价、空房或入住规则。",
+      "evidence": null
+    }
+  ],
+  "reconstructed_tasks": [
+    {
+      "task_id": "task_b71ed86e4de1445c95c462aa256a42e5",
+      "task_revision": 1,
+      "origin": "重庆",
+      "destination": "上海",
+      "purpose": "visit",
+      "train": {
+        "id": "sim-train|重庆|上海|2026-10-15|8",
+        "train_number": "SIM001",
+        "origin_station": "重庆",
+        "destination_station": "上海",
+        "departure_time": "08:00",
+        "arrival_time": "12:00",
+        "seat_class": "二等座",
+        "price_cny": "200",
+        "availability": "available",
+        "remaining": 20,
+        "source": {
+          "provider": "simulation:train",
+          "fetched_at": "2026-10-13T15:18:52.735238+08:00",
+          "url": null
+        },
+        "url": null,
+        "departure_at": "2026-10-15T08:00:00+08:00",
+        "arrival_at": "2026-10-15T12:00:00+08:00",
+        "time_evidence": {
+          "departure": "simulation",
+          "arrival": "simulation_segment_duration"
+        }
+      },
+      "hotel": {
+        "id": "sim-hotel|上海|全季|0",
+        "hotel_name": "全季（上海模拟候选1）",
+        "address": "模拟地址",
+        "city": "上海",
+        "district": "模拟区域",
+        "location": "121.0,31.0",
+        "source": {
+          "provider": "simulation:hotel",
+          "fetched_at": "2026-10-13T15:18:52.736238+08:00",
+          "url": null
+        },
+        "phone": null,
+        "rating": null,
+        "photos": [],
+        "kind": "hotel_place",
+        "room_type": null,
+        "stay_total_cny": null,
+        "fees_included": null,
+        "availability": "unknown",
+        "cancellation": null,
+        "url": null
+      },
+      "schedule": {
+        "departure_at": "2026-10-15T08:00:00+08:00",
+        "arrival_at": "2026-10-15T12:00:00+08:00",
+        "check_in": "2026-10-15",
+        "check_out": "2026-10-17",
+        "next_departure_not_before": "2026-10-17"
+      }
+    },
+    {
+      "task_id": "task_ecb20aa2799e4f0c81a0e3f1e2f708d9",
+      "task_revision": 1,
+      "origin": "上海",
+      "destination": "重庆",
+      "purpose": "return",
+      "train": {
+        "id": "sim-train|上海|重庆|2026-10-17|8",
+        "train_number": "SIM001",
+        "origin_station": "上海",
+        "destination_station": "重庆",
+        "departure_time": "08:00",
+        "arrival_time": "12:00",
+        "seat_class": "二等座",
+        "price_cny": "200",
+        "availability": "available",
+        "remaining": 20,
+        "source": {
+          "provider": "simulation:train",
+          "fetched_at": "2026-10-13T15:18:52.736238+08:00",
+          "url": null
+        },
+        "url": null,
+        "departure_at": "2026-10-17T08:00:00+08:00",
+        "arrival_at": "2026-10-17T12:00:00+08:00",
+        "time_evidence": {
+          "departure": "simulation",
+          "arrival": "simulation_segment_duration"
+        }
+      },
+      "hotel": null,
+      "schedule": {
+        "departure_at": "2026-10-17T08:00:00+08:00",
+        "arrival_at": "2026-10-17T12:00:00+08:00",
+        "check_in": null,
+        "check_out": null,
+        "next_departure_not_before": "2026-10-17T12:00:00+08:00"
+      }
+    }
+  ],
+  "budget": {
+    "known_subtotal_cny": "400",
+    "verified": false,
+    "missing_categories": [
+      {
+        "task_id": "task_b71ed86e4de1445c95c462aa256a42e5",
+        "category": "hotel"
+      }
+    ],
+    "lines": [
+      {
+        "category": "train",
+        "offer_id": "sim-train|重庆|上海|2026-10-15|8",
+        "quantity": 1,
+        "unit_price_cny": "200",
+        "amount_cny": "200",
+        "source": {
+          "provider": "simulation:train",
+          "fetched_at": "2026-10-13T15:18:52.735238+08:00",
+          "url": null
+        },
+        "task_id": "task_b71ed86e4de1445c95c462aa256a42e5"
+      },
+      {
+        "category": "train",
+        "offer_id": "sim-train|上海|重庆|2026-10-17|8",
+        "quantity": 1,
+        "unit_price_cny": "200",
+        "amount_cny": "200",
+        "source": {
+          "provider": "simulation:train",
+          "fetched_at": "2026-10-13T15:18:52.736238+08:00",
+          "url": null
+        },
+        "task_id": "task_ecb20aa2799e4f0c81a0e3f1e2f708d9"
+      }
+    ]
+  },
+  "validated_revisions": {
+    "task_b71ed86e4de1445c95c462aa256a42e5": 1,
+    "task_ecb20aa2799e4f0c81a0e3f1e2f708d9": 1
+  },
+  "signature": "a9d5ec77b5244177c0cf387ef7c3741c4abf286c9da3a892c8659faf544a932e"
+}

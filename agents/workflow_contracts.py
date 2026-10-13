@@ -119,12 +119,14 @@ def create_workflow(proposal, context, *, workflow_id=None, require_stay_proposa
             if key in constraints and constraints.pop(key) is not True:
                 raise ValueError('workflow scope metadata mismatch')
     confirmed = validate_conditions(confirmed)
+    from agents.condition_strengths import validate_condition_strengths, validate_inherited_strengths
+    strengths = validate_condition_strengths(proposal.get('condition_strengths', {}), confirmed)
     validate_quote_requirement(confirmed, context)
     effective, sources = effective_conditions(confirmed, {}, context.get('effective_preferences', {}))
     sources.update({k: 'user' for k, v in confirmed.items() if v is not None})
     tasks = []
     for index, row in enumerate(proposal['tasks']):
-        if not isinstance(row, dict) or set(row) - {'origin', 'destination', 'requires_hotel', 'purpose', 'purpose_source', 'conditions', 'field_sources', 'depends_on'}:
+        if not isinstance(row, dict) or set(row) - {'origin', 'destination', 'requires_hotel', 'purpose', 'purpose_source', 'conditions', 'field_sources', 'condition_strengths', 'depends_on'}:
             raise ValueError('invalid task proposal')
         if not isinstance(row.get('destination'), str) or not row['destination'].strip() or (
                 row.get('origin') is not None and (not isinstance(row['origin'], str) or not row['origin'].strip())):
@@ -148,6 +150,8 @@ def create_workflow(proposal, context, *, workflow_id=None, require_stay_proposa
         if type(row.get('requires_hotel')) is not bool:
             raise ValueError('task hotel scope is required')
         conditions = validate_conditions(row.get('conditions', {}))
+        task_strengths = validate_condition_strengths(row.get('condition_strengths', {}),
+                                                     {**confirmed, **conditions})
         if require_stay_proposals and row['requires_hotel']:
             stay = {**confirmed, **conditions}
             dated = stay.get('check_in') and stay.get('check_out') and date.fromisoformat(stay['check_out']) > date.fromisoformat(stay['check_in'])
@@ -182,7 +186,7 @@ def create_workflow(proposal, context, *, workflow_id=None, require_stay_proposa
                           origin=row.get('origin'), destination=row['destination'],
                           purpose=purpose, purpose_source=row.get('purpose_source', 'proposal'),
                           requires_hotel=row['requires_hotel'], depends_on=[tasks[-1]['id']] if tasks else [],
-                          conditions=conditions, field_sources=task_sources,
+                          conditions=conditions, field_sources=task_sources, condition_strengths=task_strengths,
                           draft_plan=None, summary='', query_ids=[], issues=[]))
     query = context.get('original_query', '')
     one_way = re.search(r'单程|(?:不用|不要|不需要|不安排)(?:安排)?(?:回程|返程)|(?:暂时|先)?不回|不返|one[ -]way', query, re.I)
@@ -196,11 +200,14 @@ def create_workflow(proposal, context, *, workflow_id=None, require_stay_proposa
                           depends_on=[tasks[-1]['id']], conditions={'flexible_dates': True},
                           field_sources={'flexible_dates': 'default'}, draft_plan=None,
                           summary='', query_ids=[], issues=[]))
-    return dict(id=workflow_id or identifier('workflow'), revision=1, status='running',
+    result = dict(id=workflow_id or identifier('workflow'), revision=1, status='running',
                 original_query=context.get('original_query', ''), confirmed_conditions=confirmed,
-                effective_conditions=effective, field_sources=sources, current_task_id=tasks[0]['id'],
+                effective_conditions=effective, field_sources=sources, condition_strengths=strengths,
+                current_task_id=tasks[0]['id'],
                 tasks=tasks, results_by_query={}, candidate_cache={}, checkpoint=None, stop_reason=None,
                 validation=None, audit={'model_calls': 0, 'tool_calls': 0, 'info_executions': 0})
+    validate_inherited_strengths(result)
+    return result
 
 
 def task_by_id(workflow, task_id):
@@ -220,7 +227,7 @@ def validate_action(action, workflow):
         'draft_task': {'action', 'task_id', 'task_revision', 'draft_plan', 'summary'},
         'ask_user': {'action', 'question', 'reason', 'affected_task_ids', 'suggested_changes', 'resume_task_id'},
         'validate_workflow': {'action', 'workflow_revision', 'analysis'},
-        'repair_tasks': {'action', 'workflow_revision', 'task_ids', 'components', 'conflict_codes', 'reason'},
+        'repair_tasks': {'action', 'workflow_revision', 'task_ids', 'components', 'conflict_codes', 'reason', 'task_updates'},
         'finish': {'action', 'status', 'final_answer', 'gaps'},
     }
     if name not in allowed:
@@ -274,16 +281,18 @@ def validate_action(action, workflow):
 
 
 def apply_user_update(workflow, updates):
-    if not isinstance(updates, dict) or set(updates) - {'confirmed_conditions', 'task_updates', 'resume_task_id'}:
+    if not isinstance(updates, dict) or set(updates) - {'confirmed_conditions', 'condition_strengths', 'task_updates', 'resume_task_id'}:
         raise ValueError('invalid user update')
     w = deepcopy(workflow)
     changed = []
     global_updates = validate_conditions(updates.get('confirmed_conditions', {}))
+    from agents.condition_strengths import mark_user_conditions, validate_inherited_strengths
+    mark_user_conditions(w, global_updates, updates.get('condition_strengths'))
     if any(w['confirmed_conditions'].get(k) != v for k, v in global_updates.items()):
         w['confirmed_conditions'].update(global_updates)
         changed.append(0)
     for update in updates.get('task_updates', []):
-        if not isinstance(update, dict) or set(update) - {'task_id', 'conditions', 'origin', 'destination', 'requires_hotel'}:
+        if not isinstance(update, dict) or set(update) - {'task_id', 'conditions', 'condition_strengths', 'origin', 'destination', 'requires_hotel'}:
             raise ValueError('invalid task update')
         task = task_by_id(w, update.get('task_id'))
         index = w['tasks'].index(task)
@@ -300,10 +309,12 @@ def apply_user_update(workflow, updates):
             if key == 'destination' and index+1 < len(w['tasks']) and w['tasks'][index+1]['origin'] == previous:
                 w['tasks'][index+1]['origin'] = value
         conditions = validate_conditions(update.get('conditions', {}))
+        mark_user_conditions(task, conditions, update.get('condition_strengths'))
         if index == 0 and conditions.get('departure_date'):
             if global_updates.get('start_date') and global_updates['start_date'] != conditions['departure_date']:
                 raise ValueError('first departure contradicts explicit overall start')
             w['confirmed_conditions']['start_date'] = conditions['departure_date']
+            w.setdefault('condition_strengths', {})['start_date'] = task['condition_strengths']['departure_date']
         if any(task['conditions'].get(k) != v for k, v in conditions.items()):
             task['conditions'].update(conditions)
             task['field_sources'].update({k: 'user' for k in conditions})
@@ -326,4 +337,5 @@ def apply_user_update(workflow, updates):
         w['current_task_id'] = resume
     repair_checkpoint = w.get('checkpoint') if not changed and (w.get('checkpoint') or {}).get('kind') == 'task_repair' else None
     w.update(status='running', checkpoint=repair_checkpoint, stop_reason=None, validation=None)
+    validate_inherited_strengths(w)
     return w

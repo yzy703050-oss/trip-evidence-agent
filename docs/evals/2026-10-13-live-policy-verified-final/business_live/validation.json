@@ -1,0 +1,150 @@
+{
+  "valid": false,
+  "issues": [
+    {
+      "code": "hotel_selection_missing",
+      "task_ids": [
+        "task_2b2226969971474da32d4227a9ec96ec"
+      ],
+      "blocking": true,
+      "message": "当前段尚无已核实的hotel候选选择。",
+      "evidence": null
+    },
+    {
+      "code": "task_not_draft",
+      "task_ids": [
+        "task_f7053de5bb734575b41f9330cb5ab42f"
+      ],
+      "blocking": true,
+      "message": "任务尚未形成当前版本草稿。",
+      "evidence": null
+    },
+    {
+      "code": "invalid_draft",
+      "task_ids": [
+        "task_f7053de5bb734575b41f9330cb5ab42f"
+      ],
+      "blocking": true,
+      "message": "草稿包含不支持的字段。",
+      "evidence": null
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_f7053de5bb734575b41f9330cb5ab42f"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "train_seat_class"
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_f7053de5bb734575b41f9330cb5ab42f"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "train_max_total_cny"
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_2b2226969971474da32d4227a9ec96ec"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "hotel_max_nightly_cny"
+    }
+  ],
+  "reconstructed_tasks": [
+    {
+      "task_id": "task_2b2226969971474da32d4227a9ec96ec",
+      "task_revision": 1,
+      "origin": "重庆",
+      "destination": "上海",
+      "purpose": "business",
+      "train": {
+        "id": "2026-10-15|D3058|重庆北|上海|O|二等座",
+        "train_number": "D3058",
+        "origin_station": "重庆北",
+        "destination_station": "上海",
+        "departure_time": "08:38",
+        "arrival_time": "21:19",
+        "seat_class": "二等座",
+        "price_cny": "594",
+        "availability": "available",
+        "remaining": null,
+        "source": {
+          "provider": "聚合数据",
+          "fetched_at": "2026-10-13T15:00:19.237764+08:00",
+          "url": "https://www.juhe.cn/docs/api/id/817"
+        },
+        "url": null,
+        "departure_at": "2026-10-15T08:38:00+08:00",
+        "arrival_at": "2026-10-15T21:19:00+08:00",
+        "time_evidence": {
+          "departure": "query_date_and_provider_clock",
+          "arrival": "provider_segment_duration"
+        }
+      },
+      "hotel": null,
+      "schedule": {
+        "departure_at": "2026-10-15T08:38:00+08:00",
+        "arrival_at": "2026-10-15T21:19:00+08:00",
+        "check_in": "2026-10-15",
+        "check_out": "2026-10-17",
+        "next_departure_not_before": "2026-10-17"
+      }
+    },
+    {
+      "task_id": "task_f7053de5bb734575b41f9330cb5ab42f",
+      "task_revision": 1,
+      "origin": "上海",
+      "destination": "重庆",
+      "purpose": "return",
+      "train": null,
+      "hotel": null,
+      "schedule": {
+        "departure_at": null,
+        "arrival_at": null,
+        "check_in": null,
+        "check_out": null,
+        "next_departure_not_before": null
+      }
+    }
+  ],
+  "budget": {
+    "known_subtotal_cny": "594",
+    "verified": false,
+    "missing_categories": [
+      {
+        "task_id": "task_2b2226969971474da32d4227a9ec96ec",
+        "category": "hotel"
+      },
+      {
+        "task_id": "task_f7053de5bb734575b41f9330cb5ab42f",
+        "category": "train"
+      }
+    ],
+    "lines": [
+      {
+        "category": "train",
+        "offer_id": "2026-10-15|D3058|重庆北|上海|O|二等座",
+        "quantity": 1,
+        "unit_price_cny": "594",
+        "amount_cny": "594",
+        "source": {
+          "provider": "聚合数据",
+          "fetched_at": "2026-10-13T15:00:19.237764+08:00",
+          "url": "https://www.juhe.cn/docs/api/id/817"
+        },
+        "task_id": "task_2b2226969971474da32d4227a9ec96ec"
+      }
+    ]
+  },
+  "validated_revisions": {
+    "task_2b2226969971474da32d4227a9ec96ec": 1,
+    "task_f7053de5bb734575b41f9330cb5ab42f": 1
+  },
+  "signature": "9d9873d4788cdb7fcef04e54b12ed464e16007b24349e3e2c20746af2b0299f3"
+}

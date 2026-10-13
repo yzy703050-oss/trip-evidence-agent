@@ -1,0 +1,141 @@
+{
+  "valid": false,
+  "issues": [
+    {
+      "code": "train_selection_missing",
+      "task_ids": [
+        "task_66dfe510cf77407e8c95df5bf5e75dcb"
+      ],
+      "blocking": true,
+      "message": "当前段尚无已核实的train候选选择。",
+      "evidence": null
+    },
+    {
+      "code": "hotel_selection_missing",
+      "task_ids": [
+        "task_66dfe510cf77407e8c95df5bf5e75dcb"
+      ],
+      "blocking": true,
+      "message": "当前段尚无已核实的hotel候选选择。",
+      "evidence": null
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_66dfe510cf77407e8c95df5bf5e75dcb"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "seat_class"
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_66dfe510cf77407e8c95df5bf5e75dcb"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "train_max_total_cny"
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_66dfe510cf77407e8c95df5bf5e75dcb"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "hotel_max_nightly_cny"
+    }
+  ],
+  "reconstructed_tasks": [
+    {
+      "task_id": "task_66dfe510cf77407e8c95df5bf5e75dcb",
+      "task_revision": 1,
+      "origin": "重庆",
+      "destination": "上海",
+      "purpose": "business",
+      "train": null,
+      "hotel": null,
+      "schedule": {
+        "departure_at": null,
+        "arrival_at": null,
+        "check_in": "2026-10-15",
+        "check_out": "2026-10-17",
+        "next_departure_not_before": "2026-10-17"
+      }
+    },
+    {
+      "task_id": "task_d919696457784b329038e41c0fb23798",
+      "task_revision": 1,
+      "origin": "上海",
+      "destination": "重庆",
+      "purpose": "return",
+      "train": {
+        "id": "2026-10-17|D3056|上海|重庆北|O|二等座",
+        "train_number": "D3056",
+        "origin_station": "上海",
+        "destination_station": "重庆北",
+        "departure_time": "07:23",
+        "arrival_time": "19:16",
+        "seat_class": "二等座",
+        "price_cny": "594",
+        "availability": "available",
+        "remaining": null,
+        "source": {
+          "provider": "聚合数据",
+          "fetched_at": "2026-10-13T14:38:14.780424+08:00",
+          "url": "https://www.juhe.cn/docs/api/id/817"
+        },
+        "url": null,
+        "departure_at": "2026-10-17T07:23:00+08:00",
+        "arrival_at": "2026-10-17T19:16:00+08:00",
+        "time_evidence": {
+          "departure": "query_date_and_provider_clock",
+          "arrival": "provider_segment_duration"
+        }
+      },
+      "hotel": null,
+      "schedule": {
+        "departure_at": "2026-10-17T07:23:00+08:00",
+        "arrival_at": "2026-10-17T19:16:00+08:00",
+        "check_in": null,
+        "check_out": null,
+        "next_departure_not_before": "2026-10-17T19:16:00+08:00"
+      }
+    }
+  ],
+  "budget": {
+    "known_subtotal_cny": "594",
+    "verified": false,
+    "missing_categories": [
+      {
+        "task_id": "task_66dfe510cf77407e8c95df5bf5e75dcb",
+        "category": "hotel"
+      },
+      {
+        "task_id": "task_66dfe510cf77407e8c95df5bf5e75dcb",
+        "category": "train"
+      }
+    ],
+    "lines": [
+      {
+        "category": "train",
+        "offer_id": "2026-10-17|D3056|上海|重庆北|O|二等座",
+        "quantity": 1,
+        "unit_price_cny": "594",
+        "amount_cny": "594",
+        "source": {
+          "provider": "聚合数据",
+          "fetched_at": "2026-10-13T14:38:14.780424+08:00",
+          "url": "https://www.juhe.cn/docs/api/id/817"
+        },
+        "task_id": "task_d919696457784b329038e41c0fb23798"
+      }
+    ]
+  },
+  "validated_revisions": {
+    "task_66dfe510cf77407e8c95df5bf5e75dcb": 1,
+    "task_d919696457784b329038e41c0fb23798": 1
+  },
+  "signature": "ab4afbbd875ce119b6ec16573f53dbf3c53a9fab45693b453663303c66cff43b"
+}

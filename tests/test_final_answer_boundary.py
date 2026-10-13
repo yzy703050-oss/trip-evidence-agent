@@ -37,24 +37,21 @@ def test_entrypoints_import_in_a_fresh_python_process(entrypoint):
 
 @pytest.mark.asyncio
 async def test_harness_final_answer_contains_sourced_quote_without_cli():
-    class Info:
-        async def run(self, context, run):
-            domains = {"train": domain([train()])}
-            run.domain_results.update(domains)
-            return {
-                "status": "ok",
-                "summary": "已查到车次",
-                "missing_fields": [],
-                "domain_results": domains,
-                "travel_conditions": {},
-            }
-
-    main = Main([{"agent_name": "information_query", "requested_domains": ["train"]}])
-    result = await ExecutionHarness(main, {"information_query": Info()}).run_turn(
-        {"original_query": "查询火车"}, RunState("t1")
-    )
+    from agents.workflow_queries import as_result
+    class Provider:
+        async def search(self, query):
+            return as_result({**domain([train()]), 'parameters': query.to_dict()})
+    class DirectMain:
+        finalize_calls = 0
+        async def initialize(self, context):
+            return {'response_mode': 'answer', 'agent_schedule': [], 'query_plan': [{'domain': 'train',
+                'parameters': {'origin': '北京南', 'destination': '上海虹桥', 'departure_date': '2026-10-11'}}]}
+    class Registry(dict):
+        providers = {'train_search': Provider()}
+    main = DirectMain()
+    result = await ExecutionHarness(main, Registry()).run_turn({'original_query': '查询火车'}, RunState('t1'))
     final = json.loads(json.dumps(result, ensure_ascii=False))
-    assert final["finalization_method"] == "forward"
+    assert final["finalization_method"] == "tools"
     assert main.finalize_calls == 0
     for expected in (
         "G25",

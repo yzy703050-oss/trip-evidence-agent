@@ -1,0 +1,95 @@
+{
+  "case": "tourism_live",
+  "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是旅游，不查询企业政策，酒店只需提供地点，价格及空房未知请说明。",
+  "live_model": true,
+  "live_rag": false,
+  "status": "error",
+  "stop_reason": null,
+  "latency_ms": 3721.766,
+  "model_calls": 2,
+  "stage_counts": {
+    "main:plan": 1,
+    "main:repair_proposal": 1
+  },
+  "input_tokens": 2183,
+  "output_tokens": 722,
+  "token_usage_complete": true,
+  "tools": {},
+  "rag_search_count": 0,
+  "rag_latency_ms": 0,
+  "checks": {
+    "no_model_error": true,
+    "usage_available": true,
+    "completed": false,
+    "global_valid": false,
+    "no_policy_call": true
+  },
+  "task_success": false,
+  "final_answer": "请求或模型动作无效，未继续执行。",
+  "model_usage": [
+    {
+      "type": "model_call",
+      "stage": "main:plan",
+      "model": "deepseek-flash",
+      "status": "success",
+      "error": null,
+      "latency_ms": 2120.595,
+      "ttft_ms": 455.212,
+      "input_tokens": 1359,
+      "output_tokens": 461,
+      "estimated_cost_usd": null,
+      "turn_id": "5eef1bad866a4d20bf1e7d9fb039f9ed",
+      "user_id": "tourism_live",
+      "session_id": "live",
+      "run_seq": 2,
+      "timestamp": "2026-10-13T06:22:33.870135+00:00"
+    },
+    {
+      "type": "model_call",
+      "stage": "main:repair_proposal",
+      "model": "deepseek-flash",
+      "status": "success",
+      "error": null,
+      "latency_ms": 1549.334,
+      "ttft_ms": 324.038,
+      "input_tokens": 824,
+      "output_tokens": 261,
+      "estimated_cost_usd": null,
+      "turn_id": "5eef1bad866a4d20bf1e7d9fb039f9ed",
+      "user_id": "tourism_live",
+      "session_id": "live",
+      "run_seq": 6,
+      "timestamp": "2026-10-13T06:22:35.436792+00:00"
+    }
+  ],
+  "total_tokens": 2905,
+  "supplier_mode": "real",
+  "supplier_request_count": 0,
+  "diagnostics": [
+    {
+      "case": "tourism_live",
+      "stage": "main:plan",
+      "unsupported_confirmed_fields": [
+        "purpose",
+        "seat_class"
+      ],
+      "invalid_purposes": [],
+      "hotel_keywords_types": [],
+      "validator_status": "failed",
+      "error_type": "ValueError",
+      "error": "unsupported workflow conditions"
+    },
+    {
+      "case": "tourism_live",
+      "stage": "main:repair_proposal",
+      "unsupported_confirmed_fields": [],
+      "invalid_purposes": [
+        "tourism"
+      ],
+      "hotel_keywords_types": [],
+      "validator_status": "failed",
+      "error_type": "ValueError",
+      "error": "invalid task purpose"
+    }
+  ]
+}

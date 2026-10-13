@@ -15,7 +15,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from config import LLM_CONFIG, get_model_generate_kwargs
-from agentscope.model import OpenAIChatModel
+from agents.openai_model import OpenAIChatModel
 
 # 动态加载同目录下的 agent.py
 def load_rag_agent_class():
@@ -33,12 +33,12 @@ def split_text(text: str, max_chars: int = 600, overlap: int = 100) -> List[str]
     简单的文本切分：优先按段落切分，控制每块大小
     """
     chunks = []
-    
+
     # 预处理：按空行分割成段落
     lines = text.split('\n')
     paragraphs = []
     current_para = []
-    
+
     for line in lines:
         if line.strip() == "":
             if current_para:
@@ -48,10 +48,10 @@ def split_text(text: str, max_chars: int = 600, overlap: int = 100) -> List[str]
             current_para.append(line)
     if current_para:
         paragraphs.append("\n".join(current_para))
-    
+
     # 组合段落
     current_chunk = ""
-    
+
     for para in paragraphs:
         # 如果加上当前段落还未超限
         if len(current_chunk) + len(para) <= max_chars:
@@ -60,7 +60,7 @@ def split_text(text: str, max_chars: int = 600, overlap: int = 100) -> List[str]
             # 已经超限，先保存当前 chunk
             if current_chunk:
                 chunks.append(current_chunk.strip())
-            
+
             # 如果单个段落非常长，强制切分
             if len(para) > max_chars:
                 # 这里的逻辑简单处理：直接把长段落作为新起点（可能会再次被切分，如果这里加递归太复杂，
@@ -74,10 +74,10 @@ def split_text(text: str, max_chars: int = 600, overlap: int = 100) -> List[str]
                 # 开启新 chunk，并带上前一个 chunk 的尾部作为 overlap（如果需要）
                 # 这里简单起见，不搞 overlap 了，因为是按自然段落切的
                 current_chunk = para
-    
+
     if current_chunk:
         chunks.append(current_chunk.strip())
-        
+
     return chunks
 
 def load_documents_from_directory(directory_path: str) -> List[Dict]:
@@ -146,10 +146,10 @@ def load_documents_from_directory(directory_path: str) -> List[Dict]:
 
             # --- 文档切分逻辑 ---
             chunks = split_text(content, max_chars=600, overlap=100)
-            
+
             for i, chunk_content in enumerate(chunks):
                 doc_id = f"{base_doc_id}_{i+1}"
-                
+
                 # 构建文档对象
                 document = {
                     "id": doc_id,
@@ -164,7 +164,7 @@ def load_documents_from_directory(directory_path: str) -> List[Dict]:
                     }
                 }
                 documents.append(document)
-            
+
             total_chunks += len(chunks)
             print(f"   ✓ 加载文档: {file_path.name} -> {len(chunks)} chunks")
 
@@ -203,7 +203,7 @@ def main():
 
         # 确保目录存在
         knowledge_base_path.mkdir(parents=True, exist_ok=True)
-        
+
         # 创建RAG Agent
         print("2. 初始化RAG Agent...")
         print(f"   知识库路径: {knowledge_base_path}")
@@ -235,7 +235,7 @@ def main():
 
         # 添加文档到RAG知识库
         print("4. 将文档添加到RAG知识库...")
-        
+
         # 在添加之前，先清空旧的 collection（如果只是追加的话，ID会冲突，这里我们假设是从头开始）
         # RAGKnowledgeAgent 目前的实现是直接 insert。
         # 由于我们之前已经运行过一次，且 ID 策略变了（doc_001 -> doc_001_1），这可能会导致混合。
@@ -294,7 +294,7 @@ def main():
                             metadata = json.loads(metadata)
                         except:
                             metadata = {}
-                    
+
                     title = metadata.get('title', 'Unknown')
                     distance = doc.get('distance', 0.0)
                     print(f"      [{i}] {title} (相似度: {1-distance:.3f})")

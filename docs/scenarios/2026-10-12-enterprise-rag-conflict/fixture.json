@@ -1,0 +1,605 @@
+{
+  "schema_version": 1,
+  "simulation": true,
+  "ready_to_run": false,
+  "notice": "静态场景与数据夹具；尚无自动回放器，未执行线上工具/RAG/模型。报价必须由mock报价provider提供，不能当作高德hotel_place能力。",
+  "user_query": "11月3日从重庆出发，去上海和杭州做客户验收。11月6日下午从杭州返程，11月7日到重庆可以。会议要求以企业项目资料为准，优先全季，酒店晚数和城市间移动日期你安排。我没有超标审批，帮我按公司制度规划。",
+  "user_profile": {
+    "employee_id": "fixture-linchen",
+    "employee_name": "林晨",
+    "project_id": "SQ-PRJ-SH-HZ-27",
+    "employee_level": "普通员工",
+    "preferences": {
+      "home_location": "重庆",
+      "hotel_brands": [
+        "全季"
+      ]
+    }
+  },
+  "rag_queries": [
+    {
+      "id": "R1",
+      "query": "普通员工境内出差上海杭州住宿上限、席别、品牌偏好与提前住宿规定",
+      "expected_documents": [
+        "SQ-POL-2026-09"
+      ]
+    },
+    {
+      "id": "R2",
+      "query": "SQ-PRJ-SH-HZ-27会议起止时间、到站缓冲、可调整行程日期与差旅批准范围",
+      "expected_documents": [
+        "SQ-PRJ-SH-HZ-27"
+      ]
+    },
+    {
+      "id": "R3",
+      "query": "活动期上海住宿550元例外是否适用于林晨及SQ-PRJ-SH-HZ-27，是否存在有效审批",
+      "expected_documents": [
+        "SQ-EXC-2026-11"
+      ]
+    }
+  ],
+  "policy_facts": {
+    "shanghai_hotel_max_nightly_cny": "500",
+    "hangzhou_hotel_max_nightly_cny": "400",
+    "seat_class": "二等座",
+    "hotel_brand_is_soft": true,
+    "exception_approved": false,
+    "shanghai_meeting_end": "2026-11-04T17:00:00+08:00",
+    "hangzhou_arrival_deadline": "2026-11-05T08:15:00+08:00",
+    "return_departure_not_before": "2026-11-06T16:00:00+08:00",
+    "references": {
+      "hotel_limits": "SQ-POL-2026-09#4.1",
+      "brand_priority": "SQ-POL-2026-09#4.2",
+      "meeting_times": "SQ-PRJ-SH-HZ-27",
+      "exception": "SQ-EXC-2026-11"
+    }
+  },
+  "initial_query_drafts": [
+    {
+      "task_id": "fixture-task-1",
+      "revision": 1,
+      "purpose": "business",
+      "route": [
+        "重庆",
+        "上海"
+      ],
+      "status": "draft",
+      "draft_stage": "query",
+      "conditions": {
+        "check_in": "2026-11-03",
+        "check_out": "2026-11-05",
+        "stay_source": "proposal"
+      },
+      "containers": {
+        "train": {
+          "status": "ready",
+          "query_id": "fixture-q1",
+          "result": {
+            "status": "ok",
+            "query": {
+              "origin": "重庆",
+              "destination": "上海",
+              "departure_date": "2026-11-03",
+              "passengers": 1
+            },
+            "items": [
+              {
+                "id": "fixture-cqsh",
+                "train_number": "SIM-CQSH",
+                "origin_station": "重庆北",
+                "destination_station": "上海虹桥",
+                "departure_time": "08:00",
+                "arrival_time": "20:00",
+                "departure_at": "2026-11-03T08:00:00+08:00",
+                "arrival_at": "2026-11-03T20:00:00+08:00",
+                "seat_class": "二等座",
+                "price_cny": "600",
+                "availability": "available",
+                "remaining": 8,
+                "source": {
+                  "provider": "simulation_fixture",
+                  "fetched_at": "2026-10-12T20:00:00+08:00",
+                  "url": null
+                },
+                "url": null,
+                "time_evidence": {
+                  "departure": "simulation_fixture",
+                  "arrival": "simulation_fixture"
+                }
+              }
+            ],
+            "missing_fields": [],
+            "source": {
+              "provider": "simulation_fixture",
+              "fetched_at": "2026-10-12T20:00:00+08:00",
+              "url": null
+            },
+            "fetched_at": "2026-10-12T20:00:00+08:00",
+            "message": "虚构报价/车次，仅用于离线回放。",
+            "simulation": true
+          }
+        },
+        "hotel": {
+          "status": "ready",
+          "query_id": "fixture-q2",
+          "result": {
+            "status": "ok",
+            "query": {
+              "city": "上海",
+              "check_in": "2026-11-03",
+              "check_out": "2026-11-05",
+              "guests": 1
+            },
+            "items": [
+              {
+                "id": "fixture-sh-brand",
+                "hotel_name": "全季上海演示店",
+                "room_type": "标准间（演示）",
+                "check_in": "2026-11-03",
+                "check_out": "2026-11-05",
+                "guests": 1,
+                "stay_total_cny": "1240",
+                "fees_included": true,
+                "availability": "available",
+                "cancellation": "演示：入住前一天18:00前免费取消",
+                "source": {
+                  "provider": "simulation_fixture",
+                  "fetched_at": "2026-10-12T20:00:00+08:00",
+                  "url": null
+                },
+                "url": null
+              }
+            ],
+            "missing_fields": [],
+            "source": {
+              "provider": "simulation_fixture",
+              "fetched_at": "2026-10-12T20:00:00+08:00",
+              "url": null
+            },
+            "fetched_at": "2026-10-12T20:00:00+08:00",
+            "message": "虚构报价/车次，仅用于离线回放。",
+            "simulation": true
+          }
+        }
+      }
+    },
+    {
+      "task_id": "fixture-task-2",
+      "revision": 1,
+      "purpose": "business",
+      "route": [
+        "上海",
+        "杭州"
+      ],
+      "status": "draft",
+      "draft_stage": "query",
+      "conditions": {
+        "departure_date": "2026-11-05",
+        "check_in": "2026-11-05",
+        "check_out": "2026-11-06",
+        "date_source": "proposal"
+      },
+      "containers": {
+        "train": {
+          "status": "ready",
+          "query_id": "fixture-q3",
+          "result": {
+            "status": "ok",
+            "query": {
+              "origin": "上海",
+              "destination": "杭州",
+              "departure_date": "2026-11-05",
+              "passengers": 1
+            },
+            "items": [
+              {
+                "id": "fixture-shhz-late",
+                "train_number": "SIM-SHHZ-LATE",
+                "origin_station": "上海虹桥",
+                "destination_station": "杭州东",
+                "departure_time": "09:15",
+                "arrival_time": "10:10",
+                "departure_at": "2026-11-05T09:15:00+08:00",
+                "arrival_at": "2026-11-05T10:10:00+08:00",
+                "seat_class": "二等座",
+                "price_cny": "65",
+                "availability": "available",
+                "remaining": 8,
+                "source": {
+                  "provider": "simulation_fixture",
+                  "fetched_at": "2026-10-12T20:00:00+08:00",
+                  "url": null
+                },
+                "url": null,
+                "time_evidence": {
+                  "departure": "simulation_fixture",
+                  "arrival": "simulation_fixture"
+                }
+              }
+            ],
+            "missing_fields": [],
+            "source": {
+              "provider": "simulation_fixture",
+              "fetched_at": "2026-10-12T20:00:00+08:00",
+              "url": null
+            },
+            "fetched_at": "2026-10-12T20:00:00+08:00",
+            "message": "虚构报价/车次，仅用于离线回放。",
+            "simulation": true
+          }
+        },
+        "hotel": {
+          "status": "ready",
+          "query_id": "fixture-q4",
+          "result": {
+            "status": "ok",
+            "query": {
+              "city": "杭州",
+              "check_in": "2026-11-05",
+              "check_out": "2026-11-06",
+              "guests": 1
+            },
+            "items": [
+              {
+                "id": "fixture-hz-brand",
+                "hotel_name": "全季杭州演示店",
+                "room_type": "标准间（演示）",
+                "check_in": "2026-11-05",
+                "check_out": "2026-11-06",
+                "guests": 1,
+                "stay_total_cny": "460",
+                "fees_included": true,
+                "availability": "available",
+                "cancellation": "演示：入住前一天18:00前免费取消",
+                "source": {
+                  "provider": "simulation_fixture",
+                  "fetched_at": "2026-10-12T20:00:00+08:00",
+                  "url": null
+                },
+                "url": null
+              }
+            ],
+            "missing_fields": [],
+            "source": {
+              "provider": "simulation_fixture",
+              "fetched_at": "2026-10-12T20:00:00+08:00",
+              "url": null
+            },
+            "fetched_at": "2026-10-12T20:00:00+08:00",
+            "message": "虚构报价/车次，仅用于离线回放。",
+            "simulation": true
+          }
+        }
+      }
+    },
+    {
+      "task_id": "fixture-task-3",
+      "revision": 1,
+      "purpose": "return",
+      "route": [
+        "杭州",
+        "重庆"
+      ],
+      "status": "draft",
+      "draft_stage": "query",
+      "conditions": {
+        "departure_date": "2026-11-06"
+      },
+      "containers": {
+        "train": {
+          "status": "ready",
+          "query_id": "fixture-q5",
+          "result": {
+            "status": "ok",
+            "query": {
+              "origin": "杭州",
+              "destination": "重庆",
+              "departure_date": "2026-11-06",
+              "passengers": 1
+            },
+            "items": [
+              {
+                "id": "fixture-hzcq",
+                "train_number": "SIM-HZCQ",
+                "origin_station": "杭州东",
+                "destination_station": "重庆北",
+                "departure_time": "16:30",
+                "arrival_time": "06:30",
+                "departure_at": "2026-11-06T16:30:00+08:00",
+                "arrival_at": "2026-11-07T06:30:00+08:00",
+                "seat_class": "二等座",
+                "price_cny": "580",
+                "availability": "available",
+                "remaining": 8,
+                "source": {
+                  "provider": "simulation_fixture",
+                  "fetched_at": "2026-10-12T20:00:00+08:00",
+                  "url": null
+                },
+                "url": null,
+                "time_evidence": {
+                  "departure": "simulation_fixture",
+                  "arrival": "simulation_fixture"
+                }
+              }
+            ],
+            "missing_fields": [],
+            "source": {
+              "provider": "simulation_fixture",
+              "fetched_at": "2026-10-12T20:00:00+08:00",
+              "url": null
+            },
+            "fetched_at": "2026-10-12T20:00:00+08:00",
+            "message": "虚构报价/车次，仅用于离线回放。",
+            "simulation": true
+          }
+        }
+      }
+    }
+  ],
+  "expected_conflicts": [
+    {
+      "code": "hotel_budget_failed",
+      "task_id": "fixture-task-1",
+      "component": "hotel",
+      "actual_nightly_cny": "620",
+      "maximum": "500"
+    },
+    {
+      "code": "hotel_budget_failed",
+      "task_id": "fixture-task-2",
+      "component": "hotel",
+      "actual_nightly_cny": "460",
+      "maximum": "400"
+    },
+    {
+      "code": "arrival_deadline_mismatch",
+      "task_id": "fixture-task-2",
+      "component": "train/schedule",
+      "actual_arrival": "2026-11-05T10:10:00+08:00",
+      "deadline": "2026-11-05T08:15:00+08:00"
+    },
+    {
+      "code": "policy_exception_not_applicable",
+      "component": "policy",
+      "details": "550元例外无对应审批，不能用其覆盖500元基础标准。"
+    }
+  ],
+  "expected_repair": {
+    "root_task_ids": [
+      "fixture-task-1",
+      "fixture-task-2"
+    ],
+    "components": [
+      "hotel",
+      "train",
+      "schedule"
+    ],
+    "changes": [
+      {
+        "task_id": "fixture-task-1",
+        "component": "hotel",
+        "field_changes": {
+          "check_out": "2026-11-04",
+          "brand_search_keywords": "酒店"
+        },
+        "reason": "上海会议后转杭州；品牌软偏好让位基础预算。"
+      },
+      {
+        "task_id": "fixture-task-2",
+        "component": "train",
+        "field_changes": {
+          "departure_date": "2026-11-04",
+          "departure_time_after": "17:00"
+        },
+        "reason": "当前已保存的11月5日候选页无符合到站截止的车次，改查前晚。"
+      },
+      {
+        "task_id": "fixture-task-2",
+        "component": "hotel",
+        "field_changes": {
+          "check_in": "2026-11-04",
+          "brand_search_keywords": "酒店"
+        },
+        "reason": "杭州前晚入住且仅有品牌候选超标。"
+      }
+    ],
+    "preserve": [
+      "fixture-task-1/train",
+      "fixture-task-3/train"
+    ],
+    "invalidate": [
+      "fixture-task-1/hotel",
+      "fixture-task-2/train",
+      "fixture-task-2/hotel"
+    ],
+    "do_not_change": [
+      "fixed_meeting_times",
+      "return_departure_date",
+      "long_term_hotel_brand_preference",
+      "enterprise_hotel_limits"
+    ]
+  },
+  "repair_tool_results": [
+    {
+      "task_id": "fixture-task-1",
+      "domain": "hotel",
+      "result": {
+        "status": "ok",
+        "query": {
+          "city": "上海",
+          "check_in": "2026-11-03",
+          "check_out": "2026-11-04",
+          "guests": 1
+        },
+        "items": [
+          {
+            "id": "fixture-sh-alt",
+            "hotel_name": "上海协议酒店A（虚构）",
+            "room_type": "标准间（演示）",
+            "check_in": "2026-11-03",
+            "check_out": "2026-11-04",
+            "guests": 1,
+            "stay_total_cny": "480",
+            "fees_included": true,
+            "availability": "available",
+            "cancellation": "演示：入住前一天18:00前免费取消",
+            "source": {
+              "provider": "simulation_fixture",
+              "fetched_at": "2026-10-12T20:00:00+08:00",
+              "url": null
+            },
+            "url": null
+          }
+        ],
+        "missing_fields": [],
+        "source": {
+          "provider": "simulation_fixture",
+          "fetched_at": "2026-10-12T20:00:00+08:00",
+          "url": null
+        },
+        "fetched_at": "2026-10-12T20:00:00+08:00",
+        "message": "虚构报价/车次，仅用于离线回放。",
+        "simulation": true
+      }
+    },
+    {
+      "task_id": "fixture-task-2",
+      "domain": "train",
+      "result": {
+        "status": "ok",
+        "query": {
+          "origin": "上海",
+          "destination": "杭州",
+          "departure_date": "2026-11-04",
+          "passengers": 1
+        },
+        "items": [
+          {
+            "id": "fixture-shhz-evening",
+            "train_number": "SIM-SHHZ-EVENING",
+            "origin_station": "上海虹桥",
+            "destination_station": "杭州东",
+            "departure_time": "18:30",
+            "arrival_time": "19:25",
+            "departure_at": "2026-11-04T18:30:00+08:00",
+            "arrival_at": "2026-11-04T19:25:00+08:00",
+            "seat_class": "二等座",
+            "price_cny": "65",
+            "availability": "available",
+            "remaining": 8,
+            "source": {
+              "provider": "simulation_fixture",
+              "fetched_at": "2026-10-12T20:00:00+08:00",
+              "url": null
+            },
+            "url": null,
+            "time_evidence": {
+              "departure": "simulation_fixture",
+              "arrival": "simulation_fixture"
+            }
+          }
+        ],
+        "missing_fields": [],
+        "source": {
+          "provider": "simulation_fixture",
+          "fetched_at": "2026-10-12T20:00:00+08:00",
+          "url": null
+        },
+        "fetched_at": "2026-10-12T20:00:00+08:00",
+        "message": "虚构报价/车次，仅用于离线回放。",
+        "simulation": true
+      }
+    },
+    {
+      "task_id": "fixture-task-2",
+      "domain": "hotel",
+      "result": {
+        "status": "ok",
+        "query": {
+          "city": "杭州",
+          "check_in": "2026-11-04",
+          "check_out": "2026-11-06",
+          "guests": 1
+        },
+        "items": [
+          {
+            "id": "fixture-hz-alt",
+            "hotel_name": "杭州协议酒店B（虚构）",
+            "room_type": "标准间（演示）",
+            "check_in": "2026-11-04",
+            "check_out": "2026-11-06",
+            "guests": 1,
+            "stay_total_cny": "760",
+            "fees_included": true,
+            "availability": "available",
+            "cancellation": "演示：入住前一天18:00前免费取消",
+            "source": {
+              "provider": "simulation_fixture",
+              "fetched_at": "2026-10-12T20:00:00+08:00",
+              "url": null
+            },
+            "url": null
+          }
+        ],
+        "missing_fields": [],
+        "source": {
+          "provider": "simulation_fixture",
+          "fetched_at": "2026-10-12T20:00:00+08:00",
+          "url": null
+        },
+        "fetched_at": "2026-10-12T20:00:00+08:00",
+        "message": "虚构报价/车次，仅用于离线回放。",
+        "simulation": true
+      }
+    }
+  ],
+  "expected_final": {
+    "status": "simulation_plan_valid",
+    "selected_ids": [
+      "fixture-cqsh",
+      "fixture-sh-alt",
+      "fixture-shhz-evening",
+      "fixture-hz-alt",
+      "fixture-hzcq"
+    ],
+    "shanghai_nights": 1,
+    "hangzhou_nights": 2,
+    "train_total_cny": "1245",
+    "hotel_total_cny": "1240",
+    "known_total_cny": "2485",
+    "excluded_costs": [
+      "市内交通",
+      "餐饮",
+      "其他未查询项目"
+    ],
+    "additional_provider_calls": 3,
+    "preserved_provider_calls": 2,
+    "simulation_disclosure_required": true
+  },
+  "negative_cases": [
+    {
+      "name": "无报价能力",
+      "override": "酒店provider只有hotel_place",
+      "expected": "不能证明满足500/400元上限，不反复刷新同一地点接口，保存缺口/partial。"
+    },
+    {
+      "name": "住宿晚数固定",
+      "override": "用户明确上海必须住两晚",
+      "expected": "不能自行减少上海住宿晚数；报告与项目安排冲突，询问调整或保留部分。"
+    },
+    {
+      "name": "已有可用备选",
+      "override": "缓存已含前晚车次和相同新日期有效报价",
+      "expected": "复用或读取缓存，不为演示修复而重新请求供应商。"
+    },
+    {
+      "name": "材料未检索到",
+      "override": "RAG no_knowledge/error",
+      "expected": "不能假设制度允许，说明适用规则缺口。"
+    }
+  ],
+  "fixture_stage": "raw_query_draft_before_candidate_acceptance",
+  "fixture_notes": "初版故意含超标和晚到候选；现有硬约束过滤/校验不能绕过，过滤后无候选应保留原因供主模型选择修复策略。此文件非当前workflow schema的直接导入文件，需要回放适配。"
+}

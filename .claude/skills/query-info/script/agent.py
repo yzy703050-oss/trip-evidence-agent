@@ -6,8 +6,8 @@ import json
 from uuid import uuid4
 from time import perf_counter
 
-from agentscope.agent import AgentBase
-from agentscope.message import Msg
+from agents.runtime import AgentBase
+from agents.runtime import Msg
 from agents.contracts import RunState
 from agents.model_io import collect_model_turn, to_assistant_tool_message, to_tool_message
 from context.telemetry import model_stage, model_scope, current_model_context

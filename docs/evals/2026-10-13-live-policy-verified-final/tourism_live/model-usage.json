@@ -1,0 +1,37 @@
+[
+  {
+    "type": "model_call",
+    "stage": "main:plan",
+    "model": "deepseek-flash",
+    "status": "success",
+    "error": null,
+    "latency_ms": 1465.0,
+    "ttft_ms": 686.709,
+    "input_tokens": 2238,
+    "output_tokens": 208,
+    "estimated_cost_usd": null,
+    "turn_id": "ab779272a6434a058020acea660fef32",
+    "user_id": "tourism_live",
+    "session_id": "live",
+    "run_seq": 2,
+    "timestamp": "2026-10-13T07:00:10.585226+00:00"
+  },
+  {
+    "type": "model_call",
+    "stage": "main:select_batch",
+    "model": "deepseek-flash",
+    "status": "success",
+    "error": null,
+    "latency_ms": 2571.175,
+    "ttft_ms": 826.412,
+    "input_tokens": 4706,
+    "output_tokens": 409,
+    "estimated_cost_usd": null,
+    "turn_id": "ab779272a6434a058020acea660fef32",
+    "workflow_id": "workflow_d157802b43fd4e29b44380f0836ec5dc",
+    "user_id": "tourism_live",
+    "session_id": "live",
+    "run_seq": 9,
+    "timestamp": "2026-10-13T07:00:13.970197+00:00"
+  }
+]

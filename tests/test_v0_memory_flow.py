@@ -4,7 +4,7 @@ import io
 import json
 
 import pytest
-from agentscope.message import Msg
+from agents.runtime import Msg
 from rich.console import Console
 
 from agents.execution_harness import ExecutionHarness
@@ -103,32 +103,6 @@ async def test_bad_main_returns_safe_error_and_records_real_user(tmp_path):
     assert json.loads(events[-1]['content'])['error_code'] == 'invalid_plan'
 
 
-@pytest.mark.asyncio
-async def test_direct_child_is_stage_not_tool_and_receives_summary(tmp_path):
-    from agents.contracts import RunState
-    from test_main_harness import Main
-    memory = MemoryManager('alice', 's1', storage_path=str(tmp_path))
-    turn_id = memory.start_turn('query')
-    observed = []
-    class RawModel:
-        async def __call__(self, messages):
-            from types import SimpleNamespace
-            return SimpleNamespace(content='ok', usage=None)
-    metered = MeteredModel(RawModel(), memory.session_store.append_run)
-    class Child:
-        async def reply(self, msg):
-            observed.append(json.loads(msg.content)['context'])
-            await metered([{'role': 'user', 'content': 'history'}])
-            return Msg('child', '{"answer":"history"}', 'assistant')
-    harness = ExecutionHarness(main_agent=Main([{'agent_name': 'memory_query'}], mode='synthesize'),
-        agent_registry={'memory_query': Child()}, memory_manager=memory)
-    await harness.run_turn({'original_query': 'query', 'session_summary': 'older summary', 'recent_messages': []}, RunState(turn_id))
-    events = memory.session_store.read_events()
-    assert any(e.get('agent_name') == 'memory_query' for e in events)
-    assert not any(e['type'] == 'tool_call' for e in events)
-    assert any(r.get('stage') == 'agent:memory_query' for r in memory.session_store.read_runs())
-    assert observed[0]['session_summary'] == 'older summary'
-    assert observed[0]['recent_messages'] == []
 
 
 def test_cli_can_select_existing_session_and_edit_profile(tmp_path, monkeypatch):

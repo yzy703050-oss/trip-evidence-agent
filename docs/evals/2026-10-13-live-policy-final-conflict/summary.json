@@ -1,0 +1,175 @@
+{
+  "model": "deepseek-flash",
+  "generation": {
+    "temperature": 0.7,
+    "max_tokens": 1116,
+    "extra_body": {
+      "thinking": {
+        "type": "disabled"
+      }
+    }
+  },
+  "created_at": "2026-10-13T14:52:19.115955+08:00",
+  "rag_setup": {
+    "database_path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\v0-policy-live-5aqrs27v",
+    "documents": [
+      {
+        "content": "【虚构测试制度】星桥信息境内出差制度 SQ-TRAVEL-2026-V2，版本2，2026-10-01生效。适用普通员工上海出差。第一条：高铁动车只能二等座，单程火车费用每人不超过700元。第二条：上海住宿含税及必付费用每间每晚不超过500元。品牌是软偏好，不能覆盖上限。必须检索当前制度并遵守硬约束。",
+        "metadata": {
+          "document_id": "SQ-TRAVEL-2026-V2",
+          "title": "星桥信息境内出差制度",
+          "version": "2",
+          "effective_date": "2026-10-01",
+          "location": "第一、二条",
+          "status": "active"
+        }
+      },
+      {
+        "content": "【虚构测试旧制度】星桥信息旧差旅标准 SQ-TRAVEL-2025-V1 曾允许上海住宿900元/晚。本制度已于2026-10-01废止，被SQ-TRAVEL-2026-V2替代。当前出差不能采用旧900元标准，必须采用版本2的上海500元/晚限额及高铁二等座要求。",
+        "metadata": {
+          "document_id": "SQ-TRAVEL-2025-V1",
+          "title": "已废止住宿标准",
+          "version": "1",
+          "location": "废止说明",
+          "status": "superseded"
+        }
+      },
+      {
+        "content": "【虚构测试例外】星桥信息SQ-EXCEPTION-2026仅说明超标审批流程：项目出差如需上海住宿上限800元/晚，必须在预订前取得有效审批编号，并核对员工、城市、日期、项目。此文档不是已批准凭证。没有审批编号时采用版本2基础限额500元/晚；不能因为用户偏好全季就视为批准。",
+        "metadata": {
+          "document_id": "SQ-EXCEPTION-2026",
+          "title": "超标审批条件",
+          "version": "1",
+          "location": "例外适用条件",
+          "status": "active"
+        }
+      }
+    ],
+    "ingestion": {
+      "status": "success",
+      "added_count": 3,
+      "total_count": 3
+    },
+    "initialization_and_ingestion_ms": 8141.555,
+    "embedding_tokens": null,
+    "embedding_note": "local sentence-transformers; no billed embedding API"
+  },
+  "runs": [
+    {
+      "case": "business_conflict",
+      "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是星桥信息普通员工出差，优先全季，请检索公司当前差旅制度。无超标审批编号，不能采用已废止900元标准或未批准800元例外。酒店必须取得含税报价并符合当前上限。查到超标或没有可选报价时，请定向重新查询酒店，保留有效火车；若接口没有报价能力则如实说明缺口，不反复查询。",
+      "live_model": true,
+      "live_rag": true,
+      "supplier_mode": "simulation",
+      "supplier_request_count": 4,
+      "status": "partial",
+      "stop_reason": "no_progress",
+      "latency_ms": 7380.618,
+      "model_calls": 4,
+      "stage_counts": {
+        "agent:travel_policy": 1,
+        "main:plan": 1,
+        "main:select_batch": 2
+      },
+      "input_tokens": 14067,
+      "output_tokens": 1078,
+      "token_usage_complete": true,
+      "tools": {
+        "train_search": 2,
+        "hotel_search": 2
+      },
+      "rag_search_count": 1,
+      "rag_latency_ms": 63.898,
+      "checks": {
+        "no_model_error": true,
+        "usage_available": true,
+        "no_proposal_repair": true,
+        "finite_stop": false,
+        "actual_vector_retrieval": true,
+        "current_hotel_cap": true,
+        "source_citations": true,
+        "completed": false,
+        "global_valid": false,
+        "hotel_requeried": true,
+        "trains_not_replayed": true
+      },
+      "expected_behavior_success": false,
+      "task_success": false,
+      "final_answer": "去程从重庆到上海，这次查询范围内没找到合适车次，发到时刻和票价还不能确定；计划2026年10月15日出发。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店。住宿暂未找到合适候选，可以按以上日期继续筛选。\n\n回程从上海到重庆，这次查询范围内没找到合适车次，发到时刻和票价还不能确定；计划2026年10月17日出发。\n\n可以先在铁路官方售票渠道核对车次，再确定发到时间；住宿日期也需随实际抵达调整。 以下为模拟数据，仅用于测试。",
+      "model_usage": [
+        {
+          "type": "model_call",
+          "stage": "agent:travel_policy",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 2779.632,
+          "ttft_ms": 1104.956,
+          "input_tokens": 1368,
+          "output_tokens": 525,
+          "estimated_cost_usd": null,
+          "turn_id": "be5462ccfef74e1086a20246b12b6fd6",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 2,
+          "timestamp": "2026-10-13T06:52:14.585043+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:plan",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1992.092,
+          "ttft_ms": 856.644,
+          "input_tokens": 2748,
+          "output_tokens": 345,
+          "estimated_cost_usd": null,
+          "turn_id": "be5462ccfef74e1086a20246b12b6fd6",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 5,
+          "timestamp": "2026-10-13T06:52:16.594227+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1208.386,
+          "ttft_ms": 733.568,
+          "input_tokens": 4885,
+          "output_tokens": 104,
+          "estimated_cost_usd": null,
+          "turn_id": "be5462ccfef74e1086a20246b12b6fd6",
+          "workflow_id": "workflow_4823d285e3ab458eb2bd8fce9c6cc887",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 12,
+          "timestamp": "2026-10-13T06:52:17.917325+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1095.279,
+          "ttft_ms": 711.76,
+          "input_tokens": 5066,
+          "output_tokens": 104,
+          "estimated_cost_usd": null,
+          "turn_id": "be5462ccfef74e1086a20246b12b6fd6",
+          "workflow_id": "workflow_4823d285e3ab458eb2bd8fce9c6cc887",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 17,
+          "timestamp": "2026-10-13T06:52:19.074912+00:00"
+        }
+      ],
+      "total_tokens": 15145
+    }
+  ],
+  "total_tokens": 15145
+}

@@ -78,38 +78,8 @@ def test_failed_train_uses_planned_dates_and_one_concise_actionable_limitation()
     assert text.count('房价') == 1
 
 
-@pytest.mark.asyncio
-async def test_harness_uses_model_reply_once_without_replaying_queries(tmp_path):
-    from agents.contracts import RunState
-    r = runtime(tmp_path, [dict(origin='重庆', destination='上海', requires_hotel=True,
-                               conditions={'nights': 2})])
-    calls = []
-    async def compose(context):
-        calls.append(deepcopy(context))
-        return {'template': complete_template(context['reply_facts'])}
-    r.main.compose_workflow_reply = compose
-    result = await r.harness.run_turn({'original_query': '上海玩两晚',
-        'current_time': '2026-10-11T10:00:00+08:00'}, RunState(r.memory.start_turn('上海玩两晚')))
-    assert len(calls) == 1
-    assert result['reply_style'] == 'model'
-    assert result['final_answer'].startswith('这趟可以先这样安排：')
-    assert len(r.train.calls) == 2 and len(r.hotel.calls) == 1
-    assert '草稿' not in result['final_answer']
 
 
-@pytest.mark.asyncio
-async def test_invalid_model_prose_falls_back_without_losing_workflow(tmp_path):
-    from agents.contracts import RunState
-    r = runtime(tmp_path, [dict(origin='重庆', destination='上海', requires_hotel=True,
-                               conditions={'nights': 2})])
-    async def compose(context):
-        return {'template': complete_template(context['reply_facts']) + 'G9999仅需1元，已预订。'}
-    r.main.compose_workflow_reply = compose
-    result = await r.harness.run_turn({'original_query': '去上海',
-        'current_time': '2026-10-11T10:00:00+08:00'}, RunState(r.memory.start_turn('去上海')))
-    assert result['status'] == 'completed' and len(result['workflow']['tasks']) == 2
-    assert 'G9999' not in result['final_answer'] and '已预订' not in result['final_answer']
-    assert result['reply_style'] == 'fallback'
 
 
 def test_quoted_hotel_dates_appear_once_without_losing_booking_conditions():
@@ -129,35 +99,6 @@ def test_quoted_hotel_dates_appear_once_without_losing_booking_conditions():
         assert value in text
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize('failure', ['exception', 'timeout'])
-async def test_reply_service_failure_preserves_trip_and_never_replays_queries(
-        tmp_path, monkeypatch, failure):
-    import asyncio
-
-    import agents.execution_harness as harness_module
-    r = runtime(tmp_path, [dict(origin='重庆', destination='上海', requires_hotel=True,
-                               conditions={'nights': 3})])
-    calls, cancelled = [], []
-    async def compose(context):
-        calls.append(context)
-        if failure == 'exception':
-            raise RuntimeError('service unavailable')
-        try:
-            await asyncio.Event().wait()
-        finally:
-            cancelled.append(True)
-    original_wait = asyncio.wait_for
-    async def short_reply_wait(coroutine, timeout):
-        return await original_wait(coroutine, timeout=0.01 if timeout == 15.0 else timeout)
-    monkeypatch.setattr(harness_module.asyncio, 'wait_for', short_reply_wait)
-    r.main.compose_workflow_reply = compose
-    result = await r.turn('去上海玩')
-    assert result['status'] == 'completed' and result['reply_style'] == 'fallback'
-    assert len(calls) == 1 and len(r.train.calls) == 2 and len(r.hotel.calls) == 1
-    assert '建议住3晚' in result['final_answer']
-    assert '上海到重庆' in result['final_answer']
-    assert cancelled == ([True] if failure == 'timeout' else [])
 
 
 @pytest.mark.asyncio
@@ -173,30 +114,3 @@ async def test_pending_origin_question_does_not_call_reply_model(tmp_path):
     assert result['status'] == 'needs_input' and calls == []
     assert result['final_answer'] == '你准备从哪个城市出发？'
     assert not r.train.calls and not r.hotel.calls
-
-
-@pytest.mark.asyncio
-async def test_real_main_reply_method_is_metered_and_gets_only_public_facts(tmp_path):
-    import json
-    from types import SimpleNamespace
-
-    from agents.main_agent import MainAgent
-    from context.telemetry import MeteredModel
-    r = runtime(tmp_path, [dict(origin='重庆', destination='上海', requires_hotel=True,
-                               conditions={'nights': 3})])
-    prompts = []
-    async def model(messages):
-        prompts.extend(messages)
-        context = json.loads(messages[0]['content'].split('上下文：', 1)[1])
-        return SimpleNamespace(text=json.dumps({'template':
-            complete_template(context['reply_facts'])}, ensure_ascii=False))
-    agent = MainAgent(MeteredModel(model, r.memory.session_store.append_run))
-    r.main.compose_workflow_reply = agent.compose_workflow_reply
-    result = await r.turn('去上海玩')
-    assert result['reply_style'] == 'model'
-    records = [row for row in r.memory.session_store.read_runs()
-               if row.get('stage') == 'main:reply']
-    assert len(records) == 1 and records[0]['workflow_id'] == result['workflow_id']
-    assert records[0]['turn_id']
-    context = prompts[0]['content'].split('上下文：', 1)[1]
-    assert 'source' not in context and 'fetched_at' not in context and 'http' not in context

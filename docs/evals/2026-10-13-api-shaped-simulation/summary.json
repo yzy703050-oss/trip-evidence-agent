@@ -1,0 +1,486 @@
+{
+  "model": "deepseek-flash",
+  "generation": {
+    "temperature": 0.7,
+    "max_tokens": 1116,
+    "extra_body": {
+      "thinking": {
+        "type": "disabled"
+      }
+    }
+  },
+  "created_at": "2026-10-13T15:37:12.290814+08:00",
+  "rag_setup": {
+    "database_path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\v0-policy-live-fhzu7zya",
+    "documents": [
+      {
+        "content": "【虚构测试制度】星桥信息境内出差制度 SQ-TRAVEL-2026-V2，版本2，2026-10-01生效。适用普通员工上海出差。第一条：高铁动车只能二等座，单程火车费用每人不超过700元。第二条：上海住宿含税及必付费用每间每晚不超过500元。品牌是软偏好，不能覆盖上限。必须检索当前制度并遵守硬约束。",
+        "metadata": {
+          "document_id": "SQ-TRAVEL-2026-V2",
+          "title": "星桥信息境内出差制度",
+          "version": "2",
+          "effective_date": "2026-10-01",
+          "location": "第一、二条",
+          "status": "active"
+        }
+      },
+      {
+        "content": "【虚构测试旧制度】星桥信息旧差旅标准 SQ-TRAVEL-2025-V1 曾允许上海住宿900元/晚。本制度已于2026-10-01废止，被SQ-TRAVEL-2026-V2替代。当前出差不能采用旧900元标准，必须采用版本2的上海500元/晚限额及高铁二等座要求。",
+        "metadata": {
+          "document_id": "SQ-TRAVEL-2025-V1",
+          "title": "已废止住宿标准",
+          "version": "1",
+          "location": "废止说明",
+          "status": "superseded"
+        }
+      },
+      {
+        "content": "【虚构测试例外】星桥信息SQ-EXCEPTION-2026仅说明超标审批流程：项目出差如需上海住宿上限800元/晚，必须在预订前取得有效审批编号，并核对员工、城市、日期、项目。此文档不是已批准凭证。没有审批编号时采用版本2基础限额500元/晚；不能因为用户偏好全季就视为批准。",
+        "metadata": {
+          "document_id": "SQ-EXCEPTION-2026",
+          "title": "超标审批条件",
+          "version": "1",
+          "location": "例外适用条件",
+          "status": "active"
+        }
+      }
+    ],
+    "ingestion": {
+      "status": "success",
+      "added_count": 3,
+      "total_count": 3
+    },
+    "initialization_and_ingestion_ms": 11061.875,
+    "embedding_tokens": null,
+    "embedding_note": "local sentence-transformers; no billed embedding API"
+  },
+  "runs": [
+    {
+      "case": "business_conflict",
+      "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是星桥信息普通员工出差，优先全季，请检索公司当前差旅制度。无超标审批编号，不能采用已废止900元标准或未批准800元例外。酒店必须取得含税报价并符合当前上限。查到超标或没有可选报价时，请定向重新查询酒店，保留有效火车；若接口没有报价能力则如实说明缺口，不反复查询。",
+      "live_model": true,
+      "live_rag": true,
+      "supplier_mode": "simulation",
+      "supplier_request_count": 4,
+      "status": "completed",
+      "stop_reason": "validated",
+      "latency_ms": 8277.359,
+      "model_calls": 4,
+      "stage_counts": {
+        "agent:travel_policy": 1,
+        "main:plan": 1,
+        "main:select_batch": 2
+      },
+      "input_tokens": 15140,
+      "output_tokens": 1512,
+      "token_usage_complete": true,
+      "tools": {
+        "hotel_search": 2,
+        "train_search": 2
+      },
+      "rag_search_count": 1,
+      "rag_latency_ms": 67.449,
+      "checks": {
+        "no_model_error": true,
+        "usage_available": true,
+        "no_proposal_repair": true,
+        "finite_stop": true,
+        "actual_vector_retrieval": true,
+        "current_hotel_cap": true,
+        "source_citations": true,
+        "completed": true,
+        "global_valid": true,
+        "trains_not_replayed": true,
+        "hotel_requeried": true,
+        "four_model_calls": true
+      },
+      "expected_behavior_success": true,
+      "optimization_success": true,
+      "task_success": true,
+      "final_answer": "去程从重庆西到上海虹桥，可选G9001，2026年10月15日 07:20出发，2026年10月15日 18:50抵达，二等座单人票价584.50元，查询时有票。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店。住宿可参考全季（上海模拟报价候选1）的模拟标准间，1人入住，住宿总价为760元（含费用），查询时有空房，退改规则尚未核实。\n\n回程从上海虹桥到重庆西，可选G9001，2026年10月17日 07:20出发，2026年10月17日 18:50抵达，二等座单人票价584.50元，查询时有票。\n\n已查到的费用合计1929.00元。 以下为模拟数据，仅用于测试。",
+      "model_usage": [
+        {
+          "type": "model_call",
+          "stage": "agent:travel_policy",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 2776.42,
+          "ttft_ms": 875.619,
+          "input_tokens": 1368,
+          "output_tokens": 608,
+          "estimated_cost_usd": null,
+          "turn_id": "0fe4261061074c5c9a495361d196f821",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 2,
+          "timestamp": "2026-10-13T07:36:43.460457+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:plan",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1631.362,
+          "ttft_ms": 431.115,
+          "input_tokens": 2838,
+          "output_tokens": 322,
+          "estimated_cost_usd": null,
+          "turn_id": "0fe4261061074c5c9a495361d196f821",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 5,
+          "timestamp": "2026-10-13T07:36:45.110790+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1253.94,
+          "ttft_ms": 783.333,
+          "input_tokens": 5614,
+          "output_tokens": 105,
+          "estimated_cost_usd": null,
+          "turn_id": "0fe4261061074c5c9a495361d196f821",
+          "workflow_id": "workflow_3cf424616420446bbf0211528d790584",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 12,
+          "timestamp": "2026-10-13T07:36:46.464128+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 2339.247,
+          "ttft_ms": 763.645,
+          "input_tokens": 5320,
+          "output_tokens": 477,
+          "estimated_cost_usd": null,
+          "turn_id": "0fe4261061074c5c9a495361d196f821",
+          "workflow_id": "workflow_3cf424616420446bbf0211528d790584",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 17,
+          "timestamp": "2026-10-13T07:36:48.850482+00:00"
+        }
+      ],
+      "total_tokens": 16652
+    },
+    {
+      "case": "tourism_simulated",
+      "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是旅游，不查询企业政策，酒店只需提供地点，价格及空房未知请说明。",
+      "live_model": true,
+      "live_rag": false,
+      "supplier_mode": "simulation",
+      "supplier_request_count": 3,
+      "status": "completed",
+      "stop_reason": "validated",
+      "latency_ms": 5067.707,
+      "model_calls": 2,
+      "stage_counts": {
+        "main:plan": 1,
+        "main:select_batch": 1
+      },
+      "input_tokens": 6788,
+      "output_tokens": 727,
+      "token_usage_complete": true,
+      "tools": {
+        "train_search": 2,
+        "hotel_search": 1
+      },
+      "rag_search_count": 0,
+      "rag_latency_ms": 0,
+      "checks": {
+        "no_model_error": true,
+        "usage_available": true,
+        "no_proposal_repair": true,
+        "finite_stop": true,
+        "honest_supplier_result": true,
+        "no_policy_call": true,
+        "completed": true,
+        "global_valid": true,
+        "two_main_calls": true
+      },
+      "expected_behavior_success": true,
+      "optimization_success": true,
+      "task_success": true,
+      "final_answer": "去程从重庆西到上海虹桥，可选G9001，2026年10月15日 07:20出发，2026年10月15日 18:50抵达，二等座单人票价584.50元，查询时有票。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店，可以考虑全季酒店（上海模拟门店1）（模拟路100号）。\n\n回程从上海虹桥到重庆西，可选G9001，2026年10月17日 07:20出发，2026年10月17日 18:50抵达，二等座单人票价584.50元，查询时有票。\n\n已查到的费用合计1169.00元，其余费用还需确认。 酒店房价、空房和入住及退改规则需在订房时确认。 以下为模拟数据，仅用于测试。",
+      "model_usage": [
+        {
+          "type": "model_call",
+          "stage": "main:plan",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1532.686,
+          "ttft_ms": 725.274,
+          "input_tokens": 2260,
+          "output_tokens": 217,
+          "estimated_cost_usd": null,
+          "turn_id": "16dc14b01e884acd8e6823b34d9cf8cd",
+          "user_id": "tourism_simulated",
+          "session_id": "live",
+          "run_seq": 2,
+          "timestamp": "2026-10-13T07:36:50.607516+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 3408.723,
+          "ttft_ms": 792.673,
+          "input_tokens": 4528,
+          "output_tokens": 510,
+          "estimated_cost_usd": null,
+          "turn_id": "16dc14b01e884acd8e6823b34d9cf8cd",
+          "workflow_id": "workflow_8270db93797d4f0f9454c5505cd15409",
+          "user_id": "tourism_simulated",
+          "session_id": "live",
+          "run_seq": 9,
+          "timestamp": "2026-10-13T07:36:54.100552+00:00"
+        }
+      ],
+      "total_tokens": 7515
+    },
+    {
+      "case": "business_simulated",
+      "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是星桥信息普通员工出差，优先全季，请检索公司当前差旅制度。无超标审批编号，不能采用已废止900元标准或未批准800元例外。酒店必须取得含税报价并符合当前上限。查到超标或没有可选报价时，请定向重新查询酒店，保留有效火车；若接口没有报价能力则如实说明缺口，不反复查询。",
+      "live_model": true,
+      "live_rag": true,
+      "supplier_mode": "simulation",
+      "supplier_request_count": 3,
+      "status": "completed",
+      "stop_reason": "validated",
+      "latency_ms": 7700.205,
+      "model_calls": 3,
+      "stage_counts": {
+        "agent:travel_policy": 1,
+        "main:plan": 1,
+        "main:select_batch": 1
+      },
+      "input_tokens": 9522,
+      "output_tokens": 1349,
+      "token_usage_complete": true,
+      "tools": {
+        "hotel_search": 1,
+        "train_search": 2
+      },
+      "rag_search_count": 1,
+      "rag_latency_ms": 48.869,
+      "checks": {
+        "no_model_error": true,
+        "usage_available": true,
+        "no_proposal_repair": true,
+        "finite_stop": true,
+        "actual_vector_retrieval": true,
+        "current_hotel_cap": true,
+        "source_citations": true,
+        "completed": true,
+        "global_valid": true,
+        "trains_not_replayed": true,
+        "hotel_once": true,
+        "three_model_calls": true
+      },
+      "expected_behavior_success": true,
+      "optimization_success": true,
+      "task_success": true,
+      "final_answer": "去程从重庆西到上海虹桥，可选G9001，2026年10月15日 07:20出发，2026年10月15日 18:50抵达，二等座单人票价584.50元，查询时有票。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店。住宿可参考全季（上海模拟报价候选1）的模拟标准间，1人入住，住宿总价为760元（含费用），查询时有空房，退改规则尚未核实。\n\n回程从上海虹桥到重庆西，可选G9001，2026年10月17日 07:20出发，2026年10月17日 18:50抵达，二等座单人票价584.50元，查询时有票。\n\n已查到的费用合计1929.00元。 以下为模拟数据，仅用于测试。",
+      "model_usage": [
+        {
+          "type": "model_call",
+          "stage": "agent:travel_policy",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 2027.376,
+          "ttft_ms": 536.382,
+          "input_tokens": 1368,
+          "output_tokens": 428,
+          "estimated_cost_usd": null,
+          "turn_id": "a88385adcfbd4334a301c117d466f01c",
+          "user_id": "business_simulated",
+          "session_id": "live",
+          "run_seq": 2,
+          "timestamp": "2026-10-13T07:36:56.413763+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:plan",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1933.444,
+          "ttft_ms": 703.527,
+          "input_tokens": 2826,
+          "output_tokens": 354,
+          "estimated_cost_usd": null,
+          "turn_id": "a88385adcfbd4334a301c117d466f01c",
+          "user_id": "business_simulated",
+          "session_id": "live",
+          "run_seq": 5,
+          "timestamp": "2026-10-13T07:36:58.364262+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 3535.489,
+          "ttft_ms": 1156.248,
+          "input_tokens": 5328,
+          "output_tokens": 567,
+          "estimated_cost_usd": null,
+          "turn_id": "a88385adcfbd4334a301c117d466f01c",
+          "workflow_id": "workflow_640373599b454d2dac56412afff2ea6d",
+          "user_id": "business_simulated",
+          "session_id": "live",
+          "run_seq": 12,
+          "timestamp": "2026-10-13T07:37:01.992931+00:00"
+        }
+      ],
+      "total_tokens": 10871
+    },
+    {
+      "case": "business_api_simulated",
+      "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是星桥信息普通员工出差，优先全季，请检索公司当前差旅制度。无超标审批编号，不能采用已废止900元标准或未批准800元例外。酒店必须取得含税报价并符合当前上限。查到超标或没有可选报价时，请定向重新查询酒店，保留有效火车；若接口没有报价能力则如实说明缺口，不反复查询。",
+      "live_model": true,
+      "live_rag": true,
+      "supplier_mode": "simulation",
+      "supplier_request_count": 4,
+      "status": "partial",
+      "stop_reason": "no_progress",
+      "latency_ms": 10051.211,
+      "model_calls": 5,
+      "stage_counts": {
+        "agent:travel_policy": 1,
+        "main:plan": 1,
+        "main:select_batch": 3
+      },
+      "input_tokens": 22860,
+      "output_tokens": 1589,
+      "token_usage_complete": true,
+      "tools": {
+        "train_search": 2,
+        "hotel_search": 2
+      },
+      "rag_search_count": 1,
+      "rag_latency_ms": 49.996,
+      "checks": {
+        "no_model_error": true,
+        "usage_available": true,
+        "no_proposal_repair": true,
+        "finite_stop": false,
+        "actual_vector_retrieval": true,
+        "current_hotel_cap": true,
+        "source_citations": true,
+        "no_false_completion": true,
+        "price_evidence_gap": true
+      },
+      "expected_behavior_success": false,
+      "optimization_success": true,
+      "task_success": false,
+      "final_answer": "去程从重庆西到上海虹桥，可选G9001，2026年10月15日 07:20出发，2026年10月15日 18:50抵达，二等座单人票价584.50元，查询时有票。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店。住宿暂未找到合适候选，可以按以上日期继续筛选。\n\n回程从上海虹桥到重庆西，可选G9001，2026年10月17日 07:20出发，2026年10月17日 18:50抵达，二等座单人票价584.50元，查询时有票。\n\n已查到的费用合计1169.00元，其余费用还需确认。 以下为模拟数据，仅用于测试。",
+      "model_usage": [
+        {
+          "type": "model_call",
+          "stage": "agent:travel_policy",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 2456.904,
+          "ttft_ms": 689.102,
+          "input_tokens": 1368,
+          "output_tokens": 546,
+          "estimated_cost_usd": null,
+          "turn_id": "8e37a6abcf5842159f2c50d449bb4116",
+          "user_id": "business_api_simulated",
+          "session_id": "live",
+          "run_seq": 2,
+          "timestamp": "2026-10-13T07:37:04.746329+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:plan",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1951.873,
+          "ttft_ms": 760.408,
+          "input_tokens": 2789,
+          "output_tokens": 339,
+          "estimated_cost_usd": null,
+          "turn_id": "8e37a6abcf5842159f2c50d449bb4116",
+          "user_id": "business_api_simulated",
+          "session_id": "live",
+          "run_seq": 5,
+          "timestamp": "2026-10-13T07:37:06.714288+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 3013.917,
+          "ttft_ms": 679.346,
+          "input_tokens": 5296,
+          "output_tokens": 494,
+          "estimated_cost_usd": null,
+          "turn_id": "8e37a6abcf5842159f2c50d449bb4116",
+          "workflow_id": "workflow_84ed53326d9b4543969ca11a1a38049e",
+          "user_id": "business_api_simulated",
+          "session_id": "live",
+          "run_seq": 12,
+          "timestamp": "2026-10-13T07:37:09.813038+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1444.717,
+          "ttft_ms": 1033.19,
+          "input_tokens": 6497,
+          "output_tokens": 105,
+          "estimated_cost_usd": null,
+          "turn_id": "8e37a6abcf5842159f2c50d449bb4116",
+          "workflow_id": "workflow_84ed53326d9b4543969ca11a1a38049e",
+          "user_id": "business_api_simulated",
+          "session_id": "live",
+          "run_seq": 16,
+          "timestamp": "2026-10-13T07:37:11.288675+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 928.08,
+          "ttft_ms": 506.548,
+          "input_tokens": 6910,
+          "output_tokens": 105,
+          "estimated_cost_usd": null,
+          "turn_id": "8e37a6abcf5842159f2c50d449bb4116",
+          "workflow_id": "workflow_84ed53326d9b4543969ca11a1a38049e",
+          "user_id": "business_api_simulated",
+          "session_id": "live",
+          "run_seq": 21,
+          "timestamp": "2026-10-13T07:37:12.262516+00:00"
+        }
+      ],
+      "total_tokens": 24449
+    }
+  ],
+  "total_tokens": 59487
+}

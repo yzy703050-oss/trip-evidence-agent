@@ -59,8 +59,8 @@ async def test_cli_uses_saved_home_after_reopening_without_origin_question(tmp_p
     result = app.last_result
     assert result['status'] == 'completed'
     assert result['workflow']['tasks'][0]['origin'] == '重庆'
-    assert r.main.contexts[0]['preflight']['query_requests'][0]['parameters']['origin'] == '重庆'
-    parameters = r.main.contexts[0]['preflight']['query_requests'][0]['parameters']
+    assert r.train.calls[0].isoformat() == expected_date
+    parameters = next(q['parameters'] for q in result['workflow']['results_by_query'].values() if q['domain'] == 'train')
     assert parameters['departure_date'] == expected_date
     assert len(r.train.calls) == 2 and len(r.hotel.calls) == 1
     assert result['workflow']['tasks'][-1]['destination'] == '重庆'

@@ -1,0 +1,37 @@
+# 测试协议迁移记录
+
+以下旧集成测试绑定了已停用的查询子Agent、偏好子Agent、独立综合/回复模型链路。随正式规格改为主决策→程序工具→主批量选择，撤下旧调用链的断言，不通过skip/xfail隐藏实现失败。信息Agent自身单元测试保留，供应商、引用、金融事实、存储、资源限制测试保留。
+
+替代覆盖：tests/test_request_orchestration.py（9项真实入口）、test_consolidated_travel_run.py、test_memory_tools.py、test_policy_preflight.py、test_policy_workflow_guards.py、test_main_batch_protocol.py、test_direct_query_batch.py。CLI最终消息持久化由test_v0_memory_flow.py及test_sqlite_regressions.py继续覆盖；模板安全由test_model_workflow_reply.py保留的渲染器测试覆盖。任务定位/版本/跨会话复用继续由迁移后的test_workflow_matching.py验证。
+
+被替换的旧链路测试：
+
+- tests/test_agent_context_isolation.py::test_delegation_receives_task_facts_without_main_transcript
+- tests/test_main_end_to_end.py::test_real_runtime_measures_actual_main_and_info_calls
+- tests/test_main_end_to_end.py::test_financial_forwarding_rebuilds_display_from_real_offers
+- tests/test_main_feedback.py::test_feedback_limit_stops_second_requery
+- tests/test_main_feedback.py::test_feedback_preserves_hard_constraints
+- tests/test_main_feedback.py::test_feedback_only_requeries_affected_domain
+- tests/test_main_harness.py::test_complete_weather_skips_finalize
+- tests/test_main_harness.py::test_incomplete_result_requires_finalize
+- tests/test_main_harness.py::test_effective_preferences_precede_info
+- tests/test_main_harness.py::test_weather_answer_confirms_only_successful_preference_changes
+- tests/test_main_harness.py::test_rag_legacy_status_is_preserved
+- tests/test_main_harness.py::test_pending_answer_requires_synthesis
+- tests/test_main_harness.py::test_multiple_complete_tool_domains_can_forward
+- tests/test_main_output.py::test_forward_records_one_final_message
+- tests/test_main_output.py::test_paid_query_not_replayed_after_record_failure
+- tests/test_main_output.py::test_completed_itinerary_uses_new_conditions
+- tests/test_main_output.py::test_preference_persisted_once_despite_feedback
+- tests/test_main_output.py::test_standalone_plan_uses_main_harness
+- tests/test_main_review_regressions.py::test_information_receives_completed_policy_results
+- tests/test_main_review_regressions.py::test_feedback_window_reuses_cache_with_real_agent
+- tests/test_main_review_regressions.py::test_combined_weather_answer_keeps_policy_and_real_weather
+- tests/test_main_review_regressions.py::test_invalid_feedback_budget_keeps_results
+- tests/test_model_workflow_reply.py::test_harness_uses_model_reply_once_without_replaying_queries
+- tests/test_model_workflow_reply.py::test_invalid_model_prose_falls_back_without_losing_workflow
+- tests/test_model_workflow_reply.py::test_reply_service_failure_preserves_trip_and_never_replays_queries
+- tests/test_model_workflow_reply.py::test_real_main_reply_method_is_metered_and_gets_only_public_facts
+- tests/test_v0_memory_flow.py::test_direct_child_is_stage_not_tool_and_receives_summary
+
+最终状态核对另修正历史统计测试夹具：修改目的地为苏州后，提供新路线的模拟查询和真实选择引用，再验证最新完成版本统计。仅改 destination 而沿用旧路线不能成为 completed；保留原历史数量、版本、目的地和频率断言。

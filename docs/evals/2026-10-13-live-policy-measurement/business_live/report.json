@@ -1,0 +1,138 @@
+{
+  "case": "business_live",
+  "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是星桥信息普通员工出差，优先全季，请检索公司当前差旅制度。无超标审批编号，不能采用已废止900元标准或未批准800元例外。酒店必须取得含税报价并符合当前上限。查到超标或没有可选报价时，请定向重新查询酒店，保留有效火车；若接口没有报价能力则如实说明缺口，不反复查询。",
+  "live_model": true,
+  "live_rag": true,
+  "status": "error",
+  "stop_reason": null,
+  "latency_ms": 8031.082,
+  "model_calls": 3,
+  "stage_counts": {
+    "agent:travel_policy": 1,
+    "main:plan": 1,
+    "main:repair_proposal": 1
+  },
+  "input_tokens": 3421,
+  "output_tokens": 1905,
+  "token_usage_complete": true,
+  "tools": {},
+  "rag_search_count": 1,
+  "rag_latency_ms": 62.876,
+  "checks": {
+    "no_model_error": true,
+    "usage_available": true,
+    "actual_vector_retrieval": true,
+    "current_hotel_cap": false,
+    "source_citations": false,
+    "no_false_completion": true,
+    "price_evidence_gap": false
+  },
+  "task_success": false,
+  "final_answer": "请求或模型动作无效，未继续执行。",
+  "model_usage": [
+    {
+      "type": "model_call",
+      "stage": "agent:travel_policy",
+      "model": "deepseek-flash",
+      "status": "success",
+      "error": null,
+      "latency_ms": 3530.146,
+      "ttft_ms": 242.517,
+      "input_tokens": 988,
+      "output_tokens": 874,
+      "estimated_cost_usd": null,
+      "turn_id": "4f55aeaa10844fcd8c202f4995f7db66",
+      "user_id": "business_live",
+      "session_id": "live",
+      "run_seq": 2,
+      "timestamp": "2026-10-13T06:22:39.235865+00:00"
+    },
+    {
+      "type": "model_call",
+      "stage": "main:plan",
+      "model": "deepseek-flash",
+      "status": "success",
+      "error": null,
+      "latency_ms": 2562.927,
+      "ttft_ms": 536.495,
+      "input_tokens": 1464,
+      "output_tokens": 543,
+      "estimated_cost_usd": null,
+      "turn_id": "4f55aeaa10844fcd8c202f4995f7db66",
+      "user_id": "business_live",
+      "session_id": "live",
+      "run_seq": 5,
+      "timestamp": "2026-10-13T06:22:41.812278+00:00"
+    },
+    {
+      "type": "model_call",
+      "stage": "main:repair_proposal",
+      "model": "deepseek-flash",
+      "status": "success",
+      "error": null,
+      "latency_ms": 1818.506,
+      "ttft_ms": 406.103,
+      "input_tokens": 969,
+      "output_tokens": 488,
+      "estimated_cost_usd": null,
+      "turn_id": "4f55aeaa10844fcd8c202f4995f7db66",
+      "user_id": "business_live",
+      "session_id": "live",
+      "run_seq": 9,
+      "timestamp": "2026-10-13T06:22:43.646877+00:00"
+    }
+  ],
+  "total_tokens": 5326,
+  "supplier_mode": "real",
+  "supplier_request_count": 0,
+  "diagnostics": [
+    {
+      "case": "business_live",
+      "stage": "agent:travel_policy",
+      "applicability_type": "str",
+      "constraint_applicability_types": [
+        "str",
+        "str",
+        "str",
+        "str",
+        "str",
+        "str"
+      ],
+      "policy_missing_fields": [
+        "酒店含税报价（需取得符合500元/晚上限的报价）",
+        "火车具体车次及票价（需确认二等座且单程≤700元）"
+      ],
+      "validator_status": "failed",
+      "error_type": "ValueError",
+      "error": "invalid applicability"
+    },
+    {
+      "case": "business_live",
+      "stage": "main:plan",
+      "unsupported_confirmed_fields": [
+        "purpose",
+        "seat_class",
+        "train_max_total_cny"
+      ],
+      "invalid_purposes": [],
+      "hotel_keywords_types": [
+        "list"
+      ],
+      "validator_status": "failed",
+      "error_type": "ValueError",
+      "error": "unsupported workflow conditions"
+    },
+    {
+      "case": "business_live",
+      "stage": "main:repair_proposal",
+      "unsupported_confirmed_fields": [],
+      "invalid_purposes": [],
+      "hotel_keywords_types": [
+        "list"
+      ],
+      "validator_status": "failed",
+      "error_type": "ValueError",
+      "error": "invalid hotel keywords"
+    }
+  ]
+}

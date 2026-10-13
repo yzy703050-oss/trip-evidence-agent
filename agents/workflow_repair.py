@@ -126,6 +126,10 @@ def _reopen(workflow, task, components):
         domains.discard("hotel")
     task["revision"] += 1
     task.update(status="pending", issues=[], update_scope=sorted(domains))
+    from agents.workflow_state import invalidate_query_binding
+    for domain in domains:
+        if domain in task.get('query_containers', {}):
+            task['query_containers'][domain] = invalidate_query_binding(task['query_containers'][domain], 'repair_requested')
     affected_dates = set()
     if "train" in domains:
         affected_dates.update({"departure_date", "arrival_date"})

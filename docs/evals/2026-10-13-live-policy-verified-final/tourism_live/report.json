@@ -1,0 +1,74 @@
+{
+  "case": "tourism_live",
+  "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是旅游，不查询企业政策，酒店只需提供地点，价格及空房未知请说明。",
+  "live_model": true,
+  "live_rag": false,
+  "supplier_mode": "real",
+  "supplier_request_count": 3,
+  "status": "partial",
+  "stop_reason": "model_partial",
+  "latency_ms": 4945.389,
+  "model_calls": 2,
+  "stage_counts": {
+    "main:plan": 1,
+    "main:select_batch": 1
+  },
+  "input_tokens": 6944,
+  "output_tokens": 617,
+  "token_usage_complete": true,
+  "tools": {
+    "train_search": 2,
+    "hotel_search": 1
+  },
+  "rag_search_count": 0,
+  "rag_latency_ms": 0,
+  "checks": {
+    "no_model_error": true,
+    "usage_available": true,
+    "no_proposal_repair": true,
+    "finite_stop": true,
+    "honest_supplier_result": true,
+    "no_policy_call": true
+  },
+  "expected_behavior_success": true,
+  "task_success": false,
+  "final_answer": "去程从重庆到上海，车次这次没查到，发到时刻和票价还不能确定；计划2026年10月15日出发。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店，可以考虑登巴客栈(上海旗舰店)（延安西路576号）。\n\n回程从上海到重庆北，可选D3056，2026年10月17日 07:23出发，2026年10月17日 19:16抵达，二等座单人票价594元，查询时有票。\n\n已查到的费用合计594元，其余费用还需确认。 酒店房价、空房和入住及退改规则需在订房时确认。 可以先在铁路官方售票渠道核对车次，再确定发到时间；住宿日期也需随实际抵达调整。",
+  "model_usage": [
+    {
+      "type": "model_call",
+      "stage": "main:plan",
+      "model": "deepseek-flash",
+      "status": "success",
+      "error": null,
+      "latency_ms": 1465.0,
+      "ttft_ms": 686.709,
+      "input_tokens": 2238,
+      "output_tokens": 208,
+      "estimated_cost_usd": null,
+      "turn_id": "ab779272a6434a058020acea660fef32",
+      "user_id": "tourism_live",
+      "session_id": "live",
+      "run_seq": 2,
+      "timestamp": "2026-10-13T07:00:10.585226+00:00"
+    },
+    {
+      "type": "model_call",
+      "stage": "main:select_batch",
+      "model": "deepseek-flash",
+      "status": "success",
+      "error": null,
+      "latency_ms": 2571.175,
+      "ttft_ms": 826.412,
+      "input_tokens": 4706,
+      "output_tokens": 409,
+      "estimated_cost_usd": null,
+      "turn_id": "ab779272a6434a058020acea660fef32",
+      "workflow_id": "workflow_d157802b43fd4e29b44380f0836ec5dc",
+      "user_id": "tourism_live",
+      "session_id": "live",
+      "run_seq": 9,
+      "timestamp": "2026-10-13T07:00:13.970197+00:00"
+    }
+  ],
+  "total_tokens": 7561
+}

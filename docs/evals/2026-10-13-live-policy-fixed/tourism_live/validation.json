@@ -1,0 +1,149 @@
+{
+  "valid": false,
+  "issues": [
+    {
+      "code": "train_selection_missing",
+      "task_ids": [
+        "task_acb9f4be74d74b239589ae90b30abf44"
+      ],
+      "blocking": true,
+      "message": "当前段尚无已核实的train候选选择。",
+      "evidence": null
+    },
+    {
+      "code": "hotel_price_unknown",
+      "task_ids": [
+        "task_acb9f4be74d74b239589ae90b30abf44"
+      ],
+      "blocking": false,
+      "message": "酒店地点不提供房价、空房或入住规则。",
+      "evidence": null
+    }
+  ],
+  "reconstructed_tasks": [
+    {
+      "task_id": "task_acb9f4be74d74b239589ae90b30abf44",
+      "task_revision": 1,
+      "origin": "重庆",
+      "destination": "上海",
+      "purpose": "visit",
+      "train": null,
+      "hotel": {
+        "id": "B0FFGX9CYO",
+        "hotel_name": "登巴客栈(上海旗舰店)",
+        "address": "延安西路576号",
+        "city": "上海市",
+        "district": "长宁区",
+        "location": "121.435379,31.216636",
+        "source": {
+          "provider": "amap",
+          "fetched_at": "2026-10-13T14:38:00.200431+08:00",
+          "url": "https://developer.amap.com/api/webservice/guide/api-advanced/newpoisearch"
+        },
+        "phone": "13301730253;17721172014",
+        "rating": "4.3",
+        "photos": [
+          {
+            "title": "",
+            "url": "https://aos-comment.amap.com/B0FFGX9CYO/comment/e3bcb5a38d7723d13fc38d7919230330_2048_2048_80.jpg"
+          },
+          {
+            "title": "",
+            "url": "https://aos-comment.amap.com/B0FFGX9CYO/comment/content_media_external_images_media_1000096928_ss__1741437343388_09779085.jpg"
+          },
+          {
+            "title": "",
+            "url": "https://store.is.autonavi.com/showpic/087f57139aa7e5870319a23c35bb9709"
+          }
+        ],
+        "kind": "hotel_place",
+        "room_type": null,
+        "stay_total_cny": null,
+        "fees_included": null,
+        "availability": "unknown",
+        "cancellation": null,
+        "url": "https://developer.amap.com/api/webservice/guide/api-advanced/newpoisearch"
+      },
+      "schedule": {
+        "departure_at": null,
+        "arrival_at": null,
+        "check_in": "2026-10-15",
+        "check_out": "2026-10-17",
+        "next_departure_not_before": "2026-10-17"
+      }
+    },
+    {
+      "task_id": "task_dd783ae80d864aaf813ac0554e402445",
+      "task_revision": 1,
+      "origin": "上海",
+      "destination": "重庆",
+      "purpose": "return",
+      "train": {
+        "id": "2026-10-17|D3056|上海|重庆北|O|二等座",
+        "train_number": "D3056",
+        "origin_station": "上海",
+        "destination_station": "重庆北",
+        "departure_time": "07:23",
+        "arrival_time": "19:16",
+        "seat_class": "二等座",
+        "price_cny": "594",
+        "availability": "available",
+        "remaining": null,
+        "source": {
+          "provider": "聚合数据",
+          "fetched_at": "2026-10-13T14:38:00.556019+08:00",
+          "url": "https://www.juhe.cn/docs/api/id/817"
+        },
+        "url": null,
+        "departure_at": "2026-10-17T07:23:00+08:00",
+        "arrival_at": "2026-10-17T19:16:00+08:00",
+        "time_evidence": {
+          "departure": "query_date_and_provider_clock",
+          "arrival": "provider_segment_duration"
+        }
+      },
+      "hotel": null,
+      "schedule": {
+        "departure_at": "2026-10-17T07:23:00+08:00",
+        "arrival_at": "2026-10-17T19:16:00+08:00",
+        "check_in": null,
+        "check_out": null,
+        "next_departure_not_before": "2026-10-17T19:16:00+08:00"
+      }
+    }
+  ],
+  "budget": {
+    "known_subtotal_cny": "594",
+    "verified": false,
+    "missing_categories": [
+      {
+        "task_id": "task_acb9f4be74d74b239589ae90b30abf44",
+        "category": "hotel"
+      },
+      {
+        "task_id": "task_acb9f4be74d74b239589ae90b30abf44",
+        "category": "train"
+      }
+    ],
+    "lines": [
+      {
+        "category": "train",
+        "offer_id": "2026-10-17|D3056|上海|重庆北|O|二等座",
+        "quantity": 1,
+        "unit_price_cny": "594",
+        "amount_cny": "594",
+        "source": {
+          "provider": "聚合数据",
+          "fetched_at": "2026-10-13T14:38:00.556019+08:00",
+          "url": "https://www.juhe.cn/docs/api/id/817"
+        },
+        "task_id": "task_dd783ae80d864aaf813ac0554e402445"
+      }
+    ]
+  },
+  "validated_revisions": {
+    "task_acb9f4be74d74b239589ae90b30abf44": 1,
+    "task_dd783ae80d864aaf813ac0554e402445": 1
+  },
+  "signature": "bbe7cd92ba8fb649cea27b87bc35ebd3a38075e442ccc311191c061f709b70c5"
+}

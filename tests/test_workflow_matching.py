@@ -29,6 +29,16 @@ class MatchingMain(WorkflowMain):
     async def match_workflow(self, context):
         return await self.agent.match_workflow(context)
 
+    async def initialize(self, context):
+        # Matching is part of the first decision; no dedicated matching model turn.
+        value = await super().initialize(context)
+        if context.get('known_workflows'):
+            self.match_inputs.append({**deepcopy(context), 'candidates': deepcopy(context['known_workflows'])})
+        if self.before_match:
+            self.before_match()
+        value['workflow_match'] = deepcopy(self.match)
+        return value
+
 
 @pytest.mark.asyncio
 async def test_three_new_sessions_reuse_completed_trip_without_requery(tmp_path):

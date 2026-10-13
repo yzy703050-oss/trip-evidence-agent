@@ -53,9 +53,9 @@ async def test_main_applies_guard_to_actual_model_response():
         return SimpleNamespace(text=json.dumps({'action': 'itinerary', 'itinerary': {'notes': ['299'], 'daily_plans': [{'city': 'forged 299'}]}}))
     main = MainAgent(model)
     harness = ExecutionHarness(main, {})
-    result = await harness._finalize({'response_mode': 'itinerary'}, RunState('t1'), None)
+    result = await harness.run_turn({'original_query': '安排旅行'}, RunState('t1'))
     assert '299' not in json.dumps(result)
-    assert result['itinerary']['budget']['complete'] is False
+    assert result['status'] == 'error'
 
 
 @pytest.mark.parametrize("field", ["city", "location"])
@@ -75,9 +75,9 @@ async def test_main_failure_preserves_safe_error(failure):
     from agents.contracts import RunState
     async def model(messages):
         if failure == 'parse': return SimpleNamespace(text='unparsable arbitrary prose')
-        raise TimeoutError('secret arbitrary error prose')
-    result = await ExecutionHarness(MainAgent(model), {})._finalize({'response_mode': 'itinerary'}, RunState('t1'), None)
-    assert result['status'] == 'error'
+        raise (TimeoutError if failure == 'timeout' else RuntimeError)('secret arbitrary error prose')
+    result = await ExecutionHarness(MainAgent(model), {}).run_turn({'original_query': '安排旅行'}, RunState('t1'))
+    assert result['status'] == ('partial' if failure == 'timeout' else 'error')
     assert 'arbitrary' not in json.dumps(result)
     assert 'itinerary' not in result
 

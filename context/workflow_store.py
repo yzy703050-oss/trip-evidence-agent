@@ -75,7 +75,8 @@ class WorkflowStore:
                 return None
             value = json.loads(row[0])
             self._validate(value, workflow_id)
-            return value
+            from agents.workflow_state import normalize_workflow_states
+            return normalize_workflow_states(value)
 
     def _validate(self, value, identity):
         if not isinstance(value, dict) or value.get("user_id") != self.user_id:
@@ -91,7 +92,8 @@ class WorkflowStore:
         from context.sqlite_storage import encode
         from context import workflow_index
 
-        value = deepcopy(workflow)
+        from agents.workflow_state import normalize_workflow_states
+        value = normalize_workflow_states(workflow)
         if value.get("user_id", self.user_id) != self.user_id:
             raise ValueError("workflow owner mismatch")
         value["user_id"] = self.user_id
@@ -175,6 +177,9 @@ class WorkflowStore:
             ]
         for value in values:
             self._validate(value, value.get("id"))
+        from agents.workflow_state import normalize_workflow_states, STOPPED
+        values = [normalize_workflow_states(v) for v in values]
+        values = [v for v in values if v.get('stop_reason') not in STOPPED]
         return values
 
     def _write_history(self, conn, record, *, importing=False, import_index=None):

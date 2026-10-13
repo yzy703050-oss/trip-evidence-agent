@@ -67,7 +67,7 @@ async def test_prompt_prioritizes_scope_question_over_update_execution():
     assert '范围不明禁止输出 travel_update' in calls[0]
     assert '已有依据能直接答复时必须 direct+synthesize' in calls[0]
     assert '购买车票不等于采纳建议' in calls[0]
-    assert '查询已保存偏好使用memory_query，不调度preference' in calls[0]
+    assert '查询已保存偏好使用程序工具，不调度preference' in calls[0]
     assert '换一家或替换组件必须使用replace' in calls[0]
 
 

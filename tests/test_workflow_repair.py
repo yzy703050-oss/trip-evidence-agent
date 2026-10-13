@@ -215,7 +215,7 @@ async def test_saved_repair_checkpoint_resumes_after_scheduling_stop(tmp_path):
     saved = rt.memory.workflow_store.save(w, expected_revision=None)
     run = RunState(rt.memory.start_turn("继续修复"))
     first = await WorkflowRunner(
-        rt.main, rt.info, rt.memory, limits=WorkflowLimits(main_decisions_per_turn=2)
+        rt.main, rt.info, rt.memory, limits=WorkflowLimits(main_decisions_per_turn=1)
     ).run({"original_query": "继续修复", "current_time": "2026-10-10T10:00:00+08:00"}, run, saved)
     assert first["stop_reason"] == "main_decision_limit"
     assert first["workflow"]["checkpoint"]["kind"] == "task_repair"

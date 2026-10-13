@@ -1,0 +1,77 @@
+{
+  "case": "tourism_simulated",
+  "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是旅游，不查询企业政策，酒店只需提供地点，价格及空房未知请说明。",
+  "live_model": true,
+  "live_rag": false,
+  "supplier_mode": "simulation",
+  "supplier_request_count": 3,
+  "status": "completed",
+  "stop_reason": "validated",
+  "latency_ms": 4098.488,
+  "model_calls": 2,
+  "stage_counts": {
+    "main:plan": 1,
+    "main:select_batch": 1
+  },
+  "input_tokens": 6409,
+  "output_tokens": 725,
+  "token_usage_complete": true,
+  "tools": {
+    "train_search": 2,
+    "hotel_search": 1
+  },
+  "rag_search_count": 0,
+  "rag_latency_ms": 0,
+  "checks": {
+    "no_model_error": true,
+    "usage_available": true,
+    "no_proposal_repair": true,
+    "finite_stop": true,
+    "honest_supplier_result": true,
+    "no_policy_call": true,
+    "completed": true,
+    "global_valid": true,
+    "two_main_calls": true
+  },
+  "expected_behavior_success": true,
+  "task_success": true,
+  "final_answer": "去程从重庆到上海，可选SIM001，2026年10月15日 08:00出发，2026年10月15日 12:00抵达，二等座单人票价200元，查询时有票，余票20张。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店，可以考虑全季（上海模拟候选1）（模拟地址）。\n\n回程从上海到重庆，可选SIM001，2026年10月17日 08:00出发，2026年10月17日 12:00抵达，二等座单人票价200元，查询时有票，余票20张。\n\n已查到的费用合计400元，其余费用还需确认。 酒店房价、空房和入住及退改规则需在订房时确认。 以下为模拟数据，仅用于测试。",
+  "model_usage": [
+    {
+      "type": "model_call",
+      "stage": "main:plan",
+      "model": "deepseek-flash",
+      "status": "success",
+      "error": null,
+      "latency_ms": 1430.331,
+      "ttft_ms": 684.482,
+      "input_tokens": 2238,
+      "output_tokens": 208,
+      "estimated_cost_usd": null,
+      "turn_id": "2a931a9ea39347e78d557d0edaeb3dcb",
+      "user_id": "tourism_simulated",
+      "session_id": "live",
+      "run_seq": 2,
+      "timestamp": "2026-10-13T07:18:52.702716+00:00"
+    },
+    {
+      "type": "model_call",
+      "stage": "main:select_batch",
+      "model": "deepseek-flash",
+      "status": "success",
+      "error": null,
+      "latency_ms": 2529.859,
+      "ttft_ms": 648.627,
+      "input_tokens": 4171,
+      "output_tokens": 517,
+      "estimated_cost_usd": null,
+      "turn_id": "2a931a9ea39347e78d557d0edaeb3dcb",
+      "workflow_id": "workflow_3f51086b673840b2828a08dddb09f886",
+      "user_id": "tourism_simulated",
+      "session_id": "live",
+      "run_seq": 9,
+      "timestamp": "2026-10-13T07:18:55.327322+00:00"
+    }
+  ],
+  "total_tokens": 7134
+}

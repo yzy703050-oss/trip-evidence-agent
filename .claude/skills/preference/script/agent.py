@@ -4,8 +4,8 @@
 如"我的家在XXX"、"我喜欢XXX酒店"
 """
 from context.context_budget import ContextBudgetExceeded
-from agentscope.agent import AgentBase
-from agentscope.message import Msg
+from agents.runtime import AgentBase
+from agents.runtime import Msg
 from typing import Optional, Union, List
 import json
 import logging

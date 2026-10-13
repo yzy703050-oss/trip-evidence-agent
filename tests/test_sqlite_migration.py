@@ -240,7 +240,8 @@ def test_migration_retains_runs_pending_tools_and_active_identity(tmp_path):
     from context.memory_manager import MemoryManager
 
     memory = MemoryManager("alice", "s", str(tmp_path))
-    assert memory.get_active_workflows() == [workflow]
+    from agents.workflow_state import normalize_workflow_states
+    assert memory.get_active_workflows() == [normalize_workflow_states(workflow)]
     assert memory.session_store.read_runs() == [run]
     assert memory.get_pending_tool_calls()[0]["id"] == "call"
     assert memory.session_store.append_run({"turn_id": "new", "type": "query_run"})["run_seq"] == 10

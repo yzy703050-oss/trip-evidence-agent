@@ -41,7 +41,7 @@ def apply_travel_update(workflow, update, *, context=None):
     if not components <= {'train', 'hotel', 'route', 'schedule'}: raise ValueError('invalid component scope')
     w['last_update'] = deepcopy(update)
     if kind in {'pause', 'cancel'}:
-        w.update(status='paused' if kind == 'pause' else 'cancelled', stop_reason=kind)
+        w.update(status='running', stop_reason='paused' if kind == 'pause' else 'cancelled')
         if w.get('checkpoint'):
             # Harness persists this stop as the next CAS revision, retaining the question.
             w['checkpoint']['expected_workflow_revision'] = w['revision'] + 1
@@ -150,6 +150,9 @@ def apply_travel_update(workflow, update, *, context=None):
         rejected = update.get('rejected_candidate_ids', [])
         if not isinstance(rejected, list) or not all(isinstance(x, str) for x in rejected): raise ValueError('invalid rejection')
         for domain in changed_domains:
+            from agents.workflow_state import invalidate_query_binding
+            if domain in task.get('query_containers', {}):
+                task['query_containers'][domain] = invalidate_query_binding(task['query_containers'][domain], 'conditions_changed')
             task.setdefault('rejected_candidates', {}).setdefault(domain, [])
             if len(changed_domains) == 1:
                 task['rejected_candidates'][domain] = list(dict.fromkeys(task['rejected_candidates'][domain] + rejected))

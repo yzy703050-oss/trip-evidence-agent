@@ -9,7 +9,7 @@ from pathlib import Path
 from time import perf_counter
 from zoneinfo import ZoneInfo
 
-from agentscope.model import OpenAIChatModel
+from agents.openai_model import OpenAIChatModel
 from rich.console import Console
 from agents.contracts import RunState,RunLimits
 from agents.contracts import INTENT_TYPES

@@ -75,6 +75,44 @@ class LongTermMemory:
     def set_user_preference(self, pref_type, value):
         self.save_preference(pref_type, value, source="user")
 
+    def apply_memory_updates(self, updates, analysis=None):
+        """Incremental natural-language memories and bootstrap marker commit together."""
+        applied, rejected = [], []
+        with self.storage.transaction() as conn:
+            profile = self._profile(conn)
+            memories = profile.setdefault('travel_memories', [])
+            for update in updates:
+                if not isinstance(update, dict):
+                    rejected.append(deepcopy(update))
+                    continue
+                op, identity = update.get('op'), update.get('id')
+                source = update.get('source', 'explicit')
+                existing = next((m for m in memories if m['id'] == identity), None)
+                text = update.get('text')
+                valid = (op in {'add', 'replace', 'retract'} and source in {'explicit', 'history'}
+                         and (op == 'retract' or isinstance(text, str) and bool(text.strip()))
+                         and (op == 'add' or existing is not None))
+                protected = existing and source == 'history' and (
+                    existing['source'] == 'explicit' or existing['status'] == 'retracted')
+                if not valid or protected:
+                    rejected.append(deepcopy(update))
+                    continue
+                if op == 'add':
+                    identity = 'memory_' + uuid.uuid4().hex
+                    existing = {'id': identity, 'source': source}
+                    memories.append(existing)
+                if op == 'retract':
+                    existing['status'] = 'retracted'
+                else:
+                    existing.update(text=text.strip(), status='active', source=source)
+                    if source == 'history':
+                        existing['evidence_trip_ids'] = deepcopy(update.get('evidence_trip_ids', []))
+                applied.append({'op': op, 'id': identity})
+            if analysis is not None:
+                profile['preference_analysis'] = deepcopy(analysis)
+            self._write_profile(conn, profile)
+        return {'applied': applied, 'rejected': rejected}
+
     def delete_user_preference(self, pref_type):
         with self.storage.transaction() as conn:
             self._preference(conn, pref_type, None, "user", deleted=True)

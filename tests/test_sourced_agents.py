@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 
 import pytest
-from agentscope.message import Msg
+from agents.runtime import Msg
 from agents.lazy_agent_registry import LazyAgentRegistry
 from travel_data.contracts import AgentDataResult, Source
 

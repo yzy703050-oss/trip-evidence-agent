@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agentscope.message import Msg
+from agents.runtime import Msg
 
 
 class FakeEmbeddingModel:

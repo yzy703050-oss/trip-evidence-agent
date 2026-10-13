@@ -16,6 +16,7 @@ def workflow_summary(workflow):
             "created_at",
             "updated_at",
             "confirmed_conditions",
+            "stop_reason",
         )
     }
     tasks = []
@@ -58,6 +59,11 @@ def workflow_summary(workflow):
         row["summary"] = str(task.get("summary", ""))[:160]
         tasks.append(row)
     value["tasks"] = tasks
+    value['data_mode'] = 'simulation' if any(str((r.get('source') or {}).get('provider', '')).startswith('simulation:')
+        for r in workflow.get('results_by_query', {}).values()) else 'provider'
+    value['policy_available'] = bool(workflow.get('policy_context'))
+    value['analysis_eligible'] = workflow.get('status') == 'completed' and bool((workflow.get('validation') or {}).get('valid'))
+    value['selection_source'] = 'user_adopted' if any(t.get('user_adopted') for t in workflow.get('tasks', [])) else 'assistant_proposal'
     value["task_count"] = len(tasks)
     value["summary"] = "；".join(t["summary"] for t in tasks if t["summary"])[:320]
     if not value["summary"]:
@@ -109,7 +115,8 @@ class WorkflowIndex:
                     or not isinstance(value.get("tasks"), list)
                 ):
                     raise ValueError("invalid workflow summary; explicit rebuild required")
-                values.append(value)
+                from agents.workflow_state import normalize_workflow_states
+                values.append(normalize_workflow_states(value, check_evidence=False))
         except ValueError:
             logging.getLogger(__name__).exception(
                 "Invalid workflow summary; explicit rebuild required"

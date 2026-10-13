@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from agentscope.model import OpenAIChatModel
+from agents.openai_model import OpenAIChatModel
 from rich.console import Console
 from agents.main_agent import MainAgent
 from agents.execution_harness import ExecutionHarness
@@ -57,13 +57,13 @@ class RecordingModel:
         return response
 
 CASES = [
-    ('weather', '北京现在天气怎么样？只查天气，不用规划行程。', ['information_query']),
-    ('train', '查2026年10月10日北京南到苏州北的火车票，1人，二等座，预算每人700元以内。只查票，不规划行程。', ['information_query']),
-    ('hotel_missing', '找几家北京的酒店，我还没确定入住离店日期和入住人数，请先告诉我还缺哪些条件，不要替我假定。', ['information_query']),
-    ('hotel_unavailable', '查北京2026年10月10日入住、10月12日离店的酒店，1位成人，每晚不超过500元。只查酒店。', ['information_query']),
-    ('preference_weather', '以后我的酒店品牌偏好改成汉庭。顺便查北京现在的天气，不用安排行程。', ['preference', 'information_query']),
-    ('memory', '查询我已经保存的酒店品牌偏好是什么，只读我的历史记录，不要搜索网页。', ['memory_query']),
-    ('itinerary', '帮我规划2026年10月10日从上海出发到北京，10月12日返程的三日行程。火车1人，酒店1人，10月10日入住、12日离店，火车预算单程不超过700元，酒店每晚500元内。不要查询企业制度。查不到的报价和景点信息要明确待核实，不要编造。', ['information_query']),
+    ('weather', '北京现在天气怎么样？只查天气，不用规划行程。', []),
+    ('train', '查2026年10月10日北京南到苏州北的火车票，1人，二等座，预算每人700元以内。只查票，不规划行程。', []),
+    ('hotel_missing', '找几家北京的酒店，我还没确定入住离店日期和入住人数，请先告诉我还缺哪些条件，不要替我假定。', []),
+    ('hotel_unavailable', '查北京2026年10月10日入住、10月12日离店的酒店，1位成人，每晚不超过500元。只查酒店。', []),
+    ('preference_weather', '以后我的酒店品牌偏好改成汉庭。顺便查北京现在的天气，不用安排行程。', []),
+    ('memory', '查询我已经保存的酒店品牌偏好是什么，只读我的历史记录，不要搜索网页。', []),
+    ('itinerary', '帮我规划2026年10月10日从上海出发到北京，10月12日返程的三日行程。火车1人，酒店1人，10月10日入住、12日离店，火车预算单程不超过700元，酒店每晚500元内。不要查询企业制度。查不到的报价和景点信息要明确待核实，不要编造。', []),
 ]
 
 
@@ -132,14 +132,6 @@ async def run_case(case_id, query, expected):
     buffer = io.StringIO()
     console = Console(file=buffer, width=240, color_system=None)
     registry.console = console
-    if WEATHER_CONTROL:
-        agent = registry['information_query']
-        loader = agent.skill_loader
-        class ControlLoader:
-            def get_skill_content(self, name):
-                content = loader.get_skill_content(name)
-                return '\n'.join(line for line in content.splitlines() if not line.startswith('天气参数按用户所问的时段选择：'))
-        agent.skill_loader = ControlLoader()
     app = TripEvidenceCLI()
     app.user_id, app.session_id, app.memory_manager, app.model = USER, case_id, memory, model
     app.console = console

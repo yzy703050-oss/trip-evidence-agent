@@ -1,0 +1,798 @@
+{
+  "selected_runs": [
+    {
+      "case": "tourism_simulated",
+      "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是旅游，不查询企业政策，酒店只需提供地点，价格及空房未知请说明。",
+      "live_model": true,
+      "live_rag": false,
+      "supplier_mode": "simulation",
+      "supplier_request_count": 3,
+      "status": "completed",
+      "stop_reason": "validated",
+      "latency_ms": 5067.707,
+      "model_calls": 2,
+      "stage_counts": {
+        "main:plan": 1,
+        "main:select_batch": 1
+      },
+      "input_tokens": 6788,
+      "output_tokens": 727,
+      "token_usage_complete": true,
+      "tools": {
+        "train_search": 2,
+        "hotel_search": 1
+      },
+      "rag_search_count": 0,
+      "rag_latency_ms": 0,
+      "checks": {
+        "no_model_error": true,
+        "usage_available": true,
+        "no_proposal_repair": true,
+        "finite_stop": true,
+        "honest_supplier_result": true,
+        "no_policy_call": true,
+        "completed": true,
+        "global_valid": true,
+        "two_main_calls": true
+      },
+      "expected_behavior_success": true,
+      "optimization_success": true,
+      "task_success": true,
+      "final_answer": "去程从重庆西到上海虹桥，可选G9001，2026年10月15日 07:20出发，2026年10月15日 18:50抵达，二等座单人票价584.50元，查询时有票。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店，可以考虑全季酒店（上海模拟门店1）（模拟路100号）。\n\n回程从上海虹桥到重庆西，可选G9001，2026年10月17日 07:20出发，2026年10月17日 18:50抵达，二等座单人票价584.50元，查询时有票。\n\n已查到的费用合计1169.00元，其余费用还需确认。 酒店房价、空房和入住及退改规则需在订房时确认。 以下为模拟数据，仅用于测试。",
+      "model_usage": [
+        {
+          "type": "model_call",
+          "stage": "main:plan",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1532.686,
+          "ttft_ms": 725.274,
+          "input_tokens": 2260,
+          "output_tokens": 217,
+          "estimated_cost_usd": null,
+          "turn_id": "16dc14b01e884acd8e6823b34d9cf8cd",
+          "user_id": "tourism_simulated",
+          "session_id": "live",
+          "run_seq": 2,
+          "timestamp": "2026-10-13T07:36:50.607516+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 3408.723,
+          "ttft_ms": 792.673,
+          "input_tokens": 4528,
+          "output_tokens": 510,
+          "estimated_cost_usd": null,
+          "turn_id": "16dc14b01e884acd8e6823b34d9cf8cd",
+          "workflow_id": "workflow_8270db93797d4f0f9454c5505cd15409",
+          "user_id": "tourism_simulated",
+          "session_id": "live",
+          "run_seq": 9,
+          "timestamp": "2026-10-13T07:36:54.100552+00:00"
+        }
+      ],
+      "total_tokens": 7515,
+      "record_directory": "docs\\evals\\2026-10-13-api-shaped-simulation\\tourism_simulated",
+      "call_timings": [
+        {
+          "stage": "main:plan",
+          "latency_ms": 1532.097,
+          "ttft_ms": 725.274,
+          "status": "success",
+          "usage": {
+            "input_tokens": 2260,
+            "output_tokens": 217
+          }
+        },
+        {
+          "stage": "main:select_batch",
+          "latency_ms": 3398.183,
+          "ttft_ms": 792.673,
+          "status": "success",
+          "usage": {
+            "input_tokens": 4528,
+            "output_tokens": 510
+          }
+        }
+      ]
+    },
+    {
+      "case": "business_simulated",
+      "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是星桥信息普通员工出差，优先全季，请检索公司当前差旅制度。无超标审批编号，不能采用已废止900元标准或未批准800元例外。酒店必须取得含税报价并符合当前上限。查到超标或没有可选报价时，请定向重新查询酒店，保留有效火车；若接口没有报价能力则如实说明缺口，不反复查询。",
+      "live_model": true,
+      "live_rag": true,
+      "supplier_mode": "simulation",
+      "supplier_request_count": 3,
+      "status": "completed",
+      "stop_reason": "validated",
+      "latency_ms": 7700.205,
+      "model_calls": 3,
+      "stage_counts": {
+        "agent:travel_policy": 1,
+        "main:plan": 1,
+        "main:select_batch": 1
+      },
+      "input_tokens": 9522,
+      "output_tokens": 1349,
+      "token_usage_complete": true,
+      "tools": {
+        "hotel_search": 1,
+        "train_search": 2
+      },
+      "rag_search_count": 1,
+      "rag_latency_ms": 48.869,
+      "checks": {
+        "no_model_error": true,
+        "usage_available": true,
+        "no_proposal_repair": true,
+        "finite_stop": true,
+        "actual_vector_retrieval": true,
+        "current_hotel_cap": true,
+        "source_citations": true,
+        "completed": true,
+        "global_valid": true,
+        "trains_not_replayed": true,
+        "hotel_once": true,
+        "three_model_calls": true
+      },
+      "expected_behavior_success": true,
+      "optimization_success": true,
+      "task_success": true,
+      "final_answer": "去程从重庆西到上海虹桥，可选G9001，2026年10月15日 07:20出发，2026年10月15日 18:50抵达，二等座单人票价584.50元，查询时有票。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店。住宿可参考全季（上海模拟报价候选1）的模拟标准间，1人入住，住宿总价为760元（含费用），查询时有空房，退改规则尚未核实。\n\n回程从上海虹桥到重庆西，可选G9001，2026年10月17日 07:20出发，2026年10月17日 18:50抵达，二等座单人票价584.50元，查询时有票。\n\n已查到的费用合计1929.00元。 以下为模拟数据，仅用于测试。",
+      "model_usage": [
+        {
+          "type": "model_call",
+          "stage": "agent:travel_policy",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 2027.376,
+          "ttft_ms": 536.382,
+          "input_tokens": 1368,
+          "output_tokens": 428,
+          "estimated_cost_usd": null,
+          "turn_id": "a88385adcfbd4334a301c117d466f01c",
+          "user_id": "business_simulated",
+          "session_id": "live",
+          "run_seq": 2,
+          "timestamp": "2026-10-13T07:36:56.413763+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:plan",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1933.444,
+          "ttft_ms": 703.527,
+          "input_tokens": 2826,
+          "output_tokens": 354,
+          "estimated_cost_usd": null,
+          "turn_id": "a88385adcfbd4334a301c117d466f01c",
+          "user_id": "business_simulated",
+          "session_id": "live",
+          "run_seq": 5,
+          "timestamp": "2026-10-13T07:36:58.364262+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 3535.489,
+          "ttft_ms": 1156.248,
+          "input_tokens": 5328,
+          "output_tokens": 567,
+          "estimated_cost_usd": null,
+          "turn_id": "a88385adcfbd4334a301c117d466f01c",
+          "workflow_id": "workflow_640373599b454d2dac56412afff2ea6d",
+          "user_id": "business_simulated",
+          "session_id": "live",
+          "run_seq": 12,
+          "timestamp": "2026-10-13T07:37:01.992931+00:00"
+        }
+      ],
+      "total_tokens": 10871,
+      "record_directory": "docs\\evals\\2026-10-13-api-shaped-simulation\\business_simulated",
+      "call_timings": [
+        {
+          "stage": "agent:travel_policy",
+          "latency_ms": 2016.283,
+          "ttft_ms": 536.382,
+          "status": "success",
+          "usage": {
+            "input_tokens": 1368,
+            "output_tokens": 428
+          }
+        },
+        {
+          "stage": "main:plan",
+          "latency_ms": 1932.738,
+          "ttft_ms": 703.527,
+          "status": "success",
+          "usage": {
+            "input_tokens": 2826,
+            "output_tokens": 354
+          }
+        },
+        {
+          "stage": "main:select_batch",
+          "latency_ms": 3534.696,
+          "ttft_ms": 1156.248,
+          "status": "success",
+          "usage": {
+            "input_tokens": 5328,
+            "output_tokens": 567
+          }
+        }
+      ]
+    },
+    {
+      "case": "business_conflict",
+      "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是星桥信息普通员工出差，优先全季，请检索公司当前差旅制度。无超标审批编号，不能采用已废止900元标准或未批准800元例外。酒店必须取得含税报价并符合当前上限。查到超标或没有可选报价时，请定向重新查询酒店，保留有效火车；若接口没有报价能力则如实说明缺口，不反复查询。",
+      "live_model": true,
+      "live_rag": true,
+      "supplier_mode": "simulation",
+      "supplier_request_count": 4,
+      "status": "completed",
+      "stop_reason": "validated",
+      "latency_ms": 8277.359,
+      "model_calls": 4,
+      "stage_counts": {
+        "agent:travel_policy": 1,
+        "main:plan": 1,
+        "main:select_batch": 2
+      },
+      "input_tokens": 15140,
+      "output_tokens": 1512,
+      "token_usage_complete": true,
+      "tools": {
+        "hotel_search": 2,
+        "train_search": 2
+      },
+      "rag_search_count": 1,
+      "rag_latency_ms": 67.449,
+      "checks": {
+        "no_model_error": true,
+        "usage_available": true,
+        "no_proposal_repair": true,
+        "finite_stop": true,
+        "actual_vector_retrieval": true,
+        "current_hotel_cap": true,
+        "source_citations": true,
+        "completed": true,
+        "global_valid": true,
+        "trains_not_replayed": true,
+        "hotel_requeried": true,
+        "four_model_calls": true
+      },
+      "expected_behavior_success": true,
+      "optimization_success": true,
+      "task_success": true,
+      "final_answer": "去程从重庆西到上海虹桥，可选G9001，2026年10月15日 07:20出发，2026年10月15日 18:50抵达，二等座单人票价584.50元，查询时有票。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店。住宿可参考全季（上海模拟报价候选1）的模拟标准间，1人入住，住宿总价为760元（含费用），查询时有空房，退改规则尚未核实。\n\n回程从上海虹桥到重庆西，可选G9001，2026年10月17日 07:20出发，2026年10月17日 18:50抵达，二等座单人票价584.50元，查询时有票。\n\n已查到的费用合计1929.00元。 以下为模拟数据，仅用于测试。",
+      "model_usage": [
+        {
+          "type": "model_call",
+          "stage": "agent:travel_policy",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 2776.42,
+          "ttft_ms": 875.619,
+          "input_tokens": 1368,
+          "output_tokens": 608,
+          "estimated_cost_usd": null,
+          "turn_id": "0fe4261061074c5c9a495361d196f821",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 2,
+          "timestamp": "2026-10-13T07:36:43.460457+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:plan",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1631.362,
+          "ttft_ms": 431.115,
+          "input_tokens": 2838,
+          "output_tokens": 322,
+          "estimated_cost_usd": null,
+          "turn_id": "0fe4261061074c5c9a495361d196f821",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 5,
+          "timestamp": "2026-10-13T07:36:45.110790+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1253.94,
+          "ttft_ms": 783.333,
+          "input_tokens": 5614,
+          "output_tokens": 105,
+          "estimated_cost_usd": null,
+          "turn_id": "0fe4261061074c5c9a495361d196f821",
+          "workflow_id": "workflow_3cf424616420446bbf0211528d790584",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 12,
+          "timestamp": "2026-10-13T07:36:46.464128+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 2339.247,
+          "ttft_ms": 763.645,
+          "input_tokens": 5320,
+          "output_tokens": 477,
+          "estimated_cost_usd": null,
+          "turn_id": "0fe4261061074c5c9a495361d196f821",
+          "workflow_id": "workflow_3cf424616420446bbf0211528d790584",
+          "user_id": "business_conflict",
+          "session_id": "live",
+          "run_seq": 17,
+          "timestamp": "2026-10-13T07:36:48.850482+00:00"
+        }
+      ],
+      "total_tokens": 16652,
+      "record_directory": "docs\\evals\\2026-10-13-api-shaped-simulation\\business_conflict",
+      "call_timings": [
+        {
+          "stage": "agent:travel_policy",
+          "latency_ms": 2775.456,
+          "ttft_ms": 875.619,
+          "status": "success",
+          "usage": {
+            "input_tokens": 1368,
+            "output_tokens": 608
+          }
+        },
+        {
+          "stage": "main:plan",
+          "latency_ms": 1630.707,
+          "ttft_ms": 431.115,
+          "status": "success",
+          "usage": {
+            "input_tokens": 2838,
+            "output_tokens": 322
+          }
+        },
+        {
+          "stage": "main:select_batch",
+          "latency_ms": 1253.098,
+          "ttft_ms": 783.333,
+          "status": "success",
+          "usage": {
+            "input_tokens": 5614,
+            "output_tokens": 105
+          }
+        },
+        {
+          "stage": "main:select_batch",
+          "latency_ms": 2338.341,
+          "ttft_ms": 763.645,
+          "status": "success",
+          "usage": {
+            "input_tokens": 5320,
+            "output_tokens": 477
+          }
+        }
+      ]
+    },
+    {
+      "case": "business_api_simulated",
+      "query": "请规划2026-10-15重庆到上海，2026-10-17上海返回重庆的行程，1人，去程当天入住、返程当天离店，火车二等座，单程700元以内。这是星桥信息普通员工出差，优先全季，请检索公司当前差旅制度。无超标审批编号，不能采用已废止900元标准或未批准800元例外。酒店必须取得含税报价并符合当前上限。查到超标或没有可选报价时，请定向重新查询酒店，保留有效火车；若接口没有报价能力则如实说明缺口，不反复查询。",
+      "live_model": true,
+      "live_rag": true,
+      "supplier_mode": "simulation",
+      "supplier_request_count": 3,
+      "status": "partial",
+      "stop_reason": "provider_capability_missing",
+      "latency_ms": 7671.656,
+      "model_calls": 3,
+      "stage_counts": {
+        "agent:travel_policy": 1,
+        "main:plan": 1,
+        "main:select_batch": 1
+      },
+      "input_tokens": 9530,
+      "output_tokens": 1461,
+      "token_usage_complete": true,
+      "tools": {
+        "train_search": 2,
+        "hotel_search": 1
+      },
+      "rag_search_count": 1,
+      "rag_latency_ms": 45.786,
+      "checks": {
+        "no_model_error": true,
+        "usage_available": true,
+        "no_proposal_repair": true,
+        "finite_stop": true,
+        "actual_vector_retrieval": true,
+        "current_hotel_cap": true,
+        "source_citations": true,
+        "no_false_completion": true,
+        "price_evidence_gap": true
+      },
+      "expected_behavior_success": true,
+      "optimization_success": true,
+      "task_success": false,
+      "final_answer": "去程从重庆西到上海虹桥，可选G9001，2026年10月15日 07:20出发，2026年10月15日 18:50抵达，二等座单人票价584.50元，查询时有票。住宿建议住2晚，2026年10月15日入住，2026年10月17日离店。住宿暂未找到合适候选，可以按以上日期继续筛选。\n\n回程从上海虹桥到重庆西，可选G9001，2026年10月17日 07:20出发，2026年10月17日 18:50抵达，二等座单人票价584.50元，查询时有票。\n\n已查到的费用合计1169.00元，其余费用还需确认。 以下为模拟数据，仅用于测试。",
+      "model_usage": [
+        {
+          "type": "model_call",
+          "stage": "agent:travel_policy",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 2725.645,
+          "ttft_ms": 811.075,
+          "input_tokens": 1368,
+          "output_tokens": 597,
+          "estimated_cost_usd": null,
+          "turn_id": "980bffdefd3b4b778687978793e0e1a8",
+          "user_id": "business_api_simulated",
+          "session_id": "live",
+          "run_seq": 2,
+          "timestamp": "2026-10-13T07:43:07.520090+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:plan",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 1562.789,
+          "ttft_ms": 339.54,
+          "input_tokens": 2829,
+          "output_tokens": 344,
+          "estimated_cost_usd": null,
+          "turn_id": "980bffdefd3b4b778687978793e0e1a8",
+          "user_id": "business_api_simulated",
+          "session_id": "live",
+          "run_seq": 5,
+          "timestamp": "2026-10-13T07:43:09.107398+00:00"
+        },
+        {
+          "type": "model_call",
+          "stage": "main:select_batch",
+          "model": "deepseek-flash",
+          "status": "success",
+          "error": null,
+          "latency_ms": 3194.444,
+          "ttft_ms": 639.801,
+          "input_tokens": 5333,
+          "output_tokens": 520,
+          "estimated_cost_usd": null,
+          "turn_id": "980bffdefd3b4b778687978793e0e1a8",
+          "workflow_id": "workflow_4967612aa63a49ffaedf9d224f29fc3d",
+          "user_id": "business_api_simulated",
+          "session_id": "live",
+          "run_seq": 12,
+          "timestamp": "2026-10-13T07:43:12.385321+00:00"
+        }
+      ],
+      "total_tokens": 10991,
+      "record_directory": "docs\\evals\\2026-10-13-api-shaped-capability-fixed\\business_api_simulated",
+      "call_timings": [
+        {
+          "stage": "agent:travel_policy",
+          "latency_ms": 2724.846,
+          "ttft_ms": 811.075,
+          "status": "success",
+          "usage": {
+            "input_tokens": 1368,
+            "output_tokens": 597
+          }
+        },
+        {
+          "stage": "main:plan",
+          "latency_ms": 1562.075,
+          "ttft_ms": 339.54,
+          "status": "success",
+          "usage": {
+            "input_tokens": 2829,
+            "output_tokens": 344
+          }
+        },
+        {
+          "stage": "main:select_batch",
+          "latency_ms": 3193.734,
+          "ttft_ms": 639.801,
+          "status": "success",
+          "usage": {
+            "input_tokens": 5333,
+            "output_tokens": 520
+          }
+        }
+      ]
+    }
+  ],
+  "all_measurement_iterations": [
+    {
+      "directory": "2026-10-13-api-shaped-capability-fixed",
+      "model_calls": 3,
+      "input_tokens": 9530,
+      "output_tokens": 1461,
+      "total_tokens": 10991,
+      "runs": [
+        {
+          "case": "business_api_simulated",
+          "status": "partial",
+          "stop_reason": "provider_capability_missing",
+          "latency_ms": 7671.656,
+          "model_calls": 3,
+          "total_tokens": 10991
+        }
+      ]
+    },
+    {
+      "directory": "2026-10-13-api-shaped-simulation",
+      "model_calls": 14,
+      "input_tokens": 54310,
+      "output_tokens": 5177,
+      "total_tokens": 59487,
+      "runs": [
+        {
+          "case": "business_conflict",
+          "status": "completed",
+          "stop_reason": "validated",
+          "latency_ms": 8277.359,
+          "model_calls": 4,
+          "total_tokens": 16652
+        },
+        {
+          "case": "tourism_simulated",
+          "status": "completed",
+          "stop_reason": "validated",
+          "latency_ms": 5067.707,
+          "model_calls": 2,
+          "total_tokens": 7515
+        },
+        {
+          "case": "business_simulated",
+          "status": "completed",
+          "stop_reason": "validated",
+          "latency_ms": 7700.205,
+          "model_calls": 3,
+          "total_tokens": 10871
+        },
+        {
+          "case": "business_api_simulated",
+          "status": "partial",
+          "stop_reason": "no_progress",
+          "latency_ms": 10051.211,
+          "model_calls": 5,
+          "total_tokens": 24449
+        }
+      ]
+    },
+    {
+      "directory": "2026-10-13-live-model-simulated-suppliers",
+      "model_calls": 6,
+      "input_tokens": 21822,
+      "output_tokens": 1726,
+      "total_tokens": 23548,
+      "runs": [
+        {
+          "case": "tourism_simulated",
+          "status": "completed",
+          "stop_reason": "validated",
+          "latency_ms": 4263.48,
+          "model_calls": 2,
+          "total_tokens": 7587
+        },
+        {
+          "case": "business_simulated",
+          "status": "partial",
+          "stop_reason": "no_progress",
+          "latency_ms": 6741.71,
+          "model_calls": 4,
+          "total_tokens": 15961
+        }
+      ]
+    },
+    {
+      "directory": "2026-10-13-live-model-verified",
+      "model_calls": 11,
+      "input_tokens": 39396,
+      "output_tokens": 3579,
+      "total_tokens": 42975,
+      "runs": [
+        {
+          "case": "business_conflict",
+          "status": "partial",
+          "stop_reason": "no_progress",
+          "latency_ms": 9389.819,
+          "model_calls": 5,
+          "total_tokens": 19863
+        },
+        {
+          "case": "tourism_simulated",
+          "status": "completed",
+          "stop_reason": "validated",
+          "latency_ms": 4098.488,
+          "model_calls": 2,
+          "total_tokens": 7134
+        },
+        {
+          "case": "business_simulated",
+          "status": "completed",
+          "stop_reason": "validated",
+          "latency_ms": 8676.272,
+          "model_calls": 4,
+          "total_tokens": 15978
+        }
+      ]
+    },
+    {
+      "directory": "2026-10-13-live-policy-batch-fixed",
+      "model_calls": 4,
+      "input_tokens": 13843,
+      "output_tokens": 889,
+      "total_tokens": 14732,
+      "runs": [
+        {
+          "case": "business_conflict",
+          "status": "partial",
+          "stop_reason": "no_progress",
+          "latency_ms": 6083.893,
+          "model_calls": 4,
+          "total_tokens": 14732
+        }
+      ]
+    },
+    {
+      "directory": "2026-10-13-live-policy-final-conflict",
+      "model_calls": 4,
+      "input_tokens": 14067,
+      "output_tokens": 1078,
+      "total_tokens": 15145,
+      "runs": [
+        {
+          "case": "business_conflict",
+          "status": "partial",
+          "stop_reason": "no_progress",
+          "latency_ms": 7380.618,
+          "model_calls": 4,
+          "total_tokens": 15145
+        }
+      ]
+    },
+    {
+      "directory": "2026-10-13-live-policy-fixed",
+      "model_calls": 17,
+      "input_tokens": 63747,
+      "output_tokens": 5216,
+      "total_tokens": 68963,
+      "runs": [
+        {
+          "case": "tourism_live",
+          "status": "partial",
+          "stop_reason": "main_decision_limit",
+          "latency_ms": 12246.346,
+          "model_calls": 5,
+          "total_tokens": 19317
+        },
+        {
+          "case": "business_live",
+          "status": "partial",
+          "stop_reason": "main_decision_limit",
+          "latency_ms": 12220.637,
+          "model_calls": 6,
+          "total_tokens": 26215
+        },
+        {
+          "case": "business_conflict",
+          "status": "partial",
+          "stop_reason": "main_decision_limit",
+          "latency_ms": 12229.551,
+          "model_calls": 6,
+          "total_tokens": 23431
+        }
+      ]
+    },
+    {
+      "directory": "2026-10-13-live-policy-measurement",
+      "model_calls": 8,
+      "input_tokens": 9043,
+      "output_tokens": 4408,
+      "total_tokens": 13451,
+      "runs": [
+        {
+          "case": "tourism_live",
+          "status": "error",
+          "stop_reason": null,
+          "latency_ms": 3721.766,
+          "model_calls": 2,
+          "total_tokens": 2905
+        },
+        {
+          "case": "business_live",
+          "status": "error",
+          "stop_reason": null,
+          "latency_ms": 8031.082,
+          "model_calls": 3,
+          "total_tokens": 5326
+        },
+        {
+          "case": "business_conflict",
+          "status": "error",
+          "stop_reason": null,
+          "latency_ms": 10886.102,
+          "model_calls": 3,
+          "total_tokens": 5220
+        }
+      ]
+    },
+    {
+      "directory": "2026-10-13-live-policy-verified-conflict",
+      "model_calls": 3,
+      "input_tokens": 9180,
+      "output_tokens": 1247,
+      "total_tokens": 10427,
+      "runs": [
+        {
+          "case": "business_conflict",
+          "status": "partial",
+          "stop_reason": "model_partial",
+          "latency_ms": 6558.926,
+          "model_calls": 3,
+          "total_tokens": 10427
+        }
+      ]
+    },
+    {
+      "directory": "2026-10-13-live-policy-verified-final",
+      "model_calls": 9,
+      "input_tokens": 31250,
+      "output_tokens": 2987,
+      "total_tokens": 34237,
+      "runs": [
+        {
+          "case": "tourism_live",
+          "status": "partial",
+          "stop_reason": "model_partial",
+          "latency_ms": 4945.389,
+          "model_calls": 2,
+          "total_tokens": 7561
+        },
+        {
+          "case": "business_live",
+          "status": "partial",
+          "stop_reason": "model_partial",
+          "latency_ms": 6849.018,
+          "model_calls": 3,
+          "total_tokens": 10572
+        },
+        {
+          "case": "business_conflict",
+          "status": "completed",
+          "stop_reason": "validated",
+          "latency_ms": 7857.046,
+          "model_calls": 4,
+          "total_tokens": 16104
+        }
+      ]
+    }
+  ],
+  "selected_tokens": 46029,
+  "api_shaped_iteration_tokens": 70478,
+  "all_iteration_tokens": 293956,
+  "all_iteration_calls": 79
+}

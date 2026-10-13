@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-from agentscope.message import Msg
+from agents.runtime import Msg
 from rich.console import Console
 
 import cli as cli_module
@@ -118,16 +118,22 @@ async def test_cli_paid_train_is_not_replayed_after_stage_write_failure(tmp_path
         def json(self): return {'error_code': 0, 'result': []}
     def post(url, **kwargs): calls.append(url); return Response()
     executor = ToolExecutor({'train_search': JuheTrainProvider(KEY, http_post=post, now_fn=lambda: NOW)})
-    class Info:
-        async def run(self, context, run):
-            await executor.execute('train_search', {'origin': '北京南', 'destination': '苏州北', 'departure_date': '2026-10-09'}, run, call_id='1')
-            return {'status': 'partial', 'domain_results': run.domain_results}
+    class DirectMain:
+        async def initialize(self, context):
+            return {'response_mode': 'answer', 'agent_schedule': [], 'query_plan': [{'domain': 'train',
+                'parameters': {'origin': '北京南', 'destination': '苏州北', 'departure_date': '2026-10-09'}}]}
     memory = MemoryManager('alice', 'failure', storage_path=str(tmp_path))
     app = cli_module.TripEvidenceCLI()
     app.memory_manager = memory
-    app.harness = ExecutionHarness(main_agent=Main(), agent_registry={'information_query': Info()}, memory_manager=memory)
+    app.harness = ExecutionHarness(main_agent=DirectMain(), agent_registry={}, memory_manager=memory)
+    app.harness.runner.executor = executor
     def fail(*args, **kwargs): raise OSError('stage write failed')
-    monkeypatch.setattr(memory, 'record_agent_stage', fail)
-    with pytest.raises(OSError): await app.process_query('query')
+    original = memory.session_store.append_run
+    def persist(row):
+        if row['type'] == 'tool_execution': fail()
+        return original(row)
+    monkeypatch.setattr(memory.session_store, 'append_run', persist)
+    await app.process_query('query')
+    assert app.last_result['status'] == 'error'
     assert len(calls) == 1
     assert KEY not in json.dumps(memory.session_store.read_runs())

@@ -14,12 +14,12 @@ async def test_three_and_five_tasks_have_drafts_then_global_validation(tmp_path,
     assert result['status'] == 'completed'
     n = len(result['workflow']['tasks'])
     assert len(r.train.calls) == n and len(r.hotel.calls) == n-1
-    assert 'validate_workflow' in r.main.actions
+    assert r.main.actions == ['commit_batch']
     assert all(t['status'] == 'validated' for t in result['workflow']['tasks'])
-    assert r.main.contexts[2]['workflow']['tasks'][0]['status'] == 'draft'
+    assert len(r.main.contexts) == 1
+    assert all(t['status'] == 'draft' and t['draft_stage'] == 'query' for t in r.main.contexts[0]['workflow']['tasks'])
     for context in r.main.contexts:
-        child = context.get('latest_child_result') or {}
-        assert all(len(row.get('items', [])) <= 5 for row in child.get('query_results', []))
+        assert all(len(row.get('items', [])) <= 5 for row in context['task_results'])
     assert max(len(row['items']) for row in result['workflow']['results_by_query'].values()) == 8
     assert r.main.initial_calls == 1
     assert 'activities' not in str(result['workflow']['tasks'])
@@ -32,8 +32,8 @@ async def test_model_cannot_finish_without_check_or_spin_forever(tmp_path):
     result = await r.turn()
     assert result['status'] == 'partial'
     assert result['stop_reason'] == 'no_progress'
-    assert not r.train.calls
-    assert all(t['status'] == 'pending' for t in result['workflow']['tasks'])
+    assert len(r.train.calls) == 3
+    assert all(t['status'] == 'draft' and t['draft_stage'] == 'query' for t in result['workflow']['tasks'])
 
 
 @pytest.mark.asyncio
@@ -69,7 +69,7 @@ async def test_missing_date_can_still_query_hotel_places(tmp_path):
         task['field_sources'] = {'nights': 'proposal'} if task['requires_hotel'] else {}
     r = Runtime(tmp_path, main=WorkflowMain(p)); result = await r.turn()
     assert r.hotel.calls and r.train.calls
-    assert result['status'] == 'partial'
+    assert result['status'] == 'completed'
     assert result['workflow']['tasks'][0]['field_sources']['departure_date'] == 'default'
     assert result['workflow']['effective_conditions']['passengers'] == 1
 
@@ -86,16 +86,20 @@ async def test_failed_save_does_not_replay_queries(tmp_path, monkeypatch):
     monkeypatch.setattr(r.memory.workflow_store, 'save', save)
     result = await r.turn()
     assert result['status'] == 'error' and result['stop_reason'] == 'workflow_save_failed'
-    assert len(r.train.calls) == 1
+    assert len(r.train.calls) == 3
+    assert len({str(q) for q in r.train.calls}) == 3
 
 
 @pytest.mark.asyncio
 async def test_tool_and_model_telemetry_has_task_association(tmp_path):
     r = Runtime(tmp_path); result = await r.turn()
-    calls = [c for c in r.memory.session_store.read_runs() if c['type'] == 'model_call']
-    assert calls and all(c['workflow_id'] == result['workflow_id'] and c['task_id'] for c in calls)
-    messages = [e for e in r.memory.session_store.read_events() if e['type'] == 'workflow_message']
-    assert messages and all(e['content']['message_id'] and e['content']['turn_id'] for e in messages)
+    # Fake main does not call a model; provider and decision telemetry remain truthful.
+    records = r.memory.session_store.read_runs()
+    decisions = [e for e in records if e['type'] == 'workflow_decision']
+    assert len(decisions) == 1 and decisions[0]['workflow_id'] == result['workflow_id']
+    requests = result['workflow']['execution_plan']
+    assert requests and all(e['task_id'] and e['request_id'] and e['completed_at'] for e in requests)
+    assert not [e for e in records if e['type'] == 'model_call']
 
 
 @pytest.mark.asyncio
@@ -104,7 +108,7 @@ async def test_invalid_action_cannot_start_provider(tmp_path):
         async def step(self, context): return {'action': 'book_and_pay'}
     r = Runtime(tmp_path, main=Main()); result = await r.turn()
     assert result['status'] == 'error' and result['stop_reason'] == 'invalid_workflow_action'
-    assert not r.train.calls and not r.hotel.calls
+    assert len(r.train.calls) == 3 and len(r.hotel.calls) == 2
 
 
 @pytest.mark.asyncio
@@ -118,13 +122,14 @@ async def test_unavailable_provider_cannot_be_refreshed_repeatedly(tmp_path):
     r = Runtime(tmp_path, main=Main()); r.train.status = 'unavailable'
     result = await r.turn()
     assert result['status'] == 'partial'
-    assert len(r.train.calls) == 1
+    assert len(r.train.calls) == 3
+    assert len({str(q) for q in r.train.calls}) == 3
     assert result['stop_reason'] == 'no_progress'
 
 
 @pytest.mark.asyncio
-async def test_preference_runs_once_before_first_workflow_query(tmp_path):
-    from agentscope.message import Msg
+async def test_explicit_preference_updates_memory_before_plan_without_preference_agent(tmp_path):
+    from agents.runtime import Msg
     import json
     class Main(WorkflowMain):
         async def initialize(self, context):
@@ -139,10 +144,10 @@ async def test_preference_runs_once_before_first_workflow_query(tmp_path):
             assert not r.train.calls
             return Msg('preference', json.dumps({'preferences': {'hotel_brands': ['汉庭']}}), 'assistant')
     pref = Preference(); r.harness.agent_registry['preference'] = pref
-    result = await r.turn('我偏好汉庭，安排火车酒店')
-    assert result['status'] == 'completed' and pref.calls == 1
-    assert all(c['effective_preferences']['hotel_brands'] == ['汉庭'] for c in r.main.contexts)
-    assert r.memory.long_term.get_preference()['hotel_brands'] == ['汉庭']
+    result = await r.turn('以后尽量选择汉庭，安排火车酒店')
+    assert result['status'] == 'completed' and pref.calls == 0
+    assert r.memory.long_term.data['travel_memories'][0]['text'] == '以后尽量选择汉庭'
+    assert r.main.contexts[0]['effective_preferences']['memories'][0]['source'] == 'explicit'
 
 
 @pytest.mark.asyncio
@@ -252,10 +257,11 @@ async def test_expired_price_evidence_is_not_an_eternal_booking_guarantee(tmp_pa
     r = Runtime(tmp_path); w = r.memory.workflow_store.save(populated_workflow(), expected_revision=None)
     main = Main(); runner = WorkflowRunner(main, r.info, r.memory)
     result = await runner.run({'original_query': '继续', 'current_time': '2026-10-11T10:00:00+08:00'}, RunState(r.memory.start_turn('继续')), w)
-    assert main.context['relevant_results'][0]['needs_revalidation'] is True
+    assert 'history' not in main.context['relevant_results'][0]
+    assert len(r.train.calls) == 3  # Expired quotes are queried once per affected task.
     assert result['validated_plan']['valid'] is False
     assert result['validated_plan']['budget']['verified'] is False
-    assert not r.train.calls
+    assert result['status'] == 'partial'
 
 
 @pytest.mark.asyncio
@@ -288,3 +294,18 @@ async def test_invalid_proposal_gets_one_schema_repair_before_any_tools(tmp_path
     main = Main(); r = Runtime(tmp_path, main=main)
     result = await r.turn()
     assert result['status'] == 'completed' and main.initial_calls == 1 and main.repairs == 1
+
+
+@pytest.mark.asyncio
+async def test_explicit_refresh_only_queries_target_train_and_preserves_other_rows(tmp_path):
+    first = await Runtime(tmp_path).turn()
+    restarted = Runtime(tmp_path)
+    target = first['workflow']['tasks'][1]
+    async def initialize(context):
+        return {'response_mode': 'workflow', 'agent_schedule': [], 'resume_workflow_id': first['workflow_id'],
+            'refresh': True, 'refresh_target': {'task_ids': [target['id']], 'components': ['train']}}
+    restarted.main.initialize = initialize
+    result = await restarted.turn('只重查第二段最新余票')
+    assert result['status'] == 'completed'
+    assert len(restarted.train.calls) == 1 and not restarted.hotel.calls
+    assert result['workflow']['tasks'][0] == first['workflow']['tasks'][0]

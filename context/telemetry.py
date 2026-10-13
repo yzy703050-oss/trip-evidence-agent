@@ -134,5 +134,5 @@ class MeteredModel:
 
             return measured_stream()
         if budget: budget.success(context)
-        self._write(started, stage, getattr(response, "usage", None), "success")
+        self._write(started, stage, getattr(response, "usage", None), "success", ttft_ms=getattr(response, "ttft_ms", None))
         return response
