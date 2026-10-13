@@ -208,7 +208,7 @@ async def test_runner_preserves_policy_validation_error_in_audit(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_batch_actual_tool_contract_drives_hotel_refresh_without_train_replay(tmp_path):
+async def test_explicit_refresh_uses_actual_tool_contract_without_train_replay(tmp_path):
     from dataclasses import replace
 
     from test_consolidated_travel_run import BatchMain
@@ -248,8 +248,10 @@ async def test_batch_actual_tool_contract_drives_hotel_refresh_without_train_rep
             hotel_row = next(r for r in view["task_results"] if r["domain"] == "hotel")
             assert hotel_row["returned_candidate_total"] == 7
             assert hotel_row["excluded_candidate_count"] == 7 and hotel_row["items"] == []
-            marker = "批量查询契约JSON："
-            example = json.loads(prompt.split(marker, 1)[1].splitlines()[0])["refresh_example"]
+            # Inject an explicitly requested action to test runtime/schema compatibility,
+            # not model obedience to a prompt or an automatic over-budget retry.
+            example = {"action": "schedule_queries", "query_plan": [{
+                "domain": "hotel", "parameters": {"refresh": True}}]}
             task = view["workflow"]["tasks"][0]
             example["query_plan"][0].update(task_id=task["id"], task_revision=task["revision"])
             example["query_plan"][0]["parameters"].update(

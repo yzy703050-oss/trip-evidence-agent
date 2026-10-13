@@ -34,6 +34,10 @@ def validate_model_money(value):
 
 
 def workflow_proposal_contract():
+    from agents.condition_strengths import DATE_FIELDS
+
+    strengths = {'type': 'object', 'additionalProperties': False,
+                 'properties': {key: {'enum': ['hard', 'soft']} for key in sorted(DATE_FIELDS)}}
     fields = {}
     for key in sorted(CONDITION_KEYS):
         if key == "constraints":
@@ -69,6 +73,7 @@ def workflow_proposal_contract():
             "requires_hotel": {"type": "boolean"},
             "conditions": {"$ref": "#/$defs/conditions"},
             "field_sources": {"type": "object", "additionalProperties": {"enum": sorted(SOURCES)}},
+            "condition_strengths": strengths,
         },
         "required": ["origin", "destination", "purpose", "requires_hotel", "conditions"],
     }
@@ -78,6 +83,7 @@ def workflow_proposal_contract():
         "$defs": {"conditions": conditions},
         "properties": {
             "confirmed_conditions": {"$ref": "#/$defs/conditions"},
+            "condition_strengths": strengths,
             "tasks": {"type": "array", "minItems": 1, "items": task},
         },
         "required": ["tasks"],
@@ -107,6 +113,7 @@ def workflow_proposal_contract():
                     "check_out": "user",
                     "hotel_keywords": "preference",
                 },
+                "condition_strengths": {"departure_date": "hard", "check_in": "hard", "check_out": "hard"},
             },
             {
                 "origin": "上海",
@@ -116,6 +123,7 @@ def workflow_proposal_contract():
                 "requires_hotel": False,
                 "conditions": {"departure_date": "2026-10-17"},
                 "field_sources": {"departure_date": "user"},
+                "condition_strengths": {"departure_date": "hard"},
             },
         ],
     }
@@ -128,6 +136,10 @@ def workflow_contract_prompt():
         "旅游purpose用visit，出差business，返程return，绝不写tourism。"
         "hotel_keywords是单个字符串（如全季），不是列表；无关键词可省略。"
         "purpose只在task层；seat_class和金额只在constraints内。"
+        "condition_strengths与field_sources独立：来源user不等于强制；日期及nights标hard或soft。"
+        "必须/只能/不能晚于以及未表示可调整的明确日期用hard；最好/尽量/可调整和系统建议用soft。"
+        "全局condition_strengths对应confirmed_conditions，任务同名字段对应任务条件；"
+        "任务不能软化全局硬边界，政策与预算仍强制；不输出没有条件值的强度。"
         "单程预算不能改为全程预算：每个单程700用train_max_total_cny=700；"
         "只有明确全程总预算才用total_budget_cny。"
         "新workflow的基本火车/酒店查询由程序从任务条件生成，不要另输出query_plan；"
@@ -141,38 +153,29 @@ def workflow_contract_prompt():
 
 
 def batch_query_contract_prompt():
-    example = {
-        "action": "schedule_queries",
-        "query_plan": [
-            {
-                "task_id": "当前冲突任务ID",
-                "task_revision": 1,
-                "domain": "hotel",
-                "parameters": {"refresh": True},
-            }
-        ],
-    }
     return (
         "query_tools提供实际工具schema与能力；只用允许的parameters键，不能发明报价接口。"
-        "schedule_queries用query_plan，绝不是queries；task_id/task_revision取当前值。"
+        "本轮不为接口缺字段、失败或报价超标继续补查；已有候选先选择，无法满足则说明已查范围。"
+        "只有合法新日期安排或用户本轮明确新查询才有新参数依据；schedule_queries用query_plan，"
+        "task_id/task_revision取当前值，绝不是queries。"
         "酒店品牌参数叫keywords，不叫hotel_keywords；预算放parameters.constraints.hotel_max_nightly_cny，"
         "不能放max_nightly_cny/quote_required/search_kind。分页用parameters.candidate_offset，不能顶层offset。"
-        "当前工具能报价且合规候选全部被过滤时，按授权只重查酒店：复制原查询参数并加refresh=true，"
-        "否则相同条件只会复用缓存，不能取得新报价；保留有效火车不重查。"
         "task_results.items已经通过该query.constraints本地筛选；有合适候选优先commit_batch，"
-        "仅items为空、需更多分页或实际新冲突才查询，不能忽略刷新后出现的候选。"
+        "不能把未提供的字段推测为可以查到，也不能把当前候选当成全市场。"
         "returned_candidate_total是原返回数，excluded_candidate_count是筛选排除数。"
-        "报价工具返回候选但candidate_total=0且用户已授权超标重查时，必须先定向刷新酒店一次，"
-        "不能再次索求同一授权或直接allow_repair=false结束；刷新后仍无候选才可保留缺口结束。"
         "stay_total_cny是整个住宿总额，绝不能直接与每晚上限比较：760元住两晚是380元/晚。"
         "酒店derived_stay_nights/derived_nightly_cny由程序按报价日期计算，可用于比较每晚预算；"
         "仍须核对fees_included、日期与可用性，缺字段不假装有报价。金额约束输出JSON数字。"
         "酒店仅有地点能力时不能补查报价；已失败且无新依据的火车查询也不反复重试。"
         "缺候选时整个train_selection或hotel_selection必须为null，不能给candidate_id=null的引用对象。"
-        "无可执行补查询则commit_batch附allow_repair=false、已有选择及unverified_requirements，"
-        "程序校验后保留partial；不得重复提交相同缺失方案。可修复则先定向查询或使用已有候选。"
-        "示例只示范刷新层级，其他必要参数复用当前task_results.parameters，不能复制占位ID。\n"
-        "批量查询契约JSON："
-        + json.dumps({"refresh_example": example}, ensure_ascii=False, separators=(",", ":"))
-        + "\n"
+        "能力缺口直接commit_batch附allow_repair=false、已有选择及具体unverified_requirements；"
+        "程序校验决定completed或partial，软偏好未核实不能伪装成政策满足。"
+        "仅成功查询无候选或真实日期衔接问题且相关日期为soft时，才考虑合理调整去程与返程。"
+        "用户明确要求无车时改期、且新安排在hard边界内时，应提出日期补丁；soft授权构成新参数依据，"
+        "不是已经有新日期票房的保证，也不需要先有新日期的查询结果。"
+        "repair_tasks需要workflow_revision、task_ids、components=[schedule]、实际conflict_codes、reason，"
+        "task_updates=[{task_id,conditions:{departure_date:新日期,check_in:日期,check_out:日期}}]，"
+        "每条只写需修改的soft日期/nights；固定hard条件不得改变。程序只查询新日期受影响组件，"
+        "不能改旧报价日期冒充新事实，不能靠不断改日期补齐接口缺字段。"
+        "无法兼容的hard条件反馈用户可放宽项，证据未知只说明查不到，不用授权代替事实。\n"
     )

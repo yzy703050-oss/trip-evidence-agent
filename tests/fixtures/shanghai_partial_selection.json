@@ -1,0 +1,504 @@
+{
+  "source": "2026-10-13 actual Shanghai run; first visible page, IDs anonymized, URLs omitted",
+  "original_counts": [
+    0,
+    25,
+    93
+  ],
+  "workflow": {
+    "id": "workflow_shanghai",
+    "revision": 8,
+    "status": "running",
+    "original_query": "上海",
+    "confirmed_conditions": {
+      "start_date": "2026-10-14",
+      "passengers": 1,
+      "guests": 1
+    },
+    "effective_conditions": {
+      "start_date": "2026-10-14",
+      "passengers": 1,
+      "guests": 1,
+      "constraints": {}
+    },
+    "field_sources": {
+      "start_date": "user",
+      "passengers": "user",
+      "guests": "user"
+    },
+    "condition_strengths": {
+      "start_date": "hard"
+    },
+    "current_task_id": "outbound",
+    "tasks": [
+      {
+        "id": "outbound",
+        "revision": 1,
+        "status": "draft",
+        "origin": "重庆",
+        "destination": "上海",
+        "purpose": "visit",
+        "purpose_source": "user",
+        "requires_hotel": true,
+        "depends_on": [],
+        "conditions": {
+          "departure_date": "2026-10-14",
+          "start_date": "2026-10-14",
+          "check_in": "2026-10-14",
+          "check_out": "2026-10-16",
+          "nights": 2
+        },
+        "field_sources": {
+          "departure_date": "user",
+          "start_date": "user",
+          "check_in": "derived",
+          "check_out": "derived",
+          "nights": "proposal",
+          "origin": "preference"
+        },
+        "condition_strengths": {
+          "departure_date": "hard",
+          "start_date": "hard",
+          "check_in": "hard",
+          "check_out": "soft",
+          "nights": "soft"
+        },
+        "draft_plan": {
+          "task_revision": 1,
+          "train_selection": null,
+          "hotel_selection": null,
+          "schedule": {
+            "check_in": "2026-10-14",
+            "check_out": "2026-10-16"
+          },
+          "unverified_requirements": [
+            "去程重庆→上海2026-10-14火车查询接口返回错误，本次未查到任何车次、时刻与票价，无法核实并选择。",
+            "住宿仅有上海酒店地点候选（高德地点数据），未提供房型、房价、空房及预算合格证明，无法核实并选择。",
+            "因去程车次未确定，实际抵达时间未知，入住日期无法由交通时刻衔接确认。"
+          ]
+        },
+        "summary": "",
+        "query_ids": [
+          "out_train",
+          "hotel"
+        ],
+        "issues": [],
+        "query_containers": {
+          "train": {
+            "domain": "train",
+            "status": "failed",
+            "parameters": {
+              "origin": "重庆",
+              "destination": "上海",
+              "departure_date": "2026-10-14",
+              "passengers": 1
+            },
+            "current_query_ref": "out_train",
+            "history_refs": [],
+            "invalidation_reason": null
+          },
+          "hotel": {
+            "domain": "hotel",
+            "status": "ready",
+            "parameters": {
+              "city": "上海",
+              "keywords": "酒店",
+              "guests": 1,
+              "search_kind": "hotel_place"
+            },
+            "current_query_ref": "hotel",
+            "history_refs": [],
+            "invalidation_reason": null
+          }
+        },
+        "draft_stage": "selection"
+      },
+      {
+        "id": "return",
+        "revision": 1,
+        "status": "draft",
+        "origin": "上海",
+        "destination": "重庆",
+        "purpose": "return",
+        "purpose_source": "derived",
+        "requires_hotel": false,
+        "depends_on": [
+          "outbound"
+        ],
+        "conditions": {
+          "departure_date": "2026-10-16"
+        },
+        "field_sources": {
+          "departure_date": "proposal"
+        },
+        "condition_strengths": {},
+        "draft_plan": {
+          "task_revision": 1,
+          "train_selection": null,
+          "hotel_selection": null,
+          "schedule": {
+            "check_in": null,
+            "check_out": null
+          },
+          "unverified_requirements": [
+            "上海→重庆 2026-10-16 返程车次查询成功但未选定具体方案（依赖去程确定后再定）",
+            "去程交通未确定，返程日期可能需相应调整"
+          ]
+        },
+        "summary": "",
+        "query_ids": [
+          "return_train"
+        ],
+        "issues": [],
+        "query_containers": {
+          "train": {
+            "domain": "train",
+            "status": "ready",
+            "parameters": {
+              "origin": "上海",
+              "destination": "重庆",
+              "departure_date": "2026-10-16",
+              "passengers": 1
+            },
+            "current_query_ref": "return_train",
+            "history_refs": [],
+            "invalidation_reason": null
+          }
+        },
+        "draft_stage": "selection"
+      }
+    ],
+    "results_by_query": {
+      "out_train": {
+        "id": "out_train",
+        "task_id": "outbound",
+        "task_revision": 1,
+        "domain": "train",
+        "parameters": {
+          "origin": "重庆",
+          "destination": "上海",
+          "departure_date": "2026-10-14",
+          "passengers": 1
+        },
+        "constraints": {},
+        "result_revision": 1,
+        "status": "error",
+        "items": [],
+        "source": {
+          "provider": "聚合数据",
+          "fetched_at": "2026-10-13T18:58:37.136703+08:00"
+        },
+        "fetched_at": "2026-10-13T18:58:37.136703+08:00",
+        "missing_fields": [],
+        "message": "聚合数据火车查询返回错误。",
+        "needs_revalidation": false,
+        "history": [],
+        "execution": {
+          "id": "request_357f588de6394fa69c92b519ebf2d5a4",
+          "name": "train_search",
+          "status": "error",
+          "cache_hit": false,
+          "elapsed_ms": 467.855,
+          "query": {
+            "origin": "重庆",
+            "destination": "上海",
+            "departure_date": "2026-10-14",
+            "passengers": 1
+          }
+        }
+      },
+      "hotel": {
+        "id": "hotel",
+        "task_id": "outbound",
+        "task_revision": 1,
+        "domain": "hotel",
+        "parameters": {
+          "city": "上海",
+          "keywords": "酒店",
+          "guests": 1,
+          "search_kind": "hotel_place"
+        },
+        "constraints": {},
+        "result_revision": 1,
+        "status": "ok",
+        "items": [
+          {
+            "id": "B0FFGX9CYO",
+            "hotel_name": "登巴客栈(上海旗舰店)",
+            "address": "延安西路576号",
+            "city": "上海市",
+            "district": "长宁区",
+            "location": "121.435379,31.216636",
+            "source": {
+              "provider": "amap",
+              "fetched_at": "2026-10-13T18:58:37.137207+08:00"
+            },
+            "rating": "4.3",
+            "kind": "hotel_place",
+            "room_type": null,
+            "stay_total_cny": null,
+            "fees_included": null,
+            "availability": "unknown",
+            "cancellation": null
+          },
+          {
+            "id": "B0FFFZKIZL",
+            "hotel_name": "大隐国际青年旅舍(上海陆家嘴滨江道店)",
+            "address": "陆家嘴街道浦东大道834弄-840号甲",
+            "city": "上海市",
+            "district": "浦东新区",
+            "location": "121.527291,31.239356",
+            "source": {
+              "provider": "amap",
+              "fetched_at": "2026-10-13T18:58:37.137207+08:00"
+            },
+            "rating": "4.7",
+            "kind": "hotel_place",
+            "room_type": null,
+            "stay_total_cny": null,
+            "fees_included": null,
+            "availability": "unknown",
+            "cancellation": null
+          },
+          {
+            "id": "B00155779O",
+            "hotel_name": "登巴客栈(上海长寿路店)",
+            "address": "西康路1426号(近澳门路)",
+            "city": "上海市",
+            "district": "普陀区",
+            "location": "121.435862,31.244349",
+            "source": {
+              "provider": "amap",
+              "fetched_at": "2026-10-13T18:58:37.137207+08:00"
+            },
+            "rating": "4.1",
+            "kind": "hotel_place",
+            "room_type": null,
+            "stay_total_cny": null,
+            "fees_included": null,
+            "availability": "unknown",
+            "cancellation": null
+          },
+          {
+            "id": "B0FFIGVKP7",
+            "hotel_name": "一间森林青年旅舍(上海同济大学四平路地铁站店)",
+            "address": "天宝路888号(近和平公园、四平路地铁站)",
+            "city": "上海市",
+            "district": "虹口区",
+            "location": "121.500645,31.272310",
+            "source": {
+              "provider": "amap",
+              "fetched_at": "2026-10-13T18:58:37.137207+08:00"
+            },
+            "rating": "4.9",
+            "kind": "hotel_place",
+            "room_type": null,
+            "stay_total_cny": null,
+            "fees_included": null,
+            "availability": "unknown",
+            "cancellation": null
+          },
+          {
+            "id": "B00156CO40",
+            "hotel_name": "开蔓酒店(上海延吉中路地铁站店)",
+            "address": "延吉中路95-1号",
+            "city": "上海市",
+            "district": "杨浦区",
+            "location": "121.532564,31.283959",
+            "source": {
+              "provider": "amap",
+              "fetched_at": "2026-10-13T18:58:37.137207+08:00"
+            },
+            "rating": "4.2",
+            "kind": "hotel_place",
+            "room_type": null,
+            "stay_total_cny": null,
+            "fees_included": null,
+            "availability": "unknown",
+            "cancellation": null
+          }
+        ],
+        "source": {
+          "provider": "amap",
+          "fetched_at": "2026-10-13T18:58:37.137207+08:00"
+        },
+        "fetched_at": "2026-10-13T18:58:37.137207+08:00",
+        "missing_fields": [],
+        "message": "酒店地点候选；房型、入住日期对应房价及空房未查询。",
+        "needs_revalidation": false,
+        "history": [],
+        "execution": {
+          "id": "request_c0edc7128fc34a5b9dac7a5c0b19a534",
+          "name": "hotel_search",
+          "status": "ok",
+          "cache_hit": false,
+          "elapsed_ms": 471.239,
+          "query": {
+            "city": "上海",
+            "keywords": "酒店",
+            "guests": 1,
+            "search_kind": "hotel_place"
+          }
+        }
+      },
+      "return_train": {
+        "id": "return_train",
+        "task_id": "return",
+        "task_revision": 1,
+        "domain": "train",
+        "parameters": {
+          "origin": "上海",
+          "destination": "重庆",
+          "departure_date": "2026-10-16",
+          "passengers": 1
+        },
+        "constraints": {},
+        "result_revision": 1,
+        "status": "ok",
+        "items": [
+          {
+            "id": "2026-10-16|K71|上海松江|重庆北|1|硬座",
+            "train_number": "K71",
+            "origin_station": "上海松江",
+            "destination_station": "重庆北",
+            "departure_time": "14:19",
+            "arrival_time": "17:43",
+            "seat_class": "硬座",
+            "price_cny": "240",
+            "availability": "available",
+            "remaining": null,
+            "source": {
+              "provider": "聚合数据",
+              "fetched_at": "2026-10-13T18:58:37.460148+08:00"
+            },
+            "departure_at": "2026-10-16T14:19:00+08:00",
+            "arrival_at": "2026-10-17T17:43:00+08:00",
+            "time_evidence": {
+              "departure": "query_date_and_provider_clock",
+              "arrival": "provider_segment_duration"
+            },
+            "url": null
+          },
+          {
+            "id": "2026-10-16|D57|上海南|重庆北|O|二等座",
+            "train_number": "D57",
+            "origin_station": "上海南",
+            "destination_station": "重庆北",
+            "departure_time": "19:40",
+            "arrival_time": "12:51",
+            "seat_class": "二等座",
+            "price_cny": "321",
+            "availability": "sold_out",
+            "remaining": 0,
+            "source": {
+              "provider": "聚合数据",
+              "fetched_at": "2026-10-13T18:58:37.460148+08:00"
+            },
+            "departure_at": "2026-10-16T19:40:00+08:00",
+            "arrival_at": "2026-10-17T12:51:00+08:00",
+            "time_evidence": {
+              "departure": "query_date_and_provider_clock",
+              "arrival": "provider_segment_duration"
+            },
+            "url": null
+          },
+          {
+            "id": "2026-10-16|D982|上海虹桥|重庆北|O|二等座",
+            "train_number": "D982",
+            "origin_station": "上海虹桥",
+            "destination_station": "重庆北",
+            "departure_time": "18:22",
+            "arrival_time": "05:25",
+            "seat_class": "二等座",
+            "price_cny": "589",
+            "availability": "sold_out",
+            "remaining": 0,
+            "source": {
+              "provider": "聚合数据",
+              "fetched_at": "2026-10-13T18:58:37.460148+08:00"
+            },
+            "departure_at": "2026-10-16T18:22:00+08:00",
+            "arrival_at": "2026-10-17T05:25:00+08:00",
+            "time_evidence": {
+              "departure": "query_date_and_provider_clock",
+              "arrival": "provider_segment_duration"
+            },
+            "url": null
+          },
+          {
+            "id": "2026-10-16|D986|上海虹桥|重庆北|O|二等座",
+            "train_number": "D986",
+            "origin_station": "上海虹桥",
+            "destination_station": "重庆北",
+            "departure_time": "18:44",
+            "arrival_time": "05:30",
+            "seat_class": "二等座",
+            "price_cny": "589",
+            "availability": "sold_out",
+            "remaining": 0,
+            "source": {
+              "provider": "聚合数据",
+              "fetched_at": "2026-10-13T18:58:37.460148+08:00"
+            },
+            "departure_at": "2026-10-16T18:44:00+08:00",
+            "arrival_at": "2026-10-17T05:30:00+08:00",
+            "time_evidence": {
+              "departure": "query_date_and_provider_clock",
+              "arrival": "provider_segment_duration"
+            },
+            "url": null
+          },
+          {
+            "id": "2026-10-16|D352|上海虹桥|重庆北|O|二等座",
+            "train_number": "D352",
+            "origin_station": "上海虹桥",
+            "destination_station": "重庆北",
+            "departure_time": "06:12",
+            "arrival_time": "18:14",
+            "seat_class": "二等座",
+            "price_cny": "605",
+            "availability": "available",
+            "remaining": 18,
+            "source": {
+              "provider": "聚合数据",
+              "fetched_at": "2026-10-13T18:58:37.460148+08:00"
+            },
+            "departure_at": "2026-10-16T06:12:00+08:00",
+            "arrival_at": "2026-10-16T18:14:00+08:00",
+            "time_evidence": {
+              "departure": "query_date_and_provider_clock",
+              "arrival": "provider_segment_duration"
+            },
+            "url": null
+          }
+        ],
+        "source": {
+          "provider": "聚合数据",
+          "fetched_at": "2026-10-13T18:58:37.460148+08:00"
+        },
+        "fetched_at": "2026-10-13T18:58:37.460148+08:00",
+        "missing_fields": [],
+        "message": null,
+        "needs_revalidation": false,
+        "history": [],
+        "execution": {
+          "id": "request_a5e2ec8286c14d18ba1cff91188a9448",
+          "name": "train_search",
+          "status": "ok",
+          "cache_hit": false,
+          "elapsed_ms": 801.372,
+          "query": {
+            "origin": "上海",
+            "destination": "重庆",
+            "departure_date": "2026-10-16",
+            "passengers": 1
+          }
+        }
+      }
+    },
+    "stop_reason": null,
+    "validation": null,
+    "created_at": "2026-10-13T10:58:36.652103+00:00",
+    "updated_at": "2026-10-13T11:06:41.192809+00:00"
+  }
+}

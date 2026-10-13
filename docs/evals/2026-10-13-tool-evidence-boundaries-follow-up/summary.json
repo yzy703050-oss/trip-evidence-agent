@@ -1,0 +1,45 @@
+[
+  {
+    "case": "quotes_over_policy",
+    "source": "2026-10-13-api-shaped-simulation/business_conflict",
+    "scope": "saved-context select_batch only",
+    "supplier_calls": 0,
+    "rag_calls": 0,
+    "model_call_limit": 1,
+    "action": "commit_batch",
+    "allow_repair": false,
+    "validation_valid": false,
+    "issues": [
+      "hotel_selection_missing",
+      "policy_constraint_unverified"
+    ],
+    "passed": true,
+    "model_calls": 1,
+    "usage": {
+      "input_tokens": 5787,
+      "output_tokens": 568
+    },
+    "latency_ms": 3198.908,
+    "ttft_ms": 740.074
+  },
+  {
+    "case": "soft_dates",
+    "source": "synthetic soft-date context with offline train fixtures",
+    "scope": "saved-context select_batch only",
+    "supplier_calls": 0,
+    "rag_calls": 0,
+    "model_call_limit": 1,
+    "action": "commit_batch",
+    "allow_repair": false,
+    "passed": false,
+    "error_type": "ValueError",
+    "error": "stale workflow repair",
+    "model_calls": 1,
+    "usage": {
+      "input_tokens": 4215,
+      "output_tokens": 452
+    },
+    "latency_ms": 2807.504,
+    "ttft_ms": 734.368
+  }
+]

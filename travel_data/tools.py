@@ -228,45 +228,7 @@ class ToolExecutor:
                 task_revision=row["task_revision"],
             )
             run.workflow["candidate_cache"] = run.candidates.snapshot() if run.candidates else {}
-            # Only suggested dates may move, and only after a successful empty query.
-            # Unavailable/error and unknown arrival evidence do not authorize retries.
-            if (
-                name == "train_search"
-                and not _date_retry
-                and result["status"] == "ok"
-                and not result["items"]
-                and task.get("field_sources", {}).get("departure_date") in {"default", "proposal"}
-                and not effective.get("arrival_date")
-                and not effective.get("arrival_before")
-            ):
-                from datetime import date, timedelta
-
-                original_date = task["conditions"]["departure_date"]
-                original_source = task["field_sources"]["departure_date"]
-                for days in (1, 2):
-                    if run.workflow_tool_budget is not None:
-                        if run.workflow_tool_budget <= 0:
-                            break
-                        run.workflow_tool_budget -= 1
-                    proposed = (
-                        date.fromisoformat(original_date) + timedelta(days=days)
-                    ).isoformat()
-                    if effective.get("end_date") and proposed > effective["end_date"]:
-                        break
-                    task["conditions"]["departure_date"] = proposed
-                    task["field_sources"]["departure_date"] = "proposal"
-                    result = await self.execute(
-                        name,
-                        {**arguments, "departure_date": proposed},
-                        run,
-                        call_id=call_id + f":date{days}",
-                        _date_retry=True,
-                    )
-                    if result["items"] or result["status"] != "ok":
-                        break
-                if not result["items"]:
-                    task["conditions"]["departure_date"] = original_date
-                    task["field_sources"]["departure_date"] = original_source
+            # Date changes are model proposals validated by the workflow repair path.
         return result
 
     async def _execute(self, name, arguments, run, *, call_id):

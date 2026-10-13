@@ -1,0 +1,24 @@
+[
+  {
+    "case": "soft_dates",
+    "source": "synthetic soft-date context with offline train fixtures",
+    "scope": "saved-context select_batch only",
+    "supplier_calls": 0,
+    "rag_calls": 0,
+    "model_call_limit": 1,
+    "action": "repair_tasks",
+    "allow_repair": null,
+    "new_dates": [
+      "2026-10-18",
+      "2026-10-20"
+    ],
+    "passed": true,
+    "model_calls": 1,
+    "usage": {
+      "input_tokens": 4426,
+      "output_tokens": 282
+    },
+    "latency_ms": 2201.397,
+    "ttft_ms": 1015.758
+  }
+]

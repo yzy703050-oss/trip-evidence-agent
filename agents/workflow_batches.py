@@ -156,6 +156,7 @@ def invalidate_query_containers(workflow, task_ids, components, condition_change
 
 def check_batch_submission(workflow, action):
     from agents.workflow_guard import check_task, check_workflow, finalize_workflow
+    from agents.condition_strengths import condition_is_hard
 
     if action.get("expected_workflow_revision") != workflow["revision"]:
         raise ValueError("stale batch revision")
@@ -193,7 +194,7 @@ def check_batch_submission(workflow, action):
         # User/context dates stay fixed, and quoted stay dates must match evidence.
         for key in ("check_in", "check_out"):
             proposed = checked["reconstructed_plan"]["schedule"].get(key)
-            if proposed and task.get("field_sources", {}).get(key) not in {"user", "context"}:
+            if proposed and not condition_is_hard(candidate, task, key):
                 task["conditions"][key] = proposed
                 task["field_sources"][key] = "derived"
     checked = check_workflow(candidate)

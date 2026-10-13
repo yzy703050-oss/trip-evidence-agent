@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python、现有 MainAgent 模型适配、pytest、OpenSpec。
 
-**Spec:** [变更规格](../../../openspec/changes/clarify-tool-evidence-boundaries/specs/consolidated-travel-execution/spec.md)、[技术设计](../../../openspec/changes/clarify-tool-evidence-boundaries/design.md)、[任务](../../../openspec/changes/clarify-tool-evidence-boundaries/tasks.md)。归档后更新链接。
+**Spec:** [变更规格](../../../openspec/changes/archive/2026-10-13-clarify-tool-evidence-boundaries/specs/consolidated-travel-execution/spec.md)、[技术设计](../../../openspec/changes/archive/2026-10-13-clarify-tool-evidence-boundaries/design.md)、[任务](../../../openspec/changes/archive/2026-10-13-clarify-tool-evidence-boundaries/tasks.md)。变更已于2026-10-13归档，以上链接已更新。
 
 ## Global Constraints
 
@@ -31,9 +31,9 @@
 
 **Interfaces:** validate_condition_strengths(value, conditions) 验证 date/nights 的 hard/soft；condition_is_hard(workflow, task, key) 统一旧来源与全局继承；find_hard_date_conflict(workflow) 返回具体冲突或 None，候选必须来自当前版本全量规范化缓存。
 
-- [ ] 先写并运行失败测试：user来源soft可保留、非法枚举拒绝、旧记录hard/soft、硬全局不能降级、明确日期自相矛盾、全候选迟到、另有可行候选、未知到达不证明不可行。
-- [ ] 最小实现字段与判定；Runner 在查询前/后及完整提交后使用 helper 保存 hard_condition_conflict checkpoint，返回 needs_input；不能跳过引用或政策校验。
-- [ ] 定向验证字段和冲突测试，记录真实输出，更新任务。
+- [x] 先写并运行失败测试：user来源soft可保留、非法枚举拒绝、旧记录hard/soft、硬全局不能降级、明确日期自相矛盾、全候选迟到、另有可行候选、未知到达不证明不可行。
+- [x] 最小实现字段与判定；Runner 在查询前/后及完整提交后使用 helper 保存 hard_condition_conflict checkpoint，返回 needs_input；不能跳过引用或政策校验。
+- [x] 定向验证字段和冲突测试，记录真实输出，更新任务。
 
 ## Task 2: 受控模型日期调整（OpenSpec 2.1–2.2）
 
@@ -41,9 +41,9 @@
 
 **Interfaces:** repair_tasks 新增可选 task_updates=[{task_id, conditions}]，仅相关软日期/nights可变；强度和硬边界保持。查询 ID、版本和失效沿用原实现，用户明确更新可修改硬条件。
 
-- [ ] 先验证失败：工具只查原日期，模型可同时调整去返程软日期，user软日期可改、hard日期拒绝、全局硬期限拒绝、不相关任务拒绝、旧报价不得改日期沿用。
-- [ ] 修改相关守卫和修复；重用未受影响缓存，仅补新日期需要的领域。保留旧记录兼容，不让 user/context 来源再次锁住显式 soft。
-- [ ] 定向验证日期修复及已有旅程修改回归，更新任务。
+- [x] 先验证失败：工具只查原日期，模型可同时调整去返程软日期，user软日期可改、hard日期拒绝、全局硬期限拒绝、不相关任务拒绝、旧报价不得改日期沿用。
+- [x] 修改相关守卫和修复；重用未受影响缓存，仅补新日期需要的领域。保留旧记录兼容，不让 user/context 来源再次锁住显式 soft。
+- [x] 定向验证日期修复及已有旅程修改回归，更新任务。
 
 ## Task 3: 统一提示并验收（OpenSpec 3.1–3.3）
 
@@ -56,14 +56,14 @@
 
 **Interfaces:** 提案添加全局/任务 condition_strengths，repair_tasks 包含受控日期补丁；模型阶段不变。能力缺口使用 commit_batch.allow_repair=false，合理软日期调整允许 repair_tasks，硬冲突保存问题等待用户。
 
-- [ ] 基线：保留已记录的 5 次模型、24,449 token 重复查询失败记录，以及现有提示中的强制刷新指令，作为改动前证据。提示词属于可逆文本变更，不新增逐字断言或从提示中硬编码结果的测试。
-- [ ] 修改 select_batch：已有证据重组优先；接口缺字段时写 unverified_requirements 并停止；可调整软日期的真实安排问题可用 repair_tasks，硬条件冲突反馈用户。
-- [ ] 修改 batch_query_contract_prompt：移除 refresh_example 和超标必须刷新；保留工具能力、参数规范、每晚金额；增加软日期补丁说明，不引导同能力缺口反复查。
-- [ ] 协调其余提示及指南：初始化保留必要首次查询和新轮刷新；step 不为已返回缺口重查；finalize 不因缺口输出 needs_requery；amend_saved_trip 不编造选择，也不引导模型用查询补齐未知字段。
-- [ ] 定向回归：`.venv/Scripts/python.exe -m pytest tests/test_main_batch_protocol.py tests/test_workflow_main.py tests/test_live_model_contracts.py tests/test_consolidated_travel_run.py tests/test_main_output.py tests/test_main_feedback.py -q`。如旧测试从 refresh_example 人为生成查询动作，仅改为显式测试既有工具执行契约，不能把它当新提示实际服从证据。
-- [ ] 真实模型单轮回放：复用已保存的地点缺报价、报价全部超标及正常候选上下文，各运行一次 select_batch，不调用供应商/RAG。记录实际 action、停止标记、缺口、usage 和延时；停止要求或固定事实不满足时记录失败并修订提示，不能只凭文字检查宣称有效。
-- [ ] 全量回归：`.venv/Scripts/python.exe -m pytest -q --basetemp .superpowers/test-tmp/evidence-boundaries`；运行 git diff --check，读输出。
-- [ ] 自审与规格核对：把结果分别对照所有场景；OpenSpec CLI 没有 verify 工作流则明确人工核对，使用 validate 验证文档。全部完成后归档，保留未提交变更供用户检查。
+- [x] 基线：保留已记录的 5 次模型、24,449 token 重复查询失败记录，以及现有提示中的强制刷新指令，作为改动前证据。提示词属于可逆文本变更，不新增逐字断言或从提示中硬编码结果的测试。
+- [x] 修改 select_batch：已有证据重组优先；接口缺字段时写 unverified_requirements 并停止；可调整软日期的真实安排问题可用 repair_tasks，硬条件冲突反馈用户。
+- [x] 修改 batch_query_contract_prompt：移除 refresh_example 和超标必须刷新；保留工具能力、参数规范、每晚金额；增加软日期补丁说明，不引导同能力缺口反复查。
+- [x] 协调其余提示及指南：初始化保留必要首次查询和新轮刷新；step 不为已返回缺口重查；finalize 不因缺口输出 needs_requery；amend_saved_trip 不编造选择，也不引导模型用查询补齐未知字段。
+- [x] 定向回归：`.venv/Scripts/python.exe -m pytest tests/test_main_batch_protocol.py tests/test_workflow_main.py tests/test_live_model_contracts.py tests/test_consolidated_travel_run.py tests/test_main_output.py tests/test_main_feedback.py -q`。如旧测试从 refresh_example 人为生成查询动作，仅改为显式测试既有工具执行契约，不能把它当新提示实际服从证据。
+- [x] 真实模型单轮回放：复用已保存的地点缺报价、报价全部超标及正常候选上下文，各运行一次 select_batch，不调用供应商/RAG。记录实际 action、停止标记、缺口、usage 和延时；停止要求或固定事实不满足时记录失败并修订提示，不能只凭文字检查宣称有效。
+- [x] 全量回归：`.venv/Scripts/python.exe -m pytest -q --basetemp .superpowers/test-tmp/evidence-boundaries`；运行 git diff --check，读输出。
+- [x] 自审与规格核对：把结果分别对照所有场景；OpenSpec CLI 没有 verify 工作流则明确人工核对，使用 validate 验证文档。全部完成后归档，保留未提交变更供用户检查。
 
 ## 拟加入主 Agent 的核心指令（审阅稿）
 
@@ -80,3 +80,11 @@
 ## 审阅与实施状态
 
 2026-10-13：用户要求由模型调整去返程日期，并明确同意新日期定向查询；随后确认条件字段和冲突规则“也做”。已扩展设计并完成技术复核，进入单代理实施。
+
+## 实施与验收记录
+
+任务1/2均执行失败测试→最小实现→通过；字段/硬冲突先出现18个失败，日期行为先出现8个失败，随后补充用户修改、硬条件重复降级、全局继承和修复反馈的失败证据并修复。全部835个测试通过，3个原有条件跳过。
+
+任务3完成三种保存上下文回放，并增加一个软日期例外回放：正常候选、缺报价、报价超标和去返程18/20日补丁各有一次最终通过证据。含三次调试失败共7次真实模型调用、37,793 token，不调用真实供应商或新增RAG。实际样本范围、失败和限制见 [验收记录](../../evals/2026-10-13-tool-evidence-boundaries/report.md)。
+
+自审、Ruff必要检查、git diff --check和OpenSpec strict validate均通过。OpenSpec CLI没有verify工作流，已逐项人工核对规格、任务及测试证据；归档同步正式规格，保留当前codex功能分支与未提交内容。没有自行提交、推送或合并。

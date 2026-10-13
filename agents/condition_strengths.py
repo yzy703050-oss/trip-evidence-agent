@@ -9,7 +9,7 @@ DATE_FIELDS = frozenset({'start_date', 'end_date', 'departure_date', 'arrival_da
 def validate_condition_strengths(value, conditions):
     if not isinstance(value, dict) or set(value) - DATE_FIELDS:
         raise ValueError('invalid condition strengths')
-    if any(level not in {'hard', 'soft'} for level in value.values()):
+    if any(not isinstance(level, str) or level not in {'hard', 'soft'} for level in value.values()):
         raise ValueError('invalid condition strength level')
     if any(conditions.get(key) is None for key in value):
         raise ValueError('condition strength requires a condition value')

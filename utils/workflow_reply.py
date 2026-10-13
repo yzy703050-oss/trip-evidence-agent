@@ -14,6 +14,33 @@ UNSUPPORTED = re.compile(
 )
 
 
+def _selection_gap(workflow, task, domain):
+    """Describe current, filtered evidence without selecting an offer for the model."""
+    from agents.workflow_queries import query_views
+
+    label = '车次' if domain == 'train' else '住宿候选'
+    if not task.get('query_ids'):
+        return label + '这次没查到'
+    rows = [r for r in query_views(workflow, task['id'], limit=1, offset=0)
+            if r['domain'] == domain]
+    container = task.get('query_containers', {}).get(domain)
+    if container is not None:
+        rows = [r for r in rows if r['id'] == container.get('current_query_ref')]
+    if not rows:
+        return '尚无当前有效的' + label + '查询结果'
+    current = [r for r in rows if not r.get('needs_revalidation')]
+    valid = [r for r in current if r['status'] in {'ok', 'partial'}]
+    if any(r.get('candidate_total', 0) for r in valid):
+        return '已有查询返回的' + label + '，但尚未选定具体方案'
+    if valid:
+        if any(r.get('returned_candidate_total', 0) for r in valid):
+            return '查询已返回' + label + '，但候选不满足当前筛选条件'
+        return '这次查询范围内没有返回' + label
+    if any(r.get('needs_revalidation') for r in rows):
+        return '此前的' + label + '信息需要重新核实，本次未取得有效更新'
+    return label + '这次没查到，查询未取得有效结果'
+
+
 def build_reply_facts(result):
     """Build required public values; never pass provider payloads to the writer."""
     values, paragraphs = {}, []
@@ -55,16 +82,15 @@ def build_reply_facts(result):
                 stock += '；这是此前取得的信息，价格和余票需要重新核实'
             values[prefix + 'stock'] = stock
             sentence += '，' + stock
+            if plan.get('purpose') == 'return' and train_missing:
+                values[prefix + 'connection_gap'] = '返程为暂定选择，与去程和住宿的衔接尚待抵达时间核实'
+                sentence += '；' + values[prefix + 'connection_gap']
             if not train.get('arrival_at') and not schedule.get('arrival_at'):
                 values[prefix + 'arrival_gap'] = '抵达日期还未确认，住宿日期需要随实际抵达调整'
                 sentence += '；' + values[prefix + 'arrival_gap']
         else:
             train_missing = True
-            rows = [r for r in workflow.get('results_by_query', {}).values()
-                    if r.get('task_id') == plan.get('task_id') and r.get('domain') == 'train']
-            gap = ('这次查询范围内没找到合适车次，发到时刻和票价还不能确定'
-                   if rows and rows[-1].get('status') == 'ok'
-                   else '车次这次没查到，发到时刻和票价还不能确定')
+            gap = _selection_gap(workflow, original, 'train') + '，发到时刻和票价还不能确定'
             values[prefix + 'train_gap'] = gap
             sentence += '，' + gap
             planned = conditions.get('departure_date')
@@ -108,7 +134,7 @@ def build_reply_facts(result):
                 values[prefix + 'hotel'] = '；'.join(_offer(quote, 'hotel'))
                 sentence += '。' + values[prefix + 'hotel']
         elif original.get('requires_hotel'):
-            values[prefix + 'hotel_gap'] = '住宿暂未找到合适候选，可以按以上日期继续筛选'
+            values[prefix + 'hotel_gap'] = _selection_gap(workflow, original, 'hotel')
             sentence += '。' + values[prefix + 'hotel_gap']
         paragraphs.append(sentence + '。')
     budget = checked.get('budget') or {}

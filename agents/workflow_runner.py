@@ -614,6 +614,7 @@ class WorkflowRunner:
             **view,
             "workflow": project_workflow_context(workflow),
             "authorized_changes": authorized,
+            "authorized_condition_strengths": update.get('condition_strengths'),
             "amendment_target": deepcopy(update["target"]),
         }
         patch = await self.main.amend_saved_trip(amendment_context)
@@ -627,7 +628,8 @@ class WorkflowRunner:
             if ref and ref.get("candidate_id") in rejected:
                 raise ValueError("rejected candidate selected")
         return await self._amend_request(
-            workflow, patch, {**context, "authorized_changes": authorized}, run
+            workflow, patch, {**context, "authorized_changes": authorized,
+                              "authorized_condition_strengths": update.get('condition_strengths')}, run
         )
 
     def _load_target(self, identity, context):
@@ -1057,7 +1059,8 @@ class WorkflowRunner:
                 task["conditions"]["check_out"] = (
                     date.fromisoformat(start) + timedelta(days=effective["nights"])
                 ).isoformat()
-                task["field_sources"].update(check_in="proposal", check_out="proposal")
+                task["field_sources"].setdefault('check_in', 'proposal')
+                task["field_sources"]['check_out'] = 'proposal'
             previous = {
                 k: task["conditions"][k] for k in ("check_out",) if task["conditions"].get(k)
             }
@@ -1129,6 +1132,8 @@ class WorkflowRunner:
             for domain in ["train", *(["hotel"] if task["requires_hotel"] else [])]
         )
         issues = self.w.get("validation", {}).get("issues", []) if self.w.get("validation") else []
+        if not has_candidates and not issues:
+            issues = check_workflow(self.w)['issues']
         return {
             **{
                 k: v
@@ -1156,9 +1161,7 @@ class WorkflowRunner:
                 for t in self.w["tasks"]
             },
             "policy_context": self.w.get("policy_context"),
-            "issues": self.w.get("validation", {}).get("issues", [])
-            if self.w.get("validation")
-            else [],
+            "issues": issues,
             "reply_catalog": [
                 f"s{i}_{field}"
                 for i in range(1, len(self.w["tasks"]) + 1)
@@ -1367,8 +1370,19 @@ class WorkflowRunner:
                 await self._execute_queries(queries)
                 feedback = None
             elif name == "repair_tasks":
-                self.w = apply_repair(self.w, action)
+                try:
+                    repaired = apply_repair(self.w, action)
+                except (ValueError, KeyError, TypeError) as exc:
+                    feedback = {"code": "invalid_repair", "message": str(exc),
+                                "issues": check_workflow(self.w)['issues']}
+                    continue
+                self.w = repaired
                 self.run_state.workflow = self.w
+                if self.w.get('policy_context'):
+                    from agents.policy_preflight import resolve_policy_for_workflow
+
+                    self.w['policy_context'] = resolve_policy_for_workflow(
+                        self.w['policy_context'], self.w, self.context)
                 self._save()
                 await self._execute_queries(self._default_queries())
                 conflict = self._hard_date_question()

@@ -287,7 +287,10 @@ def apply_user_update(workflow, updates):
     changed = []
     global_updates = validate_conditions(updates.get('confirmed_conditions', {}))
     from agents.condition_strengths import mark_user_conditions, validate_inherited_strengths
+    previous_strengths = deepcopy(w.get('condition_strengths', {}))
     mark_user_conditions(w, global_updates, updates.get('condition_strengths'))
+    if w.get('condition_strengths', {}) != previous_strengths:
+        changed.append(0)
     if any(w['confirmed_conditions'].get(k) != v for k, v in global_updates.items()):
         w['confirmed_conditions'].update(global_updates)
         changed.append(0)
@@ -309,7 +312,10 @@ def apply_user_update(workflow, updates):
             if key == 'destination' and index+1 < len(w['tasks']) and w['tasks'][index+1]['origin'] == previous:
                 w['tasks'][index+1]['origin'] = value
         conditions = validate_conditions(update.get('conditions', {}))
+        previous_strengths = deepcopy(task.get('condition_strengths', {}))
         mark_user_conditions(task, conditions, update.get('condition_strengths'))
+        if task.get('condition_strengths', {}) != previous_strengths:
+            changed.append(index)
         if index == 0 and conditions.get('departure_date'):
             if global_updates.get('start_date') and global_updates['start_date'] != conditions['departure_date']:
                 raise ValueError('first departure contradicts explicit overall start')

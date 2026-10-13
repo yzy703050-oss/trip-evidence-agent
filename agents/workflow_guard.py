@@ -9,11 +9,13 @@ from agents.workflow_contracts import task_by_id, effective_conditions
 from agents.workflow_queries import resolve_selection
 from travel_data.plan_guard import _offer
 from travel_data.budget import build_budget
+from agents.condition_strengths import condition_is_hard, global_is_hard
 
 
 def state_signature(workflow):
     payload = {'conditions': workflow['confirmed_conditions'],
-               'tasks': [{k: t.get(k) for k in ('id', 'revision', 'origin', 'destination', 'purpose', 'requires_hotel', 'conditions', 'draft_plan', 'rejected_candidates', 'update_scope')}
+               'condition_strengths': workflow.get('condition_strengths', {}),
+               'tasks': [{k: t.get(k) for k in ('id', 'revision', 'origin', 'destination', 'purpose', 'requires_hotel', 'conditions', 'condition_strengths', 'draft_plan', 'rejected_candidates', 'update_scope')}
                          for t in workflow['tasks']], 'queries': workflow['results_by_query'], 'policy': workflow.get('policy_context')}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
@@ -120,7 +122,7 @@ def check_task(workflow, task_id, draft):
     if task['requires_hotel']:
         hotel = plan['hotel'] or {}
         for key in ('check_in', 'check_out'):
-            fixed = task.get('field_sources', {}).get(key) in {'user', 'context'}
+            fixed = condition_is_hard(workflow, task, key)
             value = (task['conditions'].get(key) or schedule.get(key)) if fixed else (schedule.get(key) or task['conditions'].get(key))
             if hotel.get('kind') != 'hotel_place' and hotel.get(key):
                 if value and value != hotel[key]: add('hotel_date_mismatch', '住宿安排与报价日期不匹配。')
@@ -171,10 +173,10 @@ def check_workflow(workflow):
             missing.append({'task_id': task['id'], 'category': 'unverified'})
     subtotal = sum((Decimal(line['amount_cny']) for line in lines), Decimal('0'))
     start = workflow['confirmed_conditions'].get('start_date')
-    if start and plans and plans[0]['schedule']['departure_at'] and datetime.fromisoformat(plans[0]['schedule']['departure_at']).date().isoformat() != start:
+    if start and global_is_hard(workflow, 'start_date') and plans and plans[0]['schedule']['departure_at'] and datetime.fromisoformat(plans[0]['schedule']['departure_at']).date().isoformat() != start:
         issues.append(issue('start_date_conflict', [workflow['tasks'][0]['id']], '首段出发日期与用户确认的起始日期冲突。'))
     end = workflow['confirmed_conditions'].get('end_date')
-    if end and plans and plans[-1]['schedule']['arrival_at'] and datetime.fromisoformat(plans[-1]['schedule']['arrival_at']).date().isoformat() > end:
+    if end and global_is_hard(workflow, 'end_date') and plans and plans[-1]['schedule']['arrival_at'] and datetime.fromisoformat(plans[-1]['schedule']['arrival_at']).date().isoformat() > end:
         issues.append(issue('end_date_conflict', [workflow['tasks'][-1]['id']], '最后一段抵达日期超过用户可用日期。'))
     maximum = workflow['confirmed_conditions'].get('constraints', {}).get('total_budget_cny')
     policy = workflow.get('policy_context')

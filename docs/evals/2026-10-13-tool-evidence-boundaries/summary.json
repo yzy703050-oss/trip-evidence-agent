@@ -1,0 +1,70 @@
+[
+  {
+    "case": "place_without_quote",
+    "source": "2026-10-13-api-shaped-capability-fixed/business_api_simulated",
+    "scope": "saved-context select_batch only",
+    "supplier_calls": 0,
+    "rag_calls": 0,
+    "model_call_limit": 1,
+    "action": "commit_batch",
+    "allow_repair": false,
+    "validation_valid": false,
+    "issues": [
+      "hotel_selection_missing",
+      "policy_constraint_unverified"
+    ],
+    "passed": true,
+    "model_calls": 1,
+    "usage": {
+      "input_tokens": 5456,
+      "output_tokens": 503
+    },
+    "latency_ms": 3094.621,
+    "ttft_ms": 1119.883
+  },
+  {
+    "case": "quotes_over_policy",
+    "source": "2026-10-13-api-shaped-simulation/business_conflict",
+    "scope": "saved-context select_batch only",
+    "supplier_calls": 0,
+    "rag_calls": 0,
+    "model_call_limit": 1,
+    "action": "commit_batch",
+    "allow_repair": null,
+    "validation_valid": false,
+    "issues": [
+      "hotel_selection_missing",
+      "policy_constraint_unverified"
+    ],
+    "passed": false,
+    "model_calls": 1,
+    "usage": {
+      "input_tokens": 5750,
+      "output_tokens": 570
+    },
+    "latency_ms": 2881.089,
+    "ttft_ms": 546.995
+  },
+  {
+    "case": "normal_candidates",
+    "source": "2026-10-13-api-shaped-simulation/tourism_simulated",
+    "scope": "saved-context select_batch only",
+    "supplier_calls": 0,
+    "rag_calls": 0,
+    "model_call_limit": 1,
+    "action": "commit_batch",
+    "allow_repair": null,
+    "validation_valid": true,
+    "issues": [
+      "hotel_price_unknown"
+    ],
+    "passed": true,
+    "model_calls": 1,
+    "usage": {
+      "input_tokens": 4651,
+      "output_tokens": 498
+    },
+    "latency_ms": 2510.817,
+    "ttft_ms": 762.224
+  }
+]

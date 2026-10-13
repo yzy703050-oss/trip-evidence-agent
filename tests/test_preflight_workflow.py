@@ -158,15 +158,15 @@ def test_hotel_only_change_cannot_replace_preserved_train():
 
 
 @pytest.mark.asyncio
-async def test_default_date_can_try_next_two_days_without_changing_user_date(tmp_path):
+async def test_default_date_empty_result_leaves_date_adjustment_to_model(tmp_path):
     r = runtime(tmp_path,[dict(origin='重庆',destination='上海',requires_hotel=False,conditions={})])
     from datetime import date
     r.train.empty_dates={date(2026,10,17)}
     result=await r.turn('去上海，只安排单程火车')
-    assert result['status']=='completed'
-    assert [d.isoformat() for d in r.train.calls]==['2026-10-17','2026-10-18']
-    assert result['workflow']['tasks'][0]['conditions']['departure_date']=='2026-10-18'
-    assert result['workflow']['tasks'][0]['field_sources']['departure_date']=='proposal'
+    assert result['status']=='partial'
+    assert [d.isoformat() for d in r.train.calls]==['2026-10-17']
+    assert result['workflow']['tasks'][0]['conditions']['departure_date']=='2026-10-17'
+    assert result['workflow']['tasks'][0]['field_sources']['departure_date']=='default'
 
 
 @pytest.mark.asyncio

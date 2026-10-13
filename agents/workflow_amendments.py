@@ -152,6 +152,16 @@ def apply_amendment_patch(workflow, patch, context):
             **changes["constraints"],
         }
     target["field_sources"].update({k: "user" for k in changes})
+    from agents.condition_strengths import mark_user_conditions, validate_inherited_strengths
+
+    authorized_strengths = context.get('authorized_condition_strengths')
+    if patch.get('condition_strengths') is not None and patch['condition_strengths'] != (authorized_strengths or {}):
+        raise ValueError('unauthorized condition strengths')
+    mark_user_conditions(target, changes, authorized_strengths)
+    if target is candidate['tasks'][0] and changes.get('departure_date'):
+        candidate['confirmed_conditions']['start_date'] = changes['departure_date']
+        candidate.setdefault('condition_strengths', {})['start_date'] = target['condition_strengths']['departure_date']
+    validate_inherited_strengths(candidate)
     target["status"] = "draft"
     target["update_scope"] = sorted(affected_domains)
     target["draft_stage"] = "selection"
