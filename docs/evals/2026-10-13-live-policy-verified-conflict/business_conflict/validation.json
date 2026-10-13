@@ -1,0 +1,146 @@
+{
+  "valid": false,
+  "issues": [
+    {
+      "code": "hotel_selection_missing",
+      "task_ids": [
+        "task_3776face13144c9085174399696923f4"
+      ],
+      "blocking": true,
+      "message": "当前段尚无已核实的hotel候选选择。",
+      "evidence": null
+    },
+    {
+      "code": "policy_constraint_unverified",
+      "task_ids": [
+        "task_3776face13144c9085174399696923f4"
+      ],
+      "blocking": true,
+      "message": "缺少验证企业强制约束的有效证据。",
+      "evidence": "hotel_max_nightly_cny"
+    }
+  ],
+  "reconstructed_tasks": [
+    {
+      "task_id": "task_3776face13144c9085174399696923f4",
+      "task_revision": 1,
+      "origin": "重庆",
+      "destination": "上海",
+      "purpose": "business",
+      "train": {
+        "id": "sim-train|重庆|上海|2026-10-15|8",
+        "train_number": "SIM001",
+        "origin_station": "重庆",
+        "destination_station": "上海",
+        "departure_time": "08:00",
+        "arrival_time": "12:00",
+        "seat_class": "二等座",
+        "price_cny": "200",
+        "availability": "available",
+        "remaining": 20,
+        "source": {
+          "provider": "simulation:train",
+          "fetched_at": "2026-10-13T14:56:34.499636+08:00",
+          "url": null
+        },
+        "url": null,
+        "departure_at": "2026-10-15T08:00:00+08:00",
+        "arrival_at": "2026-10-15T12:00:00+08:00",
+        "time_evidence": {
+          "departure": "simulation",
+          "arrival": "simulation_segment_duration"
+        }
+      },
+      "hotel": null,
+      "schedule": {
+        "departure_at": "2026-10-15T08:00:00+08:00",
+        "arrival_at": "2026-10-15T12:00:00+08:00",
+        "check_in": "2026-10-15",
+        "check_out": "2026-10-17",
+        "next_departure_not_before": "2026-10-17"
+      }
+    },
+    {
+      "task_id": "task_0ca81fe241714f46ac76af1cd57e6ce1",
+      "task_revision": 1,
+      "origin": "上海",
+      "destination": "重庆",
+      "purpose": "return",
+      "train": {
+        "id": "sim-train|上海|重庆|2026-10-17|8",
+        "train_number": "SIM001",
+        "origin_station": "上海",
+        "destination_station": "重庆",
+        "departure_time": "08:00",
+        "arrival_time": "12:00",
+        "seat_class": "二等座",
+        "price_cny": "200",
+        "availability": "available",
+        "remaining": 20,
+        "source": {
+          "provider": "simulation:train",
+          "fetched_at": "2026-10-13T14:56:34.499636+08:00",
+          "url": null
+        },
+        "url": null,
+        "departure_at": "2026-10-17T08:00:00+08:00",
+        "arrival_at": "2026-10-17T12:00:00+08:00",
+        "time_evidence": {
+          "departure": "simulation",
+          "arrival": "simulation_segment_duration"
+        }
+      },
+      "hotel": null,
+      "schedule": {
+        "departure_at": "2026-10-17T08:00:00+08:00",
+        "arrival_at": "2026-10-17T12:00:00+08:00",
+        "check_in": null,
+        "check_out": null,
+        "next_departure_not_before": "2026-10-17T12:00:00+08:00"
+      }
+    }
+  ],
+  "budget": {
+    "known_subtotal_cny": "400",
+    "verified": false,
+    "missing_categories": [
+      {
+        "task_id": "task_3776face13144c9085174399696923f4",
+        "category": "hotel"
+      }
+    ],
+    "lines": [
+      {
+        "category": "train",
+        "offer_id": "sim-train|重庆|上海|2026-10-15|8",
+        "quantity": 1,
+        "unit_price_cny": "200",
+        "amount_cny": "200",
+        "source": {
+          "provider": "simulation:train",
+          "fetched_at": "2026-10-13T14:56:34.499636+08:00",
+          "url": null
+        },
+        "task_id": "task_3776face13144c9085174399696923f4"
+      },
+      {
+        "category": "train",
+        "offer_id": "sim-train|上海|重庆|2026-10-17|8",
+        "quantity": 1,
+        "unit_price_cny": "200",
+        "amount_cny": "200",
+        "source": {
+          "provider": "simulation:train",
+          "fetched_at": "2026-10-13T14:56:34.499636+08:00",
+          "url": null
+        },
+        "task_id": "task_0ca81fe241714f46ac76af1cd57e6ce1"
+      }
+    ]
+  },
+  "validated_revisions": {
+    "task_3776face13144c9085174399696923f4": 1,
+    "task_0ca81fe241714f46ac76af1cd57e6ce1": 1
+  },
+  "signature": "08e51b674d6e1468392130645b8898feaf97a824f42d7eb50c5cd48895922136"
+}

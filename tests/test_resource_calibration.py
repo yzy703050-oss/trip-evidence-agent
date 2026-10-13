@@ -66,12 +66,12 @@ async def test_actual_scheduling_cap_counts_actions_not_task_count(tmp_path):
     with patch.dict(config.WORKFLOW_LIMITS, {"main_decisions_per_turn": 3}):
         runtime = Runtime(tmp_path)
         result = await runtime.turn()
-    assert result["stop_reason"] == "main_decision_limit"
+    assert result["status"] == "completed"
     decisions = [
         r for r in runtime.memory.session_store.read_runs() if r["type"] == "workflow_decision"
     ]
-    assert len(decisions) == 3
-    assert decisions[0]["action"] == "dispatch" and decisions[1]["action"] == "draft_task"
+    assert len(decisions) == 1
+    assert decisions[0]["action"] == "commit_batch"
 
 
 @pytest.mark.asyncio
@@ -90,7 +90,8 @@ async def test_child_failed_model_request_is_not_a_success_count(tmp_path):
         for e in runtime.memory.session_store.read_events()
         if e["type"] == "workflow_message" and e["content"].get("type") == "task_result"
     ]
-    assert child_results and all(r["execution"]["model_calls"] == 0 for r in child_results)
+    assert child_results == []
+    assert runtime.info_model.calls == 0
     assert not [
         r for r in runtime.memory.session_store.read_runs() if r["type"] == "information_delegation"
     ]

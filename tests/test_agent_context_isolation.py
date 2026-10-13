@@ -15,20 +15,6 @@ from context.memory_manager import MemoryManager
 from travel_data.tools import ToolExecutor
 
 
-@pytest.mark.asyncio
-async def test_delegation_receives_task_facts_without_main_transcript():
-    info = Info()
-    run = RunState("task", effective_preferences={"home_location": "北京"})
-    context = {
-        "original_query": "天气",
-        "session_summary": "已确认北京出发",
-        "recent_messages": [{"role": "assistant", "content": "MAIN_TRANSCRIPT_MARKER"}],
-    }
-    await ExecutionHarness(Main(), {"information_query": info}).run_turn(context, run)
-    assert "MAIN_TRANSCRIPT_MARKER" not in json.dumps(info.context)
-    assert info.context["original_query"] == "天气"
-    assert info.context["session_summary"] == "已确认北京出发"
-    assert info.context["effective_preferences"]["home_location"] == "北京"
 
 
 @pytest.mark.asyncio

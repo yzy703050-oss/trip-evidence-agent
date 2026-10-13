@@ -67,7 +67,7 @@ async def test_prompt_prioritizes_scope_question_over_update_execution():
     assert '范围不明禁止输出 travel_update' in calls[0]
     assert '已有依据能直接答复时必须 direct+synthesize' in calls[0]
     assert '购买车票不等于采纳建议' in calls[0]
-    assert '查询已保存偏好使用memory_query，不调度preference' in calls[0]
+    assert '查询已保存偏好使用程序工具，不调度preference' in calls[0]
     assert '换一家或替换组件必须使用replace' in calls[0]
 
 
@@ -125,12 +125,17 @@ def test_adopt_existing_candidate_does_not_query_or_erase_other_components():
 
 def test_arrival_supplement_releases_only_proposed_departure_date():
     w=populated_workflow(); t=w['tasks'][0]; t['field_sources']['departure_date']='default'
+    w['condition_strengths']={'start_date':'soft'}
     value=apply_travel_update(w,dict(update_type='supplement',target=dict(workflow_id=w['id'],task_ids=[t['id']],components=['schedule']),
                                    condition_updates={'arrival_date':'2026-10-18'}))
     assert 'departure_date' not in value['tasks'][0]['conditions']
     t['field_sources']['departure_date']='user'
     fixed=apply_travel_update(w,dict(update_type='change',target=dict(workflow_id=w['id'],task_ids=[t['id']],components=['schedule']),condition_updates={'arrival_date':'2026-10-18'}))
     assert fixed['tasks'][0]['conditions']['departure_date']==t['conditions']['departure_date']
+    t['field_sources']['departure_date']='default'
+    w['condition_strengths']['start_date']='hard'
+    inherited=apply_travel_update(w,dict(update_type='supplement',target=dict(workflow_id=w['id'],task_ids=[t['id']],components=['schedule']),condition_updates={'arrival_date':'2026-10-18'}))
+    assert inherited['tasks'][0]['conditions']['departure_date']==t['conditions']['departure_date']
 
 
 def test_constraint_supplement_does_not_delete_existing_hard_filters():

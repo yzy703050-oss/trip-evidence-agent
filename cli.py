@@ -29,7 +29,7 @@ import json
 from utils.response_renderer import finalize_business_result
 
 # 导入系统组件
-from agentscope.model import OpenAIChatModel
+from agents.openai_model import OpenAIChatModel
 from config_agentscope import init_agentscope
 from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, get_settings, get_model_generate_kwargs
 from travel_data.juhe_train import JuheTrainProvider
@@ -375,7 +375,9 @@ class TripEvidenceCLI:
             return '\n'.join(summary_parts)
 
         # 2. 使用LLM总结历史聊天记录
-        chat_summary = await self.memory_manager.get_long_term_summary_async(max_messages=50, query=user_input)
+        # Reading history never invokes a model. Session compaction owns its own
+        # exceptional summarization; request preflight consumes saved summaries.
+        chat_summary = self.memory_manager.get_compacted_context().get('summary', '')
         if chat_summary:
             summary_parts.append("\n【历史会话总结】")
             summary_parts.append(chat_summary)

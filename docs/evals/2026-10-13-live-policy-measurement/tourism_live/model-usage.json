@@ -1,0 +1,36 @@
+[
+  {
+    "type": "model_call",
+    "stage": "main:plan",
+    "model": "deepseek-flash",
+    "status": "success",
+    "error": null,
+    "latency_ms": 2120.595,
+    "ttft_ms": 455.212,
+    "input_tokens": 1359,
+    "output_tokens": 461,
+    "estimated_cost_usd": null,
+    "turn_id": "5eef1bad866a4d20bf1e7d9fb039f9ed",
+    "user_id": "tourism_live",
+    "session_id": "live",
+    "run_seq": 2,
+    "timestamp": "2026-10-13T06:22:33.870135+00:00"
+  },
+  {
+    "type": "model_call",
+    "stage": "main:repair_proposal",
+    "model": "deepseek-flash",
+    "status": "success",
+    "error": null,
+    "latency_ms": 1549.334,
+    "ttft_ms": 324.038,
+    "input_tokens": 824,
+    "output_tokens": 261,
+    "estimated_cost_usd": null,
+    "turn_id": "5eef1bad866a4d20bf1e7d9fb039f9ed",
+    "user_id": "tourism_live",
+    "session_id": "live",
+    "run_seq": 6,
+    "timestamp": "2026-10-13T06:22:35.436792+00:00"
+  }
+]

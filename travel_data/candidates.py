@@ -42,6 +42,9 @@ def query_cache_key(domain: str, query: dict) -> str:
 
 def candidate_view(result, *, limit, offset, constraints, preferences):
     value = deepcopy(result.to_dict())
+    if constraints.get('hotel_keywords'):
+        keywords = constraints['hotel_keywords'].split()
+        value['items'] = [i for i in value['items'] if any(k in i.get('hotel_name', '') for k in keywords)]
     if value['query'].get('search_kind') == 'hotel_place':
         from travel_data.hotel_places import hotel_place_view
         return hotel_place_view(value, limit=limit, offset=offset,

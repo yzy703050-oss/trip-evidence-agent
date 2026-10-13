@@ -1,0 +1,151 @@
+{
+  "valid": true,
+  "issues": [],
+  "reconstructed_tasks": [
+    {
+      "task_id": "task_ba1eed26c02c42eeb109b0525a09de83",
+      "task_revision": 1,
+      "origin": "重庆",
+      "destination": "上海",
+      "purpose": "business",
+      "train": {
+        "id": "2026-10-15|G9001|重庆西|上海虹桥|O|二等座",
+        "train_number": "G9001",
+        "origin_station": "重庆西",
+        "destination_station": "上海虹桥",
+        "departure_time": "07:20",
+        "arrival_time": "18:50",
+        "seat_class": "二等座",
+        "price_cny": "584.50",
+        "availability": "available",
+        "remaining": null,
+        "source": {
+          "provider": "simulation:juhe-api",
+          "fetched_at": "2026-10-13T15:36:45.144583+08:00",
+          "url": "https://www.juhe.cn/docs/api/id/817"
+        },
+        "url": null,
+        "departure_at": "2026-10-15T07:20:00+08:00",
+        "arrival_at": "2026-10-15T18:50:00+08:00",
+        "time_evidence": {
+          "departure": "query_date_and_provider_clock",
+          "arrival": "provider_segment_duration"
+        }
+      },
+      "hotel": {
+        "id": "fixture-hotel-2-0",
+        "hotel_name": "全季（上海模拟报价候选1）",
+        "room_type": "模拟标准间",
+        "check_in": "2026-10-15",
+        "check_out": "2026-10-17",
+        "guests": 1,
+        "stay_total_cny": "760",
+        "fees_included": true,
+        "availability": "available",
+        "cancellation": null,
+        "source": {
+          "provider": "simulation:quote-contract-fixture",
+          "fetched_at": "2026-10-13T15:36:46.485435+08:00",
+          "url": null
+        },
+        "url": null
+      },
+      "schedule": {
+        "departure_at": "2026-10-15T07:20:00+08:00",
+        "arrival_at": "2026-10-15T18:50:00+08:00",
+        "check_in": "2026-10-15",
+        "check_out": "2026-10-17",
+        "next_departure_not_before": "2026-10-17"
+      }
+    },
+    {
+      "task_id": "task_21225d4e4fac493e895722cc3da8ce15",
+      "task_revision": 1,
+      "origin": "上海",
+      "destination": "重庆",
+      "purpose": "return",
+      "train": {
+        "id": "2026-10-17|G9001|上海虹桥|重庆西|O|二等座",
+        "train_number": "G9001",
+        "origin_station": "上海虹桥",
+        "destination_station": "重庆西",
+        "departure_time": "07:20",
+        "arrival_time": "18:50",
+        "seat_class": "二等座",
+        "price_cny": "584.50",
+        "availability": "available",
+        "remaining": null,
+        "source": {
+          "provider": "simulation:juhe-api",
+          "fetched_at": "2026-10-13T15:36:45.144583+08:00",
+          "url": "https://www.juhe.cn/docs/api/id/817"
+        },
+        "url": null,
+        "departure_at": "2026-10-17T07:20:00+08:00",
+        "arrival_at": "2026-10-17T18:50:00+08:00",
+        "time_evidence": {
+          "departure": "query_date_and_provider_clock",
+          "arrival": "provider_segment_duration"
+        }
+      },
+      "hotel": null,
+      "schedule": {
+        "departure_at": "2026-10-17T07:20:00+08:00",
+        "arrival_at": "2026-10-17T18:50:00+08:00",
+        "check_in": null,
+        "check_out": null,
+        "next_departure_not_before": "2026-10-17T18:50:00+08:00"
+      }
+    }
+  ],
+  "budget": {
+    "known_subtotal_cny": "1929.00",
+    "verified": true,
+    "missing_categories": [],
+    "lines": [
+      {
+        "category": "train",
+        "offer_id": "2026-10-15|G9001|重庆西|上海虹桥|O|二等座",
+        "quantity": 1,
+        "unit_price_cny": "584.50",
+        "amount_cny": "584.50",
+        "source": {
+          "provider": "simulation:juhe-api",
+          "fetched_at": "2026-10-13T15:36:45.144583+08:00",
+          "url": "https://www.juhe.cn/docs/api/id/817"
+        },
+        "task_id": "task_ba1eed26c02c42eeb109b0525a09de83"
+      },
+      {
+        "category": "hotel",
+        "offer_id": "fixture-hotel-2-0",
+        "quantity": 1,
+        "amount_cny": "760",
+        "source": {
+          "provider": "simulation:quote-contract-fixture",
+          "fetched_at": "2026-10-13T15:36:46.485435+08:00",
+          "url": null
+        },
+        "task_id": "task_ba1eed26c02c42eeb109b0525a09de83"
+      },
+      {
+        "category": "train",
+        "offer_id": "2026-10-17|G9001|上海虹桥|重庆西|O|二等座",
+        "quantity": 1,
+        "unit_price_cny": "584.50",
+        "amount_cny": "584.50",
+        "source": {
+          "provider": "simulation:juhe-api",
+          "fetched_at": "2026-10-13T15:36:45.144583+08:00",
+          "url": "https://www.juhe.cn/docs/api/id/817"
+        },
+        "task_id": "task_21225d4e4fac493e895722cc3da8ce15"
+      }
+    ]
+  },
+  "validated_revisions": {
+    "task_ba1eed26c02c42eeb109b0525a09de83": 1,
+    "task_21225d4e4fac493e895722cc3da8ce15": 1
+  },
+  "signature": "91b8426b59945d5d4c37ccd330ddf9567758720ea3336423f65be39c6929a6d5"
+}

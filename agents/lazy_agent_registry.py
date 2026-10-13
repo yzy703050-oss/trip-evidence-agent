@@ -11,7 +11,7 @@ import inspect
 from pathlib import Path
 from typing import Dict, Any, Optional, Mapping
 from rich.console import Console
-from agentscope.agent import AgentBase
+from agents.runtime import AgentBase
 
 BUSINESS_SKILLS = {'rag_knowledge': 'ask-question', 'memory_query': 'memory-query',
                    'preference': 'preference', 'information_query': 'query-info'}

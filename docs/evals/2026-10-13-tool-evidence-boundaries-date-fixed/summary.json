@@ -1,0 +1,22 @@
+[
+  {
+    "case": "soft_dates",
+    "source": "synthetic soft-date context with offline train fixtures",
+    "scope": "saved-context select_batch only",
+    "supplier_calls": 0,
+    "rag_calls": 0,
+    "model_call_limit": 1,
+    "action": "repair_tasks",
+    "allow_repair": null,
+    "passed": false,
+    "error_type": "ValueError",
+    "error": "repair must reference actual blocking conflicts",
+    "model_calls": 1,
+    "usage": {
+      "input_tokens": 4369,
+      "output_tokens": 266
+    },
+    "latency_ms": 2644.507,
+    "ttft_ms": 946.715
+  }
+]

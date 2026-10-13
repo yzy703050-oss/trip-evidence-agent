@@ -1,6 +1,6 @@
 """Session context must be recoverable without leaking child-agent internals."""
 
-from agentscope.message import Msg
+from agents.runtime import Msg
 
 from context.memory_manager import MemoryManager
 

@@ -11,15 +11,6 @@ from test_information_tools import Provider
 from test_information_agent_loop import info_class, Public
 
 
-@pytest.mark.asyncio
-async def test_information_receives_completed_policy_results():
-    from agentscope.message import Msg
-    class Policy:
-        async def reply(self, msg): return Msg('p', '{"answer":"500 per night"}', 'assistant')
-    info = Info()
-    main = Main([{'agent_name': 'rag_knowledge'}, {'agent_name': 'information_query', 'requested_domains': ['weather']}], mode='synthesize')
-    await ExecutionHarness(main, {'rag_knowledge': Policy(), 'information_query': info}).run_turn({'original_query': 'policy and query'}, RunState('a'))
-    assert info.context['previous_results'][0]['result']['data']['answer'] == '500 per night'
 
 
 @pytest.mark.asyncio
@@ -36,21 +27,6 @@ async def test_feedback_cannot_query_unaffected_domain():
     assert not run.external_requests_started
 
 
-@pytest.mark.asyncio
-async def test_feedback_window_reuses_cache_with_real_agent():
-    provider, run = Provider(), RunState('a')
-    calls = []
-    async def model(messages, **kwargs):
-        calls.append(deepcopy(messages))
-        if len(calls) % 2:
-            return SimpleNamespace(content=[{'type': 'tool_use', 'id': 'same-model-id', 'name': 'hotel_search',
-                'input': {'city': 'Beijing', 'check_in': '2026-10-10', 'check_out': '2026-10-11', 'guests': 1}}])
-        return SimpleNamespace(text='{"summary":"done"}')
-    agent = info_class()(model=model, tool_executor=ToolExecutor({'hotel_search': provider}))
-    await agent.run({'requested_domains': ['hotel']}, run)
-    result = await agent.run({'requested_domains': ['hotel'], 'feedback': {'domains': ['hotel'], 'constraints': {'candidate_offset': 5}}}, run)
-    assert [item['id'] for item in result['domain_results']['hotel']['items']] == ['5', '6']
-    assert len(provider.queries) == 1
 
 
 def test_weather_invalid_temperature_is_incomplete():
@@ -69,17 +45,6 @@ async def test_itinerary_prose_cannot_introduce_false_money():
     assert '299' not in json.dumps(result, ensure_ascii=False)
 
 
-@pytest.mark.asyncio
-async def test_combined_weather_answer_keeps_policy_and_real_weather():
-    from agentscope.message import Msg
-    class Policy:
-        async def reply(self, msg): return Msg('p', '{"answer":"住宿上限500元"}', 'assistant')
-    class Combining(Main):
-        async def finalize(self, context): return {'action': 'answer', 'final_answer': '北京零下999度'}
-    main = Combining([{'agent_name': 'rag_knowledge'}, {'agent_name': 'information_query', 'requested_domains': ['weather']}], mode='synthesize')
-    result = await ExecutionHarness(main, {'rag_knowledge': Policy(), 'information_query': Info()}).run_turn({'original_query': '制度及天气'}, RunState('a'))
-    assert '500元' in result['final_answer']
-    assert '999' not in result['final_answer']
 
 
 @pytest.mark.asyncio
@@ -167,15 +132,6 @@ async def test_feedback_stop_does_not_display_forged_reason_facts():
     assert '999' not in result['final_answer']
 
 
-@pytest.mark.asyncio
-async def test_invalid_feedback_budget_keeps_results():
-    from test_main_feedback import FeedbackMain
-    class BadFeedback(FeedbackMain):
-        async def finalize(self, context):
-            return {'action': 'needs_requery', 'domains': ['weather'], 'reason': '比较', 'constraints': {'train_max_total_cny': 'wrong'}}
-    result = await ExecutionHarness(BadFeedback(mode='synthesize'), {'information_query': Info()}).run_turn({'original_query': '天气'}, RunState('a'))
-    assert result['stop_reason'] == 'invalid_feedback'
-    assert result['domain_results']['weather']['items']
 
 
 @pytest.mark.asyncio

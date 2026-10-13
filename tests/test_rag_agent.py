@@ -25,8 +25,8 @@ if "pytest" in sys.modules:
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel
+from agents.runtime import Msg
+from agents.openai_model import OpenAIChatModel
 from config_agentscope import init_agentscope
 from agents.rag_knowledge_agent import RAGKnowledgeAgent
 from config import LLM_CONFIG

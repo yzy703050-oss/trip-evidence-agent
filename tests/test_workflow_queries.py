@@ -138,7 +138,8 @@ async def test_current_window_reaches_main_without_a_new_provider_query():
     await tool.execute('train_search', parameters, run, call_id='first')
     second = await tool.execute('train_search', {**parameters, 'candidate_offset': 5}, run, call_id='next')
     assert len(provider.calls) == 1
-    assert query_views(w, t['id'])[0]['items'] == second['items']
+    assert [i['id'] for i in query_views(w, t['id'])[0]['items']] == [i['id'] for i in second['items']]
+    assert all(i['price_cny'] == '100' for i in second['items'])
     assert len(query_views(w, t['id'])[0]['items']) == 3
 
 

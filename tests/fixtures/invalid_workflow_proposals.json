@@ -1,0 +1,462 @@
+{
+  "description": "Invalid proposals extracted from synthetic travel evaluations on 2026-10-13; excludes requests, conversation history, supplier data and model usage. Keep each original proposal shape and expected rejection reason.",
+  "cases": {
+    "tourism_live": [
+      {
+        "stage": "main:plan",
+        "expected_error": "unsupported workflow conditions",
+        "proposal": {
+          "confirmed_conditions": {
+            "purpose": "tourism",
+            "passengers": 1,
+            "seat_class": "二等座",
+            "constraints": {
+              "train_max_total_cny": 700
+            }
+          },
+          "tasks": [
+            {
+              "origin": "重庆",
+              "destination": "上海",
+              "purpose": "visit",
+              "purpose_source": "user",
+              "requires_hotel": true,
+              "conditions": {
+                "departure_date": "2026-10-15",
+                "check_in": "2026-10-15",
+                "check_out": "2026-10-17",
+                "nights": 2,
+                "passengers": 1,
+                "hotel_quote_required": false,
+                "constraints": {
+                  "seat_class": "二等座",
+                  "train_max_total_cny": 700
+                }
+              },
+              "field_sources": {
+                "departure_date": "user",
+                "check_in": "user",
+                "check_out": "user",
+                "nights": "derived",
+                "passengers": "user",
+                "purpose": "user",
+                "seat_class": "user",
+                "train_max_total_cny": "user"
+              }
+            },
+            {
+              "origin": "上海",
+              "destination": "重庆",
+              "purpose": "return",
+              "purpose_source": "user",
+              "requires_hotel": false,
+              "conditions": {
+                "departure_date": "2026-10-17",
+                "passengers": 1,
+                "constraints": {
+                  "seat_class": "二等座",
+                  "train_max_total_cny": 700
+                }
+              },
+              "field_sources": {
+                "departure_date": "user",
+                "passengers": "user",
+                "purpose": "user",
+                "seat_class": "user",
+                "train_max_total_cny": "user"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "stage": "main:repair_proposal",
+        "expected_error": "invalid task purpose",
+        "proposal": {
+          "confirmed_conditions": {
+            "passengers": 1,
+            "constraints": {
+              "total_budget_cny": 700
+            }
+          },
+          "tasks": [
+            {
+              "origin": "重庆",
+              "destination": "上海",
+              "purpose": "tourism",
+              "purpose_source": "user",
+              "requires_hotel": true,
+              "conditions": {
+                "departure_date": "2026-10-15",
+                "check_in": "2026-10-15",
+                "check_out": "2026-10-17",
+                "nights": 2,
+                "passengers": 1,
+                "constraints": {
+                  "seat_class": "二等座",
+                  "train_max_total_cny": 700
+                }
+              },
+              "field_sources": {
+                "departure_date": "user",
+                "check_in": "user",
+                "check_out": "user",
+                "nights": "derived",
+                "passengers": "user",
+                "purpose": "user",
+                "seat_class": "user",
+                "train_max_total_cny": "user"
+              }
+            },
+            {
+              "origin": "上海",
+              "destination": "重庆",
+              "purpose": "return",
+              "purpose_source": "user",
+              "requires_hotel": false,
+              "conditions": {
+                "departure_date": "2026-10-17",
+                "passengers": 1,
+                "constraints": {
+                  "seat_class": "二等座",
+                  "train_max_total_cny": 700
+                }
+              },
+              "field_sources": {
+                "departure_date": "user",
+                "passengers": "user",
+                "purpose": "user",
+                "seat_class": "user",
+                "train_max_total_cny": "user"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "business_live": [
+      {
+        "stage": "main:plan",
+        "expected_error": "unsupported workflow conditions",
+        "proposal": {
+          "confirmed_conditions": {
+            "purpose": "business",
+            "passengers": 1,
+            "seat_class": "二等座",
+            "train_max_total_cny": 700,
+            "hotel_keywords": [
+              "全季"
+            ],
+            "hotel_quote_required": true
+          },
+          "tasks": [
+            {
+              "origin": "重庆",
+              "destination": "上海",
+              "purpose": "business",
+              "purpose_source": "user",
+              "requires_hotel": true,
+              "conditions": {
+                "departure_date": "2026-10-15",
+                "check_in": "2026-10-15",
+                "check_out": "2026-10-17",
+                "nights": 2,
+                "passengers": 1,
+                "guests": 1,
+                "hotel_quote_required": true,
+                "hotel_keywords": [
+                  "全季"
+                ],
+                "constraints": {
+                  "seat_class": "二等座",
+                  "train_max_total_cny": 700
+                }
+              },
+              "field_sources": {
+                "origin": "user",
+                "destination": "user",
+                "purpose": "user",
+                "departure_date": "user",
+                "check_in": "user",
+                "check_out": "user",
+                "nights": "derived",
+                "passengers": "user",
+                "guests": "derived",
+                "hotel_quote_required": "user",
+                "hotel_keywords": "user",
+                "seat_class": "user",
+                "train_max_total_cny": "user"
+              }
+            },
+            {
+              "origin": "上海",
+              "destination": "重庆",
+              "purpose": "return",
+              "purpose_source": "user",
+              "requires_hotel": false,
+              "conditions": {
+                "departure_date": "2026-10-17",
+                "passengers": 1,
+                "constraints": {
+                  "seat_class": "二等座",
+                  "train_max_total_cny": 700
+                }
+              },
+              "field_sources": {
+                "origin": "user",
+                "destination": "user",
+                "purpose": "user",
+                "departure_date": "user",
+                "passengers": "user",
+                "seat_class": "user",
+                "train_max_total_cny": "user"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "stage": "main:repair_proposal",
+        "expected_error": "invalid hotel keywords",
+        "proposal": {
+          "confirmed_conditions": {
+            "passengers": 1,
+            "hotel_keywords": [
+              "全季"
+            ],
+            "hotel_quote_required": true,
+            "constraints": {}
+          },
+          "tasks": [
+            {
+              "origin": "重庆",
+              "destination": "上海",
+              "purpose": "business",
+              "purpose_source": "user",
+              "requires_hotel": true,
+              "conditions": {
+                "departure_date": "2026-10-15",
+                "check_in": "2026-10-15",
+                "check_out": "2026-10-17",
+                "nights": 2,
+                "passengers": 1,
+                "guests": 1,
+                "hotel_quote_required": true,
+                "hotel_keywords": [
+                  "全季"
+                ],
+                "constraints": {
+                  "train_max_total_cny": 700,
+                  "seat_class": "二等座"
+                }
+              },
+              "field_sources": {
+                "origin": "user",
+                "destination": "user",
+                "purpose": "user",
+                "departure_date": "user",
+                "check_in": "user",
+                "check_out": "user",
+                "nights": "derived",
+                "passengers": "user",
+                "guests": "derived",
+                "hotel_quote_required": "user",
+                "hotel_keywords": "user",
+                "constraints": "user"
+              }
+            },
+            {
+              "origin": "上海",
+              "destination": "重庆",
+              "purpose": "return",
+              "purpose_source": "user",
+              "requires_hotel": false,
+              "conditions": {
+                "departure_date": "2026-10-17",
+                "passengers": 1,
+                "constraints": {
+                  "train_max_total_cny": 700,
+                  "seat_class": "二等座"
+                }
+              },
+              "field_sources": {
+                "origin": "user",
+                "destination": "user",
+                "purpose": "user",
+                "departure_date": "user",
+                "passengers": "user",
+                "constraints": "user"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "business_conflict": [
+      {
+        "stage": "main:plan",
+        "expected_error": "unsupported workflow conditions",
+        "proposal": {
+          "confirmed_conditions": {
+            "passengers": 1,
+            "seat_class": "二等座",
+            "purpose": "business",
+            "hotel_brands": [
+              "全季"
+            ],
+            "hotel_quote_required": true
+          },
+          "tasks": [
+            {
+              "origin": "重庆",
+              "destination": "上海",
+              "purpose": "business",
+              "requires_hotel": true,
+              "conditions": {
+                "departure_date": "2026-10-15",
+                "check_in": "2026-10-15",
+                "check_out": "2026-10-17",
+                "passengers": 1,
+                "guests": 1,
+                "nights": 2,
+                "seat_class": "二等座",
+                "train_max_total_cny": 700,
+                "hotel_quote_required": true,
+                "hotel_keywords": [
+                  "全季"
+                ],
+                "constraints": {
+                  "train_max_total_cny": 700,
+                  "seat_class": "二等座",
+                  "hotel_max_nightly_cny": null,
+                  "hotel_max_total_cny": null
+                }
+              },
+              "field_sources": {
+                "origin": "user",
+                "destination": "user",
+                "purpose": "user",
+                "departure_date": "user",
+                "check_in": "user",
+                "check_out": "user",
+                "passengers": "user",
+                "seat_class": "user",
+                "train_max_total_cny": "user",
+                "hotel_quote_required": "user",
+                "hotel_keywords": "user"
+              }
+            },
+            {
+              "origin": "上海",
+              "destination": "重庆",
+              "purpose": "return",
+              "requires_hotel": false,
+              "conditions": {
+                "departure_date": "2026-10-17",
+                "passengers": 1,
+                "seat_class": "二等座",
+                "train_max_total_cny": 700,
+                "constraints": {
+                  "train_max_total_cny": 700,
+                  "seat_class": "二等座"
+                }
+              },
+              "field_sources": {
+                "origin": "user",
+                "destination": "user",
+                "purpose": "user",
+                "departure_date": "user",
+                "passengers": "user",
+                "seat_class": "user",
+                "train_max_total_cny": "user"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "stage": "main:repair_proposal",
+        "expected_error": "invalid hotel keywords",
+        "proposal": {
+          "confirmed_conditions": {
+            "start_date": "2026-10-15",
+            "end_date": "2026-10-17",
+            "passengers": 1,
+            "hotel_quote_required": true,
+            "hotel_keywords": [
+              "全季"
+            ],
+            "constraints": {
+              "train_max_total_cny": 700,
+              "seat_class": "二等座"
+            }
+          },
+          "tasks": [
+            {
+              "origin": "重庆",
+              "destination": "上海",
+              "purpose": "business",
+              "purpose_source": "user",
+              "requires_hotel": true,
+              "conditions": {
+                "departure_date": "2026-10-15",
+                "check_in": "2026-10-15",
+                "check_out": "2026-10-17",
+                "passengers": 1,
+                "guests": 1,
+                "nights": 2,
+                "hotel_quote_required": true,
+                "hotel_keywords": [
+                  "全季"
+                ],
+                "constraints": {
+                  "train_max_total_cny": 700,
+                  "seat_class": "二等座"
+                }
+              },
+              "field_sources": {
+                "origin": "user",
+                "destination": "user",
+                "purpose": "user",
+                "purpose_source": "user",
+                "departure_date": "user",
+                "check_in": "user",
+                "check_out": "user",
+                "passengers": "user",
+                "guests": "user",
+                "nights": "derived",
+                "hotel_quote_required": "user",
+                "hotel_keywords": "user",
+                "constraints": "user"
+              }
+            },
+            {
+              "origin": "上海",
+              "destination": "重庆",
+              "purpose": "return",
+              "purpose_source": "user",
+              "requires_hotel": false,
+              "conditions": {
+                "departure_date": "2026-10-17",
+                "passengers": 1,
+                "constraints": {
+                  "train_max_total_cny": 700,
+                  "seat_class": "二等座"
+                }
+              },
+              "field_sources": {
+                "origin": "user",
+                "destination": "user",
+                "purpose": "user",
+                "purpose_source": "user",
+                "departure_date": "user",
+                "passengers": "user",
+                "constraints": "user"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

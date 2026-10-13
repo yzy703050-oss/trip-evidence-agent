@@ -23,11 +23,42 @@ class WorkflowMain:
         return {'response_mode': 'workflow', 'finalization_mode': 'synthesize', 'agent_schedule': [],
                 **({'resume_workflow_id': self.resume['id'], 'workflow_update': self.resume['update']} if self.resume else {'workflow_proposal': self.p})}
 
+    async def select_batch(self, context):
+        # Custom action tests retain their explicit test protocol; the normal fixture
+        # exercises the production batch contract without child-model calls.
+        if type(self).step is not WorkflowMain.step:
+            from agents.planning_conditions import prepare_task
+            w = context['workflow']
+            task = next((t for t in w['tasks'] if t.get('draft_stage') != 'selection' and t['status'] != 'validated'), w['tasks'][0])
+            rows = [r for r in context['task_results'] if r.get('task_id') == task['id']]
+            if task.get('update_scope'):
+                preserved = context.get('preserved_selections', {}).get(task['id'], {})
+                task['draft_plan'] = {'task_revision': task['revision'],
+                    'train_selection': preserved.get('train'), 'hotel_selection': preserved.get('hotel'),
+                    'schedule': {}, 'unverified_requirements': []}
+            return await self.step({**context, 'current_task': task, 'relevant_results': rows,
+                'preflight': prepare_task(w, task['id'], context.get('current_time')),
+                'effective_conditions': {**{'passengers': 1, 'guests': 1}, **task['conditions']}})
+        self.contexts.append(deepcopy(context))
+        if self.finish_without_check:
+            self.actions.append('finish')
+            return {'action': 'finish', 'status': 'completed'}
+        w = context['workflow']; drafts = []
+        for task in w['tasks']:
+            refs = {r['domain']: {'query_id': r['id'], 'result_revision': r['result_revision'],
+                    'candidate_id': r['items'][0]['id']} for r in [r for r in context['task_results'] if r.get('task_id') == task['id']] if r['items']}
+            drafts.append({'task_id': task['id'], 'task_revision': task['revision'], 'draft_plan': {
+                'task_revision': task['revision'], 'train_selection': refs.get('train'), 'hotel_selection': refs.get('hotel'),
+                'schedule': {k: v for k, v in task['conditions'].items() if k in {'check_in', 'check_out'}},
+                'unverified_requirements': []}})
+        self.actions.append('commit_batch')
+        return {'action': 'commit_batch', 'expected_workflow_revision': w['revision'], 'draft_tasks': drafts}
+
     async def step(self, context):
         self.contexts.append(deepcopy(context)); w = context['workflow']; task = context['current_task']
         if self.finish_without_check:
             action = {'action': 'finish', 'status': 'completed', 'final_answer': '完成'}
-        elif w.get('validation'):
+        elif w.get('validation') and all(t.get('draft_stage') == 'selection' for t in w['tasks']):
             if w['validation']['valid']:
                 action = {'action': 'finish', 'status': 'completed', 'final_answer': '交通住宿安排已整理。'}
             else:
@@ -39,7 +70,7 @@ class WorkflowMain:
                         **({'departure_date': c['departure_date']} if c.get('departure_date') else {}), passengers=effective['passengers'])}]
             if task['requires_hotel']: queries.append({'domain': 'hotel', 'parameters': {'city': task['destination']}})
             action = {'action': 'dispatch', 'task_id': task['id'], 'goal': '查询当前段', 'query_requests': queries}
-        elif task['status'] == 'running':
+        elif task['status'] == 'draft' and task.get('draft_stage') == 'query':
             rows = context['relevant_results']; refs = {}
             for row in rows:
                 if row['items']:
@@ -87,9 +118,14 @@ class Runtime:
         self.train = OfflineProvider('train'); self.hotel = OfflineProvider('hotel')
         model = MeteredModel(self.info_model, self.memory.session_store.append_run)
         self.info = info_class()(model=model, tool_executor=ToolExecutor({'train_search': self.train, 'hotel_search': self.hotel}), memory_manager=self.memory)
-        self.harness = ExecutionHarness(self.main, {'information_query': self.info}, self.memory)
+        class Registry(dict):
+            pass
+        registry = Registry(information_query=self.info)
+        registry.providers = {'train_search': self.train, 'hotel_search': self.hotel}
+        self.harness = ExecutionHarness(self.main, registry, self.memory)
 
     async def turn(self, query='安排火车酒店'):
+        self.harness.runner.executor = self.info.tool_executor  # Explicit provider injection, no child execution.
         run = RunState(self.memory.start_turn(query))
         result = await self.harness.run_turn({'original_query': query, 'current_time': '2026-10-10T10:00:00+08:00'}, run)
         return result

@@ -122,19 +122,15 @@ def test_cli_startup_wires_guide_without_api_key(monkeypatch):
 @pytest.mark.asyncio
 async def test_guide_link_survives_info_agent_and_forwarded_answer():
     from agents.execution_harness import ExecutionHarness
-    from test_information_agent_loop import info_class
-    from test_main_harness import Main
-    calls = []
-    async def model(messages, **kwargs):
-        calls.append(messages)
-        if len(calls) == 1:
-            return SimpleNamespace(content=[{'type': 'tool_use', 'id': 'g', 'name': 'travel_guide',
-                                            'input': {'destination': '北京'}}])
-        return SimpleNamespace(text='{"summary":"已找到攻略链接。"}')
-    main = Main([{'agent_name': 'information_query', 'priority': 2, 'requested_domains': ['guide']}])
-    info = info_class()(model=model, tool_executor=ToolExecutor({'travel_guide': provider(
-        lambda query: [{'title': '北京攻略', 'href': URL}])}))
-    result = await ExecutionHarness(main_agent=main, agent_registry={'information_query': info}).run_turn(
+    class Main:
+        finalize_calls = 0
+        async def initialize(self, context):
+            return {'response_mode': 'answer', 'agent_schedule': [], 'query_plan': [
+                {'domain': 'guide', 'name': 'travel_guide', 'parameters': {'destination': '北京'}}]}
+    class Registry(dict):
+        providers = {'travel_guide': provider(lambda query: [{'title': '北京攻略', 'href': URL}])}
+    main = Main()
+    result = await ExecutionHarness(main_agent=main, agent_registry=Registry()).run_turn(
         {'original_query': '给我北京旅游攻略链接'}, RunState('guide'))
     assert len(result['domain_results']['guide']['items']) == 1
     assert URL in result['final_answer']

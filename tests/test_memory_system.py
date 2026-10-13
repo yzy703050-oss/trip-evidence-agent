@@ -19,8 +19,8 @@ sys.path.insert(0, str(project_root))
 
 import asyncio
 from context.memory_manager import MemoryManager
-from agentscope import init as init_agentscope
-from agentscope.model import OpenAIChatModel
+from config_agentscope import init_agentscope
+from agents.openai_model import OpenAIChatModel
 import logging
 
 # 配置日志（只显示WARNING及以上）

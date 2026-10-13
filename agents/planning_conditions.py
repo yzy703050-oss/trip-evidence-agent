@@ -4,6 +4,7 @@ from copy import deepcopy
 import re
 
 from agents.workflow_contracts import effective_conditions, task_by_id
+from agents.condition_strengths import condition_is_hard
 
 BEIJING = timezone(timedelta(hours=8))
 
@@ -33,7 +34,7 @@ def prepare_task(workflow, task_id, current_time, *, previous_boundary=None):
     boundary = previous_boundary or {}
     if (index and task.get('needs_dependency_check')
             and (boundary.get('check_out') or boundary.get('arrival_at'))
-            and task['field_sources'].get('departure_date') in {'derived','proposal'}
+            and not condition_is_hard(workflow, task, 'departure_date')
             and not effective.get('arrival_date') and not effective.get('arrival_before')):
         value=boundary.get('check_out') or boundary['arrival_at'][:10]
         task['conditions']['departure_date']=value

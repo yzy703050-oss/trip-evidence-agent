@@ -1,11 +1,13 @@
 """Controlled model-selected repair; durable state remains owned by the runner."""
 
 from copy import deepcopy
+from datetime import date
 import json
 import hashlib
 from agents.workflow_contracts import task_by_id
 from agents.workflow_guard import check_workflow, check_task
 from agents.travel_updates import _rebind
+from agents.condition_strengths import DATE_FIELDS, condition_is_hard, global_is_hard
 
 
 def validate_repair(action, workflow):
@@ -37,6 +39,45 @@ def validate_repair(action, workflow):
             raise ValueError("unrelated repair task")
         if "hotel" in components and not task["requires_hotel"]:
             raise ValueError("no hotel in repair task")
+    updates = action.get('task_updates', [])
+    if not isinstance(updates, list) or (updates and 'schedule' not in components):
+        raise ValueError('date repair needs schedule component and task updates')
+    seen = set()
+    from agents.workflow_contracts import validate_conditions
+    for update in updates:
+        if (not isinstance(update, dict) or set(update) != {'task_id', 'conditions'}
+                or update['task_id'] not in ids or update['task_id'] in seen):
+            raise ValueError('invalid date repair target')
+        seen.add(update['task_id'])
+        task = task_by_id(workflow, update['task_id'])
+        changes = validate_conditions(update['conditions'])
+        if not changes or set(changes) - (DATE_FIELDS - {'start_date', 'end_date'}):
+            raise ValueError('date repair may only change task dates and nights')
+        for key, value in changes.items():
+            if value is None or condition_is_hard(workflow, task, key):
+                raise ValueError('date repair cannot change a hard condition')
+        combined = {**workflow['confirmed_conditions'], **task['conditions'], **changes}
+        end = workflow['confirmed_conditions'].get('end_date')
+        if global_is_hard(workflow, 'end_date') and any(
+                combined.get(k) and combined[k] > end
+                for k in ('departure_date', 'arrival_date', 'check_in', 'check_out')):
+            raise ValueError('date repair exceeds hard end date')
+        departure = combined.get('departure_date')
+        deadline = combined.get('arrival_before')
+        if (departure and deadline and condition_is_hard(workflow, task, 'arrival_before')
+                and departure > deadline[:10]):
+            raise ValueError('date repair exceeds hard arrival deadline')
+        arrival = combined.get('arrival_date')
+        if (departure and arrival and condition_is_hard(workflow, task, 'arrival_date')
+                and departure > arrival):
+            raise ValueError('date repair exceeds hard arrival date')
+        if combined.get('check_in') and combined.get('check_out') and combined['check_in'] >= combined['check_out']:
+            raise ValueError('invalid repaired stay dates')
+        if (combined.get('check_in') and combined.get('check_out') and combined.get('nights')
+                and condition_is_hard(workflow, task, 'nights')
+                and (date.fromisoformat(combined['check_out'])
+                     - date.fromisoformat(combined['check_in'])).days != combined['nights']):
+            raise ValueError('date repair changes hard stay length')
     return deepcopy(action)
 
 
@@ -78,6 +119,7 @@ def _fingerprint(workflow, action):
                 "id": t["id"],
                 "conditions": t["conditions"],
                 "field_sources": t["field_sources"],
+                "condition_strengths": t.get('condition_strengths', {}),
                 "evidence": evidence,
                 "schedule": refs.get("schedule"),
                 "selected": {
@@ -92,6 +134,7 @@ def _fingerprint(workflow, action):
             "roots": action["task_ids"],
             "components": action["components"],
             "codes": action["conflict_codes"],
+            "task_updates": action.get('task_updates', []),
         },
         sort_keys=True,
         ensure_ascii=False,
@@ -126,13 +169,17 @@ def _reopen(workflow, task, components):
         domains.discard("hotel")
     task["revision"] += 1
     task.update(status="pending", issues=[], update_scope=sorted(domains))
+    from agents.workflow_state import invalidate_query_binding
+    for domain in domains:
+        if domain in task.get('query_containers', {}):
+            task['query_containers'][domain] = invalidate_query_binding(task['query_containers'][domain], 'repair_requested')
     affected_dates = set()
     if "train" in domains:
         affected_dates.update({"departure_date", "arrival_date"})
     if "schedule" in components:
         affected_dates.update({"check_in", "check_out"})
     for key in affected_dates:
-        if task["field_sources"].get(key) in {"proposal", "default", "derived"}:
+        if not condition_is_hard(workflow, task, key):
             task["conditions"].pop(key, None)
             task["field_sources"].pop(key, None)
     if task.get("draft_plan"):
@@ -142,7 +189,7 @@ def _reopen(workflow, task, components):
             task["draft_plan"]["schedule"] = {
                 k: v
                 for k, v in task["draft_plan"].get("schedule", {}).items()
-                if k in task["conditions"] and task["field_sources"].get(k) in {"user", "context"}
+                if k in task["conditions"] and condition_is_hard(workflow, task, k)
             }
     _rebind(workflow, task, {"train", "hotel"} - domains)
     if task.get("draft_plan"):
@@ -166,6 +213,12 @@ def apply_repair(workflow, action):
     }
     for tid in roots:
         _reopen(w, task_by_id(w, tid), action["components"])
+    for update in action.get('task_updates', []):
+        task = task_by_id(w, update['task_id'])
+        task['conditions'].update(deepcopy(update['conditions']))
+        for key in update['conditions']:
+            task['field_sources'][key] = 'proposal'
+            task.setdefault('condition_strengths', {})[key] = 'soft'
     first = min(i for i, t in enumerate(w["tasks"]) if t["id"] in roots)
     dependents = [t["id"] for t in w["tasks"][first + 1 :] if t["id"] not in roots]
     w.update(

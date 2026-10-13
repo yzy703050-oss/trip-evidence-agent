@@ -19,7 +19,7 @@ async def test_scope_checkpoint_can_be_paused_then_resumed_across_sessions(tmp_p
             target={'workflow_id': workflow_id}))
     r.main.initialize = pause
     paused = await r.turn('先暂停')
-    assert paused['status'] == 'paused'
+    assert paused['status'] == 'ok' and paused['workflow']['stop_reason'] == 'paused'
     assert paused['workflow']['checkpoint']['question'] == '改哪部分？'
     assert paused['workflow']['checkpoint']['expected_workflow_revision'] == paused['workflow_revision']
     restarted = Runtime(tmp_path, session='resume-scope')
@@ -62,8 +62,8 @@ async def test_stop_saves_state_without_external_queries(tmp_path,kind,status):
             travel_update=dict(update_type=kind,target={'workflow_id':first['workflow_id']}))
     r.main.initialize=initialize; before=len(r.train.calls)
     result=await r.turn('停止规划')
-    assert result['status']==status and len(r.train.calls)==before
-    assert r.memory.workflow_store.load(first['workflow_id'])['status']==status
+    assert result['status']=='ok' and result['workflow']['stop_reason']==status and len(r.train.calls)==before
+    assert r.memory.workflow_store.load(first['workflow_id'])['status']=='running'
 
 
 @pytest.mark.asyncio
@@ -98,8 +98,8 @@ async def test_timeout_budget_includes_main_decisions_and_preserves_workflow(tmp
     r=Runtime(tmp_path,main=Slow())
     result=await r.turn()
     assert result['status']=='partial' and result['stop_reason']=='turn_timeout'
-    assert r.memory.workflow_store.load(result['workflow_id'])['status']=='partial'
-    assert not r.train.calls
+    assert r.memory.workflow_store.load(result['workflow_id'])['status']=='running'
+    assert len(r.train.calls) == 3  # Queries precede the selection model.
 
 
 @pytest.mark.asyncio
@@ -121,9 +121,7 @@ async def test_price_only_request_queries_train_without_a_travel_workflow(tmp_pa
     from types import SimpleNamespace
     from agents.main_agent import MainAgent
     r=runtime(tmp_path,[dict(origin='重庆',destination='上海',requires_hotel=False,conditions={})])
-    answers=[dict(response_mode='answer',finalization_mode='forward',agent_schedule=[dict(agent_name='information_query',requested_domains=['train'])]),
-             [dict(type='tool_use',id='t',name='train_search',input=dict(origin='重庆',destination='上海',departure_date='2026-10-18',passengers=1))],
-             dict(summary='模拟火车查询已整理')]
+    answers=[dict(response_mode='answer',agent_schedule=[],query_plan=[dict(domain='train',name='train_search',parameters=dict(origin='重庆',destination='上海',departure_date='2026-10-18',passengers=1))])]
     async def model(messages,**kwargs):
         value=answers.pop(0)
         return SimpleNamespace(content=value) if isinstance(value,list) else SimpleNamespace(text=json.dumps(value,ensure_ascii=False))

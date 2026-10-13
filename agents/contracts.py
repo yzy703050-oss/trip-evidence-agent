@@ -70,6 +70,7 @@ class RunState:
     workflow: dict | None = None
     current_task_id: str | None = None
     query_records: dict = field(default_factory=dict)
+    query_execution_records: list = field(default_factory=list)
     workflow_tool_budget: int | None = None
 
 

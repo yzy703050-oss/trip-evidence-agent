@@ -2,6 +2,7 @@
 from copy import deepcopy
 
 from agents.workflow_contracts import create_workflow, task_by_id, validate_conditions
+from agents.condition_strengths import condition_is_hard, mark_user_conditions, validate_inherited_strengths
 
 
 def _condition_update_type(tasks: list[dict], conditions: dict, task_fields: dict,
@@ -41,7 +42,7 @@ def apply_travel_update(workflow, update, *, context=None):
     if not components <= {'train', 'hotel', 'route', 'schedule'}: raise ValueError('invalid component scope')
     w['last_update'] = deepcopy(update)
     if kind in {'pause', 'cancel'}:
-        w.update(status='paused' if kind == 'pause' else 'cancelled', stop_reason=kind)
+        w.update(status='running', stop_reason='paused' if kind == 'pause' else 'cancelled')
         if w.get('checkpoint'):
             # Harness persists this stop as the next CAS revision, retaining the question.
             w['checkpoint']['expected_workflow_revision'] = w['revision'] + 1
@@ -51,6 +52,7 @@ def apply_travel_update(workflow, update, *, context=None):
         if context is not None:
             route_context['original_query'] = w.get('original_query', '') + '\n' + context.get('original_query', '')
         replacement = create_workflow({'confirmed_conditions': w['confirmed_conditions'],
+                                       'condition_strengths': w.get('condition_strengths', {}),
                                        'tasks': update.get('route_tasks')}, route_context,
                                       workflow_id=w['id'], require_stay_proposals=context is not None)
         old = {(t['origin'], t['destination']): t for t in w['tasks']}
@@ -119,7 +121,7 @@ def apply_travel_update(workflow, update, *, context=None):
         task['revision'] += 1
         task['status'] = 'pending'
         task['issues'] = []
-        if (conditions.get('arrival_date') or conditions.get('arrival_before')) and not conditions.get('departure_date') and task.get('field_sources',{}).get('departure_date') in {'default','proposal','derived'}:
+        if (conditions.get('arrival_date') or conditions.get('arrival_before')) and not conditions.get('departure_date') and not condition_is_hard(w, task, 'departure_date'):
             task['conditions'].pop('departure_date',None)
             task['field_sources'].pop('departure_date',None)
         merged=deepcopy(conditions)
@@ -127,6 +129,7 @@ def apply_travel_update(workflow, update, *, context=None):
             merged['constraints']={**task['conditions'].get('constraints',{}),**merged['constraints']}
         task['conditions'].update(merged)
         task['field_sources'].update({k: 'user' for k in conditions})
+        mark_user_conditions(task, conditions, update.get('condition_strengths'))
         for key, value in route_changes.items():
             if key in {'origin', 'destination'} and (not isinstance(value, str) or not value.strip()):
                 raise ValueError('invalid route update')
@@ -143,6 +146,7 @@ def apply_travel_update(workflow, update, *, context=None):
                 w['tasks'][index+1]['origin'] = value
         if task is w['tasks'][0] and conditions.get('departure_date'):
             w['confirmed_conditions']['start_date'] = conditions['departure_date']
+            w.setdefault('condition_strengths', {})['start_date'] = task['condition_strengths']['departure_date']
         task['update_scope'] = sorted(changed_domains)
         if (w.get('checkpoint') or {}).get('kind') == 'required_conditions' and task['requires_hotel'] and not (task.get('draft_plan') or {}).get('hotel_selection'):
             # Resuming a pre-query checkpoint must still build the original hotel plan.
@@ -150,6 +154,9 @@ def apply_travel_update(workflow, update, *, context=None):
         rejected = update.get('rejected_candidate_ids', [])
         if not isinstance(rejected, list) or not all(isinstance(x, str) for x in rejected): raise ValueError('invalid rejection')
         for domain in changed_domains:
+            from agents.workflow_state import invalidate_query_binding
+            if domain in task.get('query_containers', {}):
+                task['query_containers'][domain] = invalidate_query_binding(task['query_containers'][domain], 'conditions_changed')
             task.setdefault('rejected_candidates', {}).setdefault(domain, [])
             if len(changed_domains) == 1:
                 task['rejected_candidates'][domain] = list(dict.fromkeys(task['rejected_candidates'][domain] + rejected))
@@ -167,4 +174,5 @@ def apply_travel_update(workflow, update, *, context=None):
             raise ValueError('route is not continuous')
     w['current_task_id'] = w['tasks'][first]['id']
     w.update(status='running', checkpoint=None, validation=None, stop_reason=None)
+    validate_inherited_strengths(w)
     return w

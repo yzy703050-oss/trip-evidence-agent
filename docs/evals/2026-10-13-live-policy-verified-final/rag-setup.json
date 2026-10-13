@@ -1,0 +1,44 @@
+{
+  "database_path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\v0-policy-live-92_6z6fe",
+  "documents": [
+    {
+      "content": "【虚构测试制度】星桥信息境内出差制度 SQ-TRAVEL-2026-V2，版本2，2026-10-01生效。适用普通员工上海出差。第一条：高铁动车只能二等座，单程火车费用每人不超过700元。第二条：上海住宿含税及必付费用每间每晚不超过500元。品牌是软偏好，不能覆盖上限。必须检索当前制度并遵守硬约束。",
+      "metadata": {
+        "document_id": "SQ-TRAVEL-2026-V2",
+        "title": "星桥信息境内出差制度",
+        "version": "2",
+        "effective_date": "2026-10-01",
+        "location": "第一、二条",
+        "status": "active"
+      }
+    },
+    {
+      "content": "【虚构测试旧制度】星桥信息旧差旅标准 SQ-TRAVEL-2025-V1 曾允许上海住宿900元/晚。本制度已于2026-10-01废止，被SQ-TRAVEL-2026-V2替代。当前出差不能采用旧900元标准，必须采用版本2的上海500元/晚限额及高铁二等座要求。",
+      "metadata": {
+        "document_id": "SQ-TRAVEL-2025-V1",
+        "title": "已废止住宿标准",
+        "version": "1",
+        "location": "废止说明",
+        "status": "superseded"
+      }
+    },
+    {
+      "content": "【虚构测试例外】星桥信息SQ-EXCEPTION-2026仅说明超标审批流程：项目出差如需上海住宿上限800元/晚，必须在预订前取得有效审批编号，并核对员工、城市、日期、项目。此文档不是已批准凭证。没有审批编号时采用版本2基础限额500元/晚；不能因为用户偏好全季就视为批准。",
+      "metadata": {
+        "document_id": "SQ-EXCEPTION-2026",
+        "title": "超标审批条件",
+        "version": "1",
+        "location": "例外适用条件",
+        "status": "active"
+      }
+    }
+  ],
+  "ingestion": {
+    "status": "success",
+    "added_count": 3,
+    "total_count": 3
+  },
+  "initialization_and_ingestion_ms": 8591.647,
+  "embedding_tokens": null,
+  "embedding_note": "local sentence-transformers; no billed embedding API"
+}

@@ -30,8 +30,8 @@ if "pytest" in sys.modules:
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel
+from agents.runtime import Msg
+from agents.openai_model import OpenAIChatModel
 from config_agentscope import init_agentscope
 # 导入 skill 目录下的 agent
 sys.path.insert(0, os.path.join(project_root, '.claude', 'skills', 'query-info', 'script'))

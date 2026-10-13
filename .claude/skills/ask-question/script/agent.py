@@ -17,8 +17,8 @@ RAG知识库智能体 RAGKnowledgeAgent
 pip install milvus sentence-transformers
 """
 from context.context_budget import ContextBudgetExceeded
-from agentscope.agent import AgentBase
-from agentscope.message import Msg
+from agents.runtime import AgentBase
+from agents.runtime import Msg
 from typing import Optional, Union, List, Dict
 import json
 import logging

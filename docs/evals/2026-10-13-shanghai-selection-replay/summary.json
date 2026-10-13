@@ -1,0 +1,32 @@
+{
+  "scope": "saved actual supplier facts; reconstructed select_batch context only",
+  "supplier_calls": 0,
+  "rag_calls": 0,
+  "model_call_limit": 1,
+  "original_counts": [
+    0,
+    25,
+    93
+  ],
+  "visible_counts": [
+    0,
+    5,
+    5
+  ],
+  "action": "commit_batch",
+  "allow_repair": false,
+  "validation_valid": false,
+  "blocking_codes": [
+    "train_selection_missing"
+  ],
+  "hotel_name": "登巴客栈(上海旗舰店)",
+  "return_train": "D352",
+  "passed": true,
+  "model_calls": 1,
+  "usage": {
+    "input_tokens": 5361,
+    "output_tokens": 468
+  },
+  "latency_ms": 3322.536,
+  "ttft_ms": 1060.974
+}

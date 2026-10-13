@@ -36,6 +36,13 @@ def test_latest_completed_revision_controls_history_and_statistics(tmp_path):
     memory = MemoryManager("alice", "one", storage_path=str(tmp_path))
     workflow = completed(memory)
     workflow["tasks"][-1]["destination"] = "苏州"
+    # A completed revision must carry evidence for the new destination.
+    from test_workflow_queries import put_train
+    query = put_train(workflow, len(workflow["tasks"]) - 1)
+    workflow["tasks"][-1]["draft_plan"]["train_selection"] = {
+        "query_id": query["id"], "result_revision": query["result_revision"],
+        "candidate_id": query["items"][0]["id"],
+    }
     newer = memory.workflow_store.save(workflow, expected_revision=workflow["revision"])
     rows = LongTermMemory("alice", str(tmp_path)).get_trip_history()
     assert len(rows) == 1 and rows[0]["workflow_revision"] == newer["revision"]
@@ -227,7 +234,7 @@ async def test_cli_and_memory_agent_use_completed_workflow_history(tmp_path):
     from pathlib import Path
     from types import SimpleNamespace
 
-    from agentscope.message import Msg
+    from agents.runtime import Msg
     from rich.console import Console
 
     from cli import TripEvidenceCLI
