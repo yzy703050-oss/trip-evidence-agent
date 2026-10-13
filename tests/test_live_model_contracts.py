@@ -93,17 +93,13 @@ async def test_repair_uses_same_contract_without_mutating_original_bad_proposal(
 
 @pytest.mark.parametrize("case", ["tourism_live", "business_live", "business_conflict"])
 def test_captured_invalid_proposals_are_still_rejected(case):
-    from utils.json_parser import robust_json_parse
-
-    path = Path(__file__).resolve().parents[1] / "docs/evals/2026-10-13-live-policy-measurement"
-    calls = json.loads((path / case / "model-responses.json").read_text(encoding="utf-8"))
+    path = Path(__file__).parent / "fixtures/invalid_workflow_proposals.json"
+    calls = json.loads(path.read_text(encoding="utf-8"))["cases"][case]
+    assert [call["stage"] for call in calls] == ["main:plan", "main:repair_proposal"]
     for call in calls:
-        if call["stage"] not in {"main:plan", "main:repair_proposal"}:
-            continue
-        value = robust_json_parse(call["text"])
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=call["expected_error"]):
             create_workflow(
-                value.get("workflow_proposal", value),
+                call["proposal"],
                 {"original_query": "酒店必须取得含税报价"},
                 require_stay_proposals=True,
             )
