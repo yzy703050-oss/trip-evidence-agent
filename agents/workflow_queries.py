@@ -69,6 +69,7 @@ def query_views(workflow, task_id, *, limit=5, offset=None):
         view = candidate_view(eligible_result(row, task), limit=limit, offset=row.get('view_offset', 0) if offset is None else offset, constraints=row['constraints'],
                               preferences=workflow.get('effective_preferences', {}))
         views.append({**deepcopy(row), 'history': [], 'items': view['items'],
+                      'view_offset': row.get('view_offset', 0) if offset is None else offset,
                       'returned_candidate_total': len(row['items']),
                       'excluded_candidate_count': max(0, len(row['items']) - view.get('candidate_total', len(row['items']))),
                       'candidate_total': view.get('candidate_total', len(row['items']))})

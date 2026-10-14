@@ -124,7 +124,7 @@ class ToolExecutor:
             for name, params in PARAMETERS.items()
         ]
 
-    async def execute(self, name, arguments, run, *, call_id, _date_retry=False):
+    async def execute(self, name, arguments, run, *, call_id, _date_retry=False, cache_only=False):
         if run.workflow is not None:
             from agents.workflow_contracts import effective_conditions, task_by_id
 
@@ -180,7 +180,7 @@ class ToolExecutor:
                 return AgentDataResult(
                     "error", {}, [], [], None, None, "工具参数不属于当前任务或改变了确认条件。"
                 ).to_dict()
-        result = await self._execute(name, arguments, run, call_id=call_id)
+        result = await self._execute(name, arguments, run, call_id=call_id, cache_only=cache_only)
         if not any(row["id"] == call_id for row in run.tool_requests):
             run.tool_requests.append(
                 {
@@ -192,6 +192,8 @@ class ToolExecutor:
                     "query": result.get("query", {}),
                 }
             )
+        if cache_only and result['status'] not in {'ok', 'partial'}:
+            return result  # A failed read must not replace the saved complete query.
         if run.workflow is not None:
             from agents.workflow_queries import record_query
 
@@ -219,8 +221,8 @@ class ToolExecutor:
                 domain=domain,
                 refresh=arguments.get("refresh") is True,
             )
-            run.query_records[row["id"]] = deepcopy(row)
             row["view_offset"] = arguments.get("candidate_offset", 0)
+            run.query_records[row["id"]] = deepcopy(row)
             result.update(
                 query_id=row["id"],
                 result_revision=row["result_revision"],
@@ -231,7 +233,7 @@ class ToolExecutor:
             # Date changes are model proposals validated by the workflow repair path.
         return result
 
-    async def _execute(self, name, arguments, run, *, call_id):
+    async def _execute(self, name, arguments, run, *, call_id, cache_only=False):
         started = perf_counter()
         domain = TOOL_DOMAINS.get(name)
         query, cached = {}, False
@@ -391,7 +393,12 @@ class ToolExecutor:
                     )
 
             existing = run.candidates.cache.get(key)
-            if (
+            if cache_only:
+                if (arguments.get('refresh') is True or existing is None
+                        or existing.status not in {'ok', 'partial'}):
+                    return failure('error', message='本地缓存不可用，未请求供应商。')
+                raw, cached = existing, True
+            elif (
                 run.workflow is not None
                 and existing is not None
                 and existing.status in {"unavailable", "error"}
@@ -426,10 +433,12 @@ class ToolExecutor:
             result = failure("needs_input", ["query"], "请修正查询条件。")
         from travel_data.result_views import build_tool_result_view
 
+        result['view_offset'] = offset
         result = build_tool_result_view(
             domain,
             result,
-            limits={"candidate_limit": run.limits.candidate_limit, "model_view": False},
+            limits={"candidate_limit": run.limits.candidate_limit, "model_view": False,
+                    "already_paged": True},
         )
         run.domain_results[domain] = deepcopy(result)
         run.tool_requests.append(

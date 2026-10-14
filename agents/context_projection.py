@@ -156,7 +156,7 @@ def project_domain_result(value: dict, *, candidate_limit: int = 5, requirements
         first = next(iter(value.get('items', [])), {})
         domain = 'train' if 'train_number' in first else 'hotel' if 'hotel_name' in first else 'weather' if 'date' in first else None
     # Input query_views/candidate_view is already paged, so do not apply offset twice.
-    return build_tool_result_view(domain, value, limits={'candidate_limit': candidate_limit, 'offset': 0}, requirements=requirements)
+    return build_tool_result_view(domain, value, limits={'candidate_limit': candidate_limit, 'already_paged': True}, requirements=requirements)
 
 
 def project_child_result(result: dict, *, candidate_limit: int = 5, requirements=None, include_candidates=True) -> dict:
@@ -287,6 +287,35 @@ def project_model_context(context: dict) -> dict:
             view[key] = rows
     if isinstance(view.get('action_feedback'), dict):
         view['action_feedback'] = project_validation(view['action_feedback'])
+    return view
+
+
+def project_batch_decision_context(context: dict) -> dict:
+    """Disclose related contracts without changing actions, candidates or stored state."""
+    view = deepcopy(context)
+    tasks = (context.get('workflow') or {}).get('tasks', [])
+    domains = {r.get('domain') for r in context.get('task_results', [])}
+    if tasks:
+        domains.add('train')
+        if any(t.get('requires_hotel') for t in tasks):
+            domains.add('hotel')
+    domains.update(r.get('domain') for r in context.get('query_plan', []))
+    conditions = [(context.get('workflow') or {}).get('confirmed_conditions', {})]
+    conditions.extend(t.get('conditions', {}) for t in tasks)
+    names = {d + '_search' for d in domains if d in {'train', 'hotel'}}
+    if 'weather' in domains:
+        names.add('weather_query')
+    if any(c.get('arrival_date') or c.get('arrival_before') for c in conditions):
+        names.add('train_search_by_arrival')
+    tools = [t for t in context.get('query_tools', []) if t['name'] in names]
+    actions = context.get('allowed_actions', ['schedule_queries'])
+    if set(actions) & {'schedule_queries', 'dispatch'}:
+        view['query_tools'] = tools
+    else:
+        view.pop('query_tools', None)
+        view['query_capabilities'] = [
+            {k: t[k] for k in ('name', 'description') if k in t} for t in tools
+        ]
     return view
 
 

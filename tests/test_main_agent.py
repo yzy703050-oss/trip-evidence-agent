@@ -11,7 +11,7 @@ def weather_plan(**changes):
 
 
 @pytest.mark.asyncio
-async def test_main_plan_only_advertises_business_agents():
+async def test_main_plan_declares_preflight_without_native_tool_calls():
     from agents.main_agent import MainAgent
     calls = []
     async def model(messages, **kwargs):
@@ -23,7 +23,8 @@ async def test_main_plan_only_advertises_business_agents():
     assert "tools" not in calls[0][1]
     prompt = str(calls[0][0])
     assert "北京明天天气怎么样？" in prompt
-    assert "rag_knowledge" in prompt
+    assert "policy_context" in prompt
+    assert "记忆读写由程序处理" in prompt
     assert "event_collection" not in prompt
     assert "train_search" not in prompt
 
