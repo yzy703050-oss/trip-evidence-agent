@@ -134,11 +134,13 @@ def build_tool_result_view(domain, result, *, limits, requirements=None):
     total = result.get("candidate_total")
     total = total if type(total) is int else len(items)
     maximum = min(maximum, 1) if domain == "weather" else maximum
+    start = 0 if limits.get("already_paged") else offset
+    page = items[start : start + maximum]
     view.update(
-        items=items[offset : offset + maximum],
+        items=page,
         candidate_total=total,
         view_offset=offset,
-        has_more=offset + maximum < total,
+        has_more=offset + len(page) < total,
     )
     if isinstance(view.get("message"), str) and len(view["message"]) > limits.get(
         "message_length", 256

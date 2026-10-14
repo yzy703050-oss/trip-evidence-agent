@@ -27,12 +27,13 @@ async def test_prompt_uses_four_purposes_instead_of_feedback_catalog():
     await MainAgent(model).initialize(dict(original_query='你好'))
     from agents.main_agent import INTENTS
     assert set(INTENTS) == {'ask', 'plan', 'update', 'control'}
-    for word in ['travel_update','arrival_before','purpose_source','今天+7','known_workflows']:
+    for word in ['arrival_before','purpose_source','今天+7']:
         assert word in calls[0]
     for old in ['replace_hotel', 'replace_train', 'clarify_feedback_scope', 'trip_status_query', '完整意图目录']:
         assert old not in calls[0]
-    assert '所有模式都输出 intents' in calls[0]
-    assert '首次不为个人字段追问' in calls[0]
+    assert '所有决定带intents=' in calls[0]
+    assert 'travel_update=' not in calls[0]
+    assert '若用户要求修改、继续或查看既有行程而无可靠目标，direct询问目标' in calls[0]
 
 
 @pytest.mark.asyncio
@@ -61,14 +62,15 @@ async def test_prompt_prioritizes_scope_question_over_update_execution():
         return SimpleNamespace(text=json.dumps(dict(response_mode='direct', final_answer='改哪部分？',
             intents=[{'type': 'update'}], agent_schedule=[],
             feedback_scope={'workflow_id': 'w1', 'question': '改哪部分？'})))
-    result = await MainAgent(model).initialize({'original_query': '不满意'})
+    result = await MainAgent(model).initialize(
+        {'original_query': '不满意', 'workflow': {'id': 'w1'}})
     assert result['response_mode'] == 'direct' and result['intents'] == [{'type': 'update'}]
-    assert '先决定是否需要澄清，再决定是否执行' in calls[0]
-    assert '范围不明禁止输出 travel_update' in calls[0]
-    assert '已有依据能直接答复时必须 direct+synthesize' in calls[0]
-    assert '购买车票不等于采纳建议' in calls[0]
-    assert '查询已保存偏好使用程序工具，不调度preference' in calls[0]
-    assert '换一家或替换组件必须使用replace' in calls[0]
+    assert '范围不明direct询问并feedback_scope=' in calls[0]
+    assert '禁止travel_update，不猜重做' in calls[0]
+    assert '有可靠小结可direct答' in calls[0]
+    assert '购买不等于采纳' in calls[0]
+    assert '记忆读写由程序处理' in calls[0]
+    assert '换酒店用replace components=[hotel]' in calls[0]
 
 
 @pytest.mark.asyncio

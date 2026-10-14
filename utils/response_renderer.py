@@ -410,4 +410,7 @@ def finalize_business_result(result: dict) -> dict:
     if result.get("stop_reason") == "context_budget_exceeded":
         from context.context_budget import CONTEXT_BUDGET_MESSAGE
         return {**result, "final_answer": CONTEXT_BUDGET_MESSAGE}
-    return {**result, "final_answer": build_final_answer(result)}
+    answer = build_final_answer(result)
+    if result.get('candidate_browsing_incomplete'):
+        answer += ' 缓存中仍有未浏览的后续候选，本轮未完成全部候选检查，不代表没有可行方案。'
+    return {**result, "final_answer": answer}

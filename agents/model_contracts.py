@@ -130,7 +130,33 @@ def workflow_proposal_contract():
     return {"schema": schema, "example": example}
 
 
-def workflow_contract_prompt():
+def workflow_contract_prompt(*, compact=False):
+    if compact:
+        return (
+            '提案仅confirmed_conditions、condition_strengths、tasks；任务仅origin、destination、purpose、'
+            'purpose_source、requires_hotel、conditions、field_sources、condition_strengths。'
+            'origin可null；destination城市字符串；requires_hotel布尔。purpose=' + '/'.join(sorted(PURPOSES))
+            + '；来源=' + '/'.join(sorted(SOURCES)) + '。confirmed_conditions与每个任务conditions均只允许：'
+            + '/'.join(sorted(CONDITION_KEYS)) + '。日期为ISO字符串或null，arrival_before含时区；'
+            'nights/passengers/guests为正整数，hotel_quote_required/flexible_dates为布尔，hotel_keywords为字符串。'
+            'constraints为对象，仅金额非负JSON数字、席别/时间字符串、available_only布尔；合法键='
+            + '/'.join(sorted(FILTER_KEYS | {'total_budget_cny'})) + '。'
+            '不把origin/destination/purpose/requires_hotel/round_trip放任何conditions。'
+            'confirmed_conditions仅放全程共同约束；各段departure_date、入住离店和nights放对应任务，'
+            '去程日期不能全局继承到返程。seat_class及金额仅放constraints，purpose仅在task层。'
+            '旅游用visit，明确出差才business，目的不明用unspecified，不能默认business。'
+            '单程预算用train_max_total_cny，'
+            '明确全程预算才用total_budget_cny。condition_strengths仅对应有值的日期/nights：'
+            '全局强度仅对应confirmed_conditions中有值的日期/nights，任务强度仅对应该任务有值的日期/nights；'
+            '城市、人数、purpose不标强度。固定用hard，最好/尽量/可调整及系统建议用soft；'
+            '来源user不自动等于hard，任务不能软化全局硬边界。'
+            '最小结构示例（不复制城市或晚数）：'
+            '{"tasks":[{"origin":"甲城","destination":"乙城","purpose":"visit","requires_hotel":true,'
+            '"conditions":{"nights":2},"field_sources":{"nights":"proposal"},'
+            '"condition_strengths":{"nights":"soft"}},'
+            '{"origin":"乙城","destination":"甲城","purpose":"return","requires_hotel":false,'
+            '"conditions":{}}]}。\n'
+        )
     return (
         "严格按以下schema生成提案。example只展示类型与层级，不复制其中城市、日期、品牌或金额。"
         "旅游purpose用visit，出差business，返程return，绝不写tourism。"

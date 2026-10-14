@@ -95,10 +95,13 @@ async def execute_query_batch(batch, run, executor, *, after_tool=None):
                 - run.external_requests_by_task.get(request["task_id"], 0)
                 - reservations.get(request["task_id"], 0),
             )
-        if available < 1:
+        if request.get('cache_only'):
+            reservation = 0
+        elif available < 1:
             gaps.append({"request_id": request["request_id"], "reason": "tool_budget"})
             continue
-        reservation = min(reservation, available)
+        else:
+            reservation = min(reservation, available)
         if request.get("task_id"):
             reservations[request["task_id"]] = reservations.get(request["task_id"], 0) + reservation
         if run.workflow_tool_budget is not None:
@@ -121,7 +124,7 @@ async def execute_query_batch(batch, run, executor, *, after_tool=None):
             external_requests_by_task=deepcopy(run.external_requests_by_task),
             external_request_count=0,
             travel_conditions=deepcopy(run.travel_conditions),
-            workflow_tool_budget=reservation - 1,
+            workflow_tool_budget=max(0, reservation - 1),
         )
         started.append((request, record, private, reservation))
     # Persist the started identities BEFORE any provider request.
@@ -136,7 +139,8 @@ async def execute_query_batch(batch, run, executor, *, after_tool=None):
             task_revision=request.get("task_revision"),
         ):
             result = await executor.execute(
-                request["name"], request["parameters"], private, call_id=request["request_id"]
+                request["name"], request["parameters"], private, call_id=request["request_id"],
+                **({'cache_only': True} if request.get('cache_only') else {}),
             )
             return index, result
 
@@ -187,7 +191,9 @@ async def execute_query_batch(batch, run, executor, *, after_tool=None):
                         task["query_ids"].append(identity)
                     run.query_records[identity] = deepcopy(query)
                 container = task["query_containers"].get(request["domain"])
-                if container is not None:
+                if container is not None and not (
+                    request.get('cache_only') and result['status'] not in {'ok', 'partial'}
+                ):
                     container.update(
                         status="ready" if result["status"] in {"ok", "partial"} else "failed",
                         parameters=deepcopy(result.get("query", request["parameters"])),

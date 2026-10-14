@@ -32,12 +32,15 @@ def test_initial_arrival_query_inherits_prepared_tool_name():
 
 @pytest.mark.asyncio
 async def test_initialize_contract_example_is_valid_without_schema_repair():
+    from agents.model_contracts import workflow_proposal_contract
+
     calls = []
 
     async def model(messages, **kwargs):
         prompt = messages[0]["content"]
         calls.append(prompt)
-        contract, proposal = proposal_from_prompt(prompt)
+        contract = workflow_proposal_contract()
+        proposal = contract["example"]
         schema = contract["schema"]
         conditions = schema["$defs"]["conditions"]["properties"]
         assert set(conditions) == CONDITION_KEYS
@@ -45,7 +48,7 @@ async def test_initialize_contract_example_is_valid_without_schema_repair():
         task = schema["properties"]["tasks"]["items"]["properties"]
         assert set(task["purpose"]["enum"]) == PURPOSES
         assert set(task["purpose_source"]["enum"]) == SOURCES
-        assert "单程预算不能改为全程预算" in prompt
+        assert "结构契约JSON：" not in prompt
         assert "可选query_plan每项task_index绑定任务" not in prompt
         return SimpleNamespace(
             text=json.dumps(
@@ -230,17 +233,18 @@ async def test_explicit_refresh_uses_actual_tool_contract_without_train_replay(t
         assert "tools" not in kwargs
         prompt = messages[0]["content"]
         view = json.loads(prompt.split("上下文：", 1)[1])
-        contracts = {c["name"]: c for c in view["query_tools"]}
-        schema = contracts["hotel_search"]["parameters"]
-        actual = next(
-            s["function"] for s in executor.schemas() if s["function"]["name"] == "hotel_search"
-        )
-        assert schema == actual["parameters"]
-        assert "quote_required" not in schema["properties"]
-        assert "refresh" in schema["properties"]
-        assert "查询酒店报价" in contracts["hotel_search"]["description"]
         calls.append(view)
         if len(calls) == 1:
+            contracts = {c["name"]: c for c in view["query_tools"]}
+            schema = contracts["hotel_search"]["parameters"]
+            actual = next(
+                s["function"] for s in executor.schemas()
+                if s["function"]["name"] == "hotel_search"
+            )
+            assert schema == actual["parameters"]
+            assert "quote_required" not in schema["properties"]
+            assert "refresh" in schema["properties"]
+            assert "查询酒店报价" in contracts["hotel_search"]["description"]
             hotel_row = next(r for r in view["task_results"] if r["domain"] == "hotel")
             assert hotel_row["returned_candidate_total"] == 7
             assert hotel_row["excluded_candidate_count"] == 7 and hotel_row["items"] == []
@@ -255,6 +259,8 @@ async def test_explicit_refresh_uses_actual_tool_contract_without_train_replay(t
             )
             example["query_plan"][0]["parameters"]["constraints"] = {"hotel_max_nightly_cny": 500}
             return SimpleNamespace(text=json.dumps(example))
+        assert view['query_scope'] == 'cached_pages_only'
+        assert any(c["name"] == "hotel_search" for c in view["query_tools"])
         action = await BatchMain().select_batch(view)
         return SimpleNamespace(text=json.dumps(action))
 
@@ -516,7 +522,8 @@ async def test_runner_rejects_unnecessary_refresh_without_supplier_call(tmp_path
 
     class Main(BatchMain):
         async def select_batch(self, context):
-            assert context["allowed_actions"] == ["commit_batch"]
+            assert context["allowed_actions"] == ["commit_batch", "schedule_queries"]
+            assert context['query_scope'] == 'cached_pages_only'
             if self.calls == 1:
                 self.calls += 1
                 task = context["workflow"]["tasks"][0]
@@ -531,7 +538,9 @@ async def test_runner_rejects_unnecessary_refresh_without_supplier_call(tmp_path
                         }
                     ],
                 }
-            assert context["action_feedback"]["code"] == "commit_required"
+            assert context["action_feedback"]["code"] == (
+                'invalid_query_plan' if action_name == 'schedule_queries' else 'cached_pages_only'
+            )
             return await super().select_batch(context)
 
     train, hotel = OfflineProvider("train"), OfflineProvider("hotel")

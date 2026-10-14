@@ -18,8 +18,8 @@ async def test_initialize_emits_proposal_without_duplicate_intent_call():
     assert decision['response_mode'] == 'workflow' and len(calls) == 1
     assert 'workflow_proposal' in calls[0][0]['content']
     assert decision['intents'] == [{'type': 'plan'}]
-    assert '所有模式都输出 intents' in calls[0][0]['content']
-    assert 'workflow 模式不要输出 rewritten_query/key_entities' in calls[0][0]['content']
+    assert '所有决定带intents=' in calls[0][0]['content']
+    assert '新旅行：response_mode=workflow、workflow_proposal' in calls[0][0]['content']
     assert 'total_budget_cny' in calls[0][0]['content']
 
 

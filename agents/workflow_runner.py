@@ -1085,11 +1085,18 @@ class WorkflowRunner:
                 requests.append(query)
         return requests
 
-    async def _execute_queries(self, queries):
+    async def _execute_queries(self, queries, *, cache_only=False):
         from agents.workflow_batches import bind_query_plan
         from travel_data.batch_execution import execute_query_batch
 
-        batch = bind_query_plan(queries, self.w, self.context)
+        batch = bind_query_plan(queries, deepcopy(self.w) if cache_only else self.w, self.context)
+        if cache_only:
+            from agents.cached_pagination import validate_cached_page_batch
+
+            batch = validate_cached_page_batch(
+                batch, self.w, self.run_state.candidates,
+                limit=self.run_state.limits.candidate_limit,
+            )
 
         async def save():
             self.w = self.run_state.workflow
@@ -1114,6 +1121,8 @@ class WorkflowRunner:
             run.tool_record_seq += 1
 
     def _batch_context(self):
+        from agents.cached_pagination import cached_page_options
+
         rows = []
         for task in self.w["tasks"]:
             for row in query_views(self.w, task["id"], limit=self.run_state.limits.candidate_limit):
@@ -1134,6 +1143,13 @@ class WorkflowRunner:
         issues = self.w.get("validation", {}).get("issues", []) if self.w.get("validation") else []
         if not has_candidates and not issues:
             issues = check_workflow(self.w)['issues']
+        pages = cached_page_options(
+            self.w, self.run_state.candidates, limit=self.run_state.limits.candidate_limit
+        )
+        commit_first = has_candidates and not issues
+        allowed = (['commit_batch', 'schedule_queries'] if pages else ['commit_batch']) if commit_first else [
+            'commit_batch', 'schedule_queries', 'repair_tasks', 'ask_user'
+        ]
         return {
             **{
                 k: v
@@ -1142,9 +1158,9 @@ class WorkflowRunner:
             },
             "workflow": project_workflow_context(self.w),
             "task_results": rows,
-            "allowed_actions": ["commit_batch"] if has_candidates and not issues else [
-                "commit_batch", "schedule_queries", "repair_tasks", "ask_user"
-            ],
+            "allowed_actions": allowed,
+            "cached_page_options": pages,
+            "query_scope": 'cached_pages_only' if commit_first and pages else 'existing_rules',
             "query_tools": [
                 deepcopy(schema["function"])
                 for schema in self.executor.schemas()
@@ -1319,6 +1335,11 @@ class WorkflowRunner:
                 return self._stop("partial", "no_progress", "重复决定没有改善方案，本轮已停止。")
             seen.add(signature)
             name = action.get("action")
+            if (context.get('query_scope') == 'cached_pages_only'
+                    and name in {'dispatch', 'repair_tasks', 'ask_user'}):
+                feedback = {'code': 'cached_pages_only', 'allowed_actions': context['allowed_actions'],
+                            'message': '当前仅可提交方案或读取提供的下一本地缓存页。'}
+                continue
             if name in {"schedule_queries", "dispatch", "repair_tasks", "ask_user"} and context["allowed_actions"] == ["commit_batch"]:
                 feedback = {
                     "code": "commit_required",
@@ -1367,7 +1388,13 @@ class WorkflowRunner:
                         {**q, "task_id": task["id"], "task_revision": task["revision"]}
                         for q in queries
                     ]
-                await self._execute_queries(queries)
+                try:
+                    await self._execute_queries(
+                        queries, cache_only=context.get('query_scope') == 'cached_pages_only'
+                    )
+                except (ValueError, KeyError, TypeError) as exc:
+                    feedback = {'code': 'invalid_query_plan', 'message': str(exc)}
+                    continue
                 feedback = None
             elif name == "repair_tasks":
                 try:
@@ -1476,6 +1503,13 @@ class WorkflowRunner:
         return self._stop("partial", "main_decision_limit", "本轮决策达到上限，已有资料保留。")
 
     def _stop(self, status, reason, answer):
+        unread_candidates = False
+        if reason in {'main_decision_limit', 'no_progress'}:
+            from agents.cached_pagination import cached_page_options
+
+            unread_candidates = bool(cached_page_options(
+                self.w, self.run_state.candidates, limit=self.run_state.limits.candidate_limit
+            ))
         self.w.update(
             status="running" if status != "completed" else "completed", stop_reason=reason
         )
@@ -1485,7 +1519,10 @@ class WorkflowRunner:
             return self._envelope(
                 "error", "workflow_save_failed", "状态保存失败，已停止；不会自动重放外部查询。"
             )
-        return self._envelope(status, reason, answer)
+        result = self._envelope(status, reason, answer)
+        if unread_candidates:
+            result['candidate_browsing_incomplete'] = True
+        return result
 
     def _envelope(self, status, reason, answer, gaps=None):
         from agents.execution_harness import public_results

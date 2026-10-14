@@ -1,0 +1,364 @@
+[
+  {
+    "case": "baseline_normal",
+    "query": "我明天要去上海，帮我安排一下往返火车和住宿行程。",
+    "real_supplier_calls": 0,
+    "supplier_mode": "simulated raw API responses through production parsers",
+    "model_call_limit": 4,
+    "rag_calls": 0,
+    "status": "completed",
+    "output_checks": {
+      "nonempty_reply": true,
+      "no_unrendered_placeholders": true,
+      "no_false_booking": true,
+      "simulation_disclosed": true,
+      "selected_facts_in_reply": true,
+      "dates_consistent": true,
+      "unknown_hotel_quotes_disclosed": true
+    },
+    "first_proposal_valid": true,
+    "requirements_ok": true,
+    "passed": true,
+    "latency_ms": 5164.44,
+    "model_calls": 2,
+    "stages": [
+      "main:plan",
+      "main:select_batch"
+    ],
+    "stage_usage": [
+      {
+        "stage": "main:plan",
+        "usage": {
+          "input_tokens": 2767,
+          "output_tokens": 277
+        },
+        "latency_ms": 1812.784,
+        "ttft_ms": 770.759
+      },
+      {
+        "stage": "main:select_batch",
+        "usage": {
+          "input_tokens": 4974,
+          "output_tokens": 559
+        },
+        "latency_ms": 3225.414,
+        "ttft_ms": 971.797
+      }
+    ],
+    "usage": {
+      "input_tokens": 7741,
+      "output_tokens": 836
+    },
+    "simulated_supplier_calls": {
+      "train": 2,
+      "hotel": 1
+    }
+  },
+  {
+    "case": "normal",
+    "query": "我明天要去上海，帮我安排一下往返火车和住宿行程。",
+    "real_supplier_calls": 0,
+    "supplier_mode": "simulated raw API responses through production parsers",
+    "model_call_limit": 4,
+    "rag_calls": 0,
+    "status": "partial",
+    "output_checks": {
+      "nonempty_reply": true,
+      "no_unrendered_placeholders": true,
+      "no_false_booking": true,
+      "simulation_disclosed": true,
+      "selected_facts_in_reply": true,
+      "dates_consistent": false,
+      "unknown_hotel_quotes_disclosed": true
+    },
+    "passed": false,
+    "error_type": "ValueError",
+    "error": "invalid condition strengths",
+    "latency_ms": 6734.114,
+    "model_calls": 3,
+    "stages": [
+      "main:plan",
+      "main:repair_proposal",
+      "main:select_batch"
+    ],
+    "stage_usage": [
+      {
+        "stage": "main:plan",
+        "usage": {
+          "input_tokens": 980,
+          "output_tokens": 222
+        },
+        "latency_ms": 1712.913,
+        "ttft_ms": 731.617
+      },
+      {
+        "stage": "main:repair_proposal",
+        "usage": {
+          "input_tokens": 1936,
+          "output_tokens": 315
+        },
+        "latency_ms": 1958.173,
+        "ttft_ms": 668.763
+      },
+      {
+        "stage": "main:select_batch",
+        "usage": {
+          "input_tokens": 4120,
+          "output_tokens": 495
+        },
+        "latency_ms": 2930.44,
+        "ttft_ms": 829.374
+      }
+    ],
+    "usage": {
+      "input_tokens": 7036,
+      "output_tokens": 1032
+    },
+    "simulated_supplier_calls": {
+      "train": 2,
+      "hotel": 1
+    }
+  },
+  {
+    "case": "fixed_dates",
+    "query": "从重庆出发，10月14日去上海旅游，14日入住、16日离店，16日返回重庆。",
+    "real_supplier_calls": 0,
+    "supplier_mode": "simulated raw API responses through production parsers",
+    "model_call_limit": 4,
+    "rag_calls": 0,
+    "status": "completed",
+    "output_checks": {
+      "nonempty_reply": true,
+      "no_unrendered_placeholders": true,
+      "no_false_booking": true,
+      "simulation_disclosed": true,
+      "selected_facts_in_reply": true,
+      "dates_consistent": true,
+      "unknown_hotel_quotes_disclosed": true
+    },
+    "passed": false,
+    "error_type": "ValueError",
+    "error": "route metadata destination mismatch",
+    "latency_ms": 6763.718,
+    "model_calls": 3,
+    "stages": [
+      "main:plan",
+      "main:repair_proposal",
+      "main:select_batch"
+    ],
+    "stage_usage": [
+      {
+        "stage": "main:plan",
+        "usage": {
+          "input_tokens": 992,
+          "output_tokens": 351
+        },
+        "latency_ms": 2163.056,
+        "ttft_ms": 741.421
+      },
+      {
+        "stage": "main:repair_proposal",
+        "usage": {
+          "input_tokens": 2120,
+          "output_tokens": 487
+        },
+        "latency_ms": 1956.039,
+        "ttft_ms": 580.247
+      },
+      {
+        "stage": "main:select_batch",
+        "usage": {
+          "input_tokens": 4247,
+          "output_tokens": 425
+        },
+        "latency_ms": 2475.876,
+        "ttft_ms": 914.068
+      }
+    ],
+    "usage": {
+      "input_tokens": 7359,
+      "output_tokens": 1263
+    },
+    "simulated_supplier_calls": {
+      "train": 2,
+      "hotel": 1
+    }
+  },
+  {
+    "case": "multi",
+    "query": "从重庆出发，明天去上海住1晚，再去杭州住3晚，最后回重庆，安排往返火车和酒店。",
+    "real_supplier_calls": 0,
+    "supplier_mode": "simulated raw API responses through production parsers",
+    "model_call_limit": 4,
+    "rag_calls": 0,
+    "status": "partial",
+    "output_checks": {
+      "nonempty_reply": true,
+      "no_unrendered_placeholders": true,
+      "no_false_booking": true,
+      "simulation_disclosed": true,
+      "selected_facts_in_reply": true,
+      "dates_consistent": true,
+      "unknown_hotel_quotes_disclosed": true
+    },
+    "first_proposal_valid": true,
+    "requirements_ok": true,
+    "passed": false,
+    "latency_ms": 3961.759,
+    "model_calls": 2,
+    "stages": [
+      "main:plan",
+      "main:select_batch"
+    ],
+    "stage_usage": [
+      {
+        "stage": "main:plan",
+        "usage": {
+          "input_tokens": 993,
+          "output_tokens": 294
+        },
+        "latency_ms": 1393.791,
+        "ttft_ms": 318.671
+      },
+      {
+        "stage": "main:select_batch",
+        "usage": {
+          "input_tokens": 5993,
+          "output_tokens": 566
+        },
+        "latency_ms": 2414.722,
+        "ttft_ms": 446.155
+      }
+    ],
+    "usage": {
+      "input_tokens": 6986,
+      "output_tokens": 860
+    },
+    "simulated_supplier_calls": {
+      "train": 3,
+      "hotel": 2
+    }
+  },
+  {
+    "case": "outbound_failure",
+    "query": "我明天要去上海，帮我安排一下往返火车和住宿行程。",
+    "real_supplier_calls": 0,
+    "supplier_mode": "simulated raw API responses through production parsers",
+    "model_call_limit": 4,
+    "rag_calls": 0,
+    "status": "error",
+    "output_checks": {
+      "nonempty_reply": true,
+      "no_unrendered_placeholders": true,
+      "no_false_booking": true,
+      "simulation_disclosed": false,
+      "selected_facts_in_reply": false,
+      "dates_consistent": false,
+      "unknown_hotel_quotes_disclosed": true
+    },
+    "passed": false,
+    "error_type": "ValueError",
+    "error": "unsupported workflow conditions",
+    "latency_ms": 2350.74,
+    "model_calls": 2,
+    "stages": [
+      "main:plan",
+      "main:repair_proposal"
+    ],
+    "stage_usage": [
+      {
+        "stage": "main:plan",
+        "usage": {
+          "input_tokens": 980,
+          "output_tokens": 230
+        },
+        "latency_ms": 1304.538,
+        "ttft_ms": 406.262
+      },
+      {
+        "stage": "main:repair_proposal",
+        "usage": {
+          "input_tokens": 1946,
+          "output_tokens": 207
+        },
+        "latency_ms": 1012.851,
+        "ttft_ms": 269.987
+      }
+    ],
+    "usage": {
+      "input_tokens": 2926,
+      "output_tokens": 437
+    },
+    "simulated_supplier_calls": {
+      "train": 0,
+      "hotel": 0
+    }
+  },
+  {
+    "case": "only_hotel",
+    "query": "去程酒店换一家，火车和返程保持不变。",
+    "real_supplier_calls": 0,
+    "supplier_mode": "simulated raw API responses through production parsers",
+    "model_call_limit": 4,
+    "rag_calls": 0,
+    "setup_model_calls": 2,
+    "setup_train_calls": 0,
+    "status": "ok",
+    "output_checks": {
+      "nonempty_reply": true,
+      "no_unrendered_placeholders": true,
+      "no_false_booking": true,
+      "simulation_disclosed": false,
+      "selected_facts_in_reply": false,
+      "dates_consistent": false,
+      "unknown_hotel_quotes_disclosed": true
+    },
+    "passed": false,
+    "error_type": "KeyError",
+    "error": "'workflow'",
+    "latency_ms": 3944.604,
+    "model_calls": 3,
+    "stages": [
+      "main:plan",
+      "main:repair_proposal",
+      "main:plan"
+    ],
+    "stage_usage": [
+      {
+        "stage": "main:plan",
+        "usage": {
+          "input_tokens": 980,
+          "output_tokens": 253
+        },
+        "latency_ms": 1605.86,
+        "ttft_ms": 587.563
+      },
+      {
+        "stage": "main:repair_proposal",
+        "usage": {
+          "input_tokens": 1981,
+          "output_tokens": 198
+        },
+        "latency_ms": 1330.355,
+        "ttft_ms": 642.748
+      },
+      {
+        "stage": "main:plan",
+        "usage": {
+          "input_tokens": 978,
+          "output_tokens": 84
+        },
+        "latency_ms": 983.622,
+        "ttft_ms": 435.398
+      }
+    ],
+    "usage": {
+      "input_tokens": 3939,
+      "output_tokens": 535
+    },
+    "simulated_supplier_calls": {
+      "train": 0,
+      "hotel": 0
+    }
+  }
+]
