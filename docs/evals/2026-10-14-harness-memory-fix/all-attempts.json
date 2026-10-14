@@ -1,0 +1,30 @@
+[
+  {
+    "run": "run-195118",
+    "calls": 23,
+    "input_tokens": 86854,
+    "output_tokens": 4064,
+    "checks": "8/12"
+  },
+  {
+    "run": "run-195349",
+    "calls": 27,
+    "input_tokens": 96415,
+    "output_tokens": 4024,
+    "checks": "9/12"
+  },
+  {
+    "run": "run-195737",
+    "calls": 25,
+    "input_tokens": 91015,
+    "output_tokens": 3609,
+    "checks": "11/12"
+  },
+  {
+    "run": "run-200204",
+    "calls": 28,
+    "input_tokens": 121530,
+    "output_tokens": 4736,
+    "checks": "16/16"
+  }
+]

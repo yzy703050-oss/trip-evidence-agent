@@ -82,12 +82,19 @@ class BudgetedModel:
             counter,
             record,
         )
+        self.compaction_trigger_tokens = max(1, budget_tokens * 80 // 100)
 
     def __getattr__(self, name):
         return getattr(self.model, name)
 
     def check(self, messages, tools=None, *, phase="input", response=None):
         estimate = count_input_tokens(messages, tools, counter=self.counter)
+        from utils.runtime_logging import log_event
+        from context.telemetry import current_model_context
+        log_event(logging.getLogger(__name__), 'context_budget', phase=phase, agent_scope=_agent_scope.get(),
+                  tokens=estimate.tokens, method=estimate.method, estimated=estimate.estimated,
+                  budget_tokens=self.budget_tokens, trigger_tokens=self.compaction_trigger_tokens,
+                  **current_model_context())
         if self.record:
             from context.telemetry import current_model_context
 

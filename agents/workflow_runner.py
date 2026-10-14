@@ -438,7 +438,25 @@ class WorkflowRunner:
             if w.get("policy_context") and not policy:
                 context["policy_context"] = deepcopy(w["policy_context"])
             if decision.get("amendment_patch"):
-                return await self._amend_request(w, decision["amendment_patch"], context, run)
+                proposed = decision['amendment_patch']
+                target_task = task_by_id(w, proposed.get('task_id'))
+                if (proposed.get('workflow_id') != w['id']
+                        or proposed.get('expected_workflow_revision') != w['revision']
+                        or proposed.get('expected_task_revision') != target_task['revision']):
+                    raise ValueError('stale initial amendment patch')
+                if not hasattr(self.main, 'amend_saved_trip'):
+                    if not proposed.get('selection_refs'):
+                        # Legacy programmatic callers may stage condition-only
+                        # changes; they do not select any undisclosed candidate.
+                        return await self._amend_request(w, proposed, context, run)
+                    return self._request_result('partial', '修改需要加载候选证据，原方案保留。', workflow=w)
+                return await self._decide_amendment(w, {
+                    'update_type': 'change' if proposed.get('condition_changes') else 'replace',
+                    'target': {'workflow_id': w['id'], 'task_ids': [target_task['id']],
+                               'components': proposed.get('components', [])},
+                    'condition_updates': proposed.get('condition_changes', {}),
+                    'condition_strengths': proposed.get('condition_strengths'),
+                }, context, run)
             update = decision.get("travel_update")
             if update:
                 from agents.workflow_contracts import validate_quote_requirement
@@ -601,36 +619,110 @@ class WorkflowRunner:
                 for row in staged["results_by_query"].values():
                     if row["task_id"] == task_id and row["domain"] == domain:
                         row["items"] = [i for i in row["items"] if i["id"] not in rejected]
-        view = prepare_saved_trip_amendment(
-            staged,
-            {
-                **context,
-                "task_id": task_id,
-                "evidence_max_age_seconds": self.limits.evidence_max_age_seconds,
-            },
+        from agents.amendment_selection import (
+            resolve_literal_selection_requirements, validate_amendment_selection,
         )
-        amendment_context = {
-            **context,
-            **view,
-            "workflow": project_workflow_context(workflow),
-            "authorized_changes": authorized,
-            "authorized_condition_strengths": update.get('condition_strengths'),
-            "amendment_target": deepcopy(update["target"]),
-        }
-        patch = await self.main.amend_saved_trip(amendment_context)
-        if (
-            patch.get("task_id") != task_id
-            or set(patch.get("components", [])) != set(update["target"]["components"])
-            or patch.get("condition_changes", {}) != authorized
-        ):
-            raise ValueError("amendment differs from authorized scope")
-        for ref in patch.get("selection_refs", {}).values():
-            if ref and ref.get("candidate_id") in rejected:
-                raise ValueError("rejected candidate selected")
-        return await self._amend_request(
-            workflow, patch, {**context, "authorized_changes": authorized,
-                              "authorized_condition_strengths": update.get('condition_strengths')}, run
-        )
+        relevant_rows = [r for r in staged['results_by_query'].values()
+                         if r['task_id'] == task_id and r['domain'] in update['target']['components']]
+        requirements = resolve_literal_selection_requirements(
+            context['original_query'], relevant_rows, update.get('selection_requirements'))
+        if set(requirements) - set(update['target']['components']):
+            raise ValueError('selection requirement outside authorized component')
+        offsets, shown, visited = {}, set(), set()
+        corrections = 0
+        selection_error = None
+        limit = min(self.limits.main_model_calls_per_task or 12,
+                    self.limits.main_decisions_per_turn or 24)
+        for _ in range(limit):
+            view = prepare_saved_trip_amendment(staged, {
+                **context, 'task_id': task_id,
+                'evidence_max_age_seconds': self.limits.evidence_max_age_seconds,
+                'selection_requirements': requirements, 'candidate_offsets': offsets,
+            })
+            for domain in requirements:
+                count = sum(v['candidate_total'] for v in view['candidate_views'] if v['domain'] == domain)
+                if count != 1:
+                    return self._request_result(
+                        'needs_input' if count > 1 else 'partial',
+                        '目标名称对应多个候选，请指定具体门店。' if count > 1
+                        else '有效保存候选中未找到指定目标，原方案保留。',
+                        stop_reason='selection_target_ambiguous' if count > 1 else 'selection_target_missing',
+                        workflow=workflow)
+            options = []
+            for candidate_view in view['candidate_views']:
+                for item in candidate_view['items']:
+                    shown.add((candidate_view['id'], candidate_view['result_revision'], item['id']))
+                if candidate_view['domain'] in update['target']['components'] and candidate_view.get('has_more'):
+                    options.append({
+                        'query_id': candidate_view['id'], 'result_revision': candidate_view['result_revision'],
+                        'task_id': task_id, 'task_revision': task['revision'], 'domain': candidate_view['domain'],
+                        'offset': candidate_view['view_offset'] + len(candidate_view['items']),
+                    })
+            amendment_context = {
+                **context, **view, 'workflow': project_workflow_context(workflow),
+                'authorized_changes': authorized,
+                'authorized_condition_strengths': update.get('condition_strengths'),
+                'amendment_target': deepcopy(update['target']),
+                'selection_requirements': requirements, 'cached_page_options': options,
+                'selection_error': selection_error,
+            }
+            available = {v['domain'] for v in view['candidate_views'] if v['items']}
+            complete = set(update['target']['components']) <= available
+            needs_comparison = any(word in context['original_query'] for word in
+                                   ('比较', '对比', '全部', '下一页', '后页'))
+            ready_to_select = complete and (bool(requirements) or (
+                update['update_type'] == 'replace' and not authorized and not needs_comparison))
+            amendment_context['allowed_actions'] = (['commit_patch'] if ready_to_select else
+                ['commit_patch', 'read_cached_page', 'ask_user'])
+            with model_scope(turn_id=run.turn_id, task_id=task_id, task_revision=task['revision']):
+                patch = await self.main.amend_saved_trip(amendment_context)
+            try:
+                if patch.get('action') is not None and patch['action'] not in amendment_context['allowed_actions']:
+                    raise ValueError('evidence is sufficient; choose a shown alternative and commit_patch')
+                if patch.get('action') == 'ask_user':
+                    question = patch.get('question')
+                    if not isinstance(question, str) or not question.strip():
+                        raise ValueError('empty amendment clarification')
+                    return self._request_result('needs_input', question, workflow=workflow)
+                if patch.get('action') == 'read_cached_page':
+                    command = {k: v for k, v in patch.items() if k != 'action'}
+                    if set(command) == {'cached_page_options'} and isinstance(command['cached_page_options'], dict):
+                        command = command['cached_page_options']
+                    key = (command.get('query_id'), command.get('offset'))
+                    if command not in options or key in visited:
+                        raise ValueError('invalid or repeated cached amendment page')
+                    visited.add(key)
+                    offsets[command['query_id']] = command['offset']
+                    from utils.runtime_logging import log_event
+                    import logging
+                    log_event(logging.getLogger(__name__), 'amendment_cache_page', turn_id=run.turn_id,
+                              query_id=command['query_id'], offset=command['offset'], cache_hit=True,
+                              external_requests=0)
+                    selection_error = None
+                    continue
+                if patch.get('action') not in (None, 'commit_patch'):
+                    raise ValueError('invalid amendment action')
+                patch = {k: v for k, v in patch.items() if k != 'action'}
+                if (patch.get('task_id') != task_id
+                        or set(patch.get('components', [])) != set(update['target']['components'])
+                        or patch.get('condition_changes', {}) != authorized):
+                    raise ValueError('amendment differs from authorized scope')
+                for ref in patch.get('selection_refs', {}).values():
+                    if ref and ref.get('candidate_id') in rejected:
+                        raise ValueError('rejected candidate selected')
+                validate_amendment_selection(patch, requirements, shown, staged)
+            except (ValueError, KeyError, TypeError) as exc:
+                corrections += 1
+                if corrections > 1:
+                    return self._request_result('partial', '修改选择未通过证据或目标检查，原方案保留。',
+                                                stop_reason='amendment_selection_invalid', workflow=workflow)
+                selection_error = str(exc)
+                continue
+            return await self._amend_request(workflow, patch, {
+                **context, 'authorized_changes': authorized,
+                'authorized_condition_strengths': update.get('condition_strengths')}, run)
+        return self._request_result('partial', '本轮修改决定达到上限，原方案保留。',
+                                    stop_reason='amendment_decision_limit', workflow=workflow)
 
     def _load_target(self, identity, context):
         if not self.memory:

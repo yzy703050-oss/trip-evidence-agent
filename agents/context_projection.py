@@ -244,6 +244,8 @@ def project_workflow_context(
 def project_model_context(context: dict) -> dict:
     """Apply the same projection at every main-model entry point."""
     view = _clean(context)
+    if isinstance(context.get('recent_messages'), list):
+        view['recent_messages'] = project_history_messages(context['recent_messages'])
     requirements = decision_requirements(context)
     for key in ("active_workflows", "known_workflows", "candidates"):
         if isinstance(context.get(key), list):
@@ -255,6 +257,10 @@ def project_model_context(context: dict) -> dict:
         view['current_task'] = _fields(context['current_task'], {'id', 'revision', 'status', 'origin', 'destination',
             'purpose', 'purpose_source', 'requires_hotel', 'depends_on', 'conditions', 'field_sources', 'condition_strengths',
             'summary', 'issues', 'draft_plan', 'update_scope', 'needs_dependency_check', 'rejected_candidates'})
+    if isinstance(context.get('task'), dict):
+        view['task'] = _fields(context['task'], {'id', 'revision', 'origin', 'destination',
+            'status', 'purpose', 'requires_hotel', 'conditions', 'field_sources',
+            'condition_strengths', 'summary', 'issues'})
     if isinstance(context.get('preflight'), dict):
         view['preflight'] = _fields(context['preflight'], {'readiness', 'missing_fields', 'query_requests', 'query_mode'})
     for key in ("latest_child_result",):
@@ -387,3 +393,13 @@ def project_session_message(event: dict) -> dict | None:
         except (ValueError, TypeError, AttributeError):
             projected["content"] = "历史答复格式无法读取"
     return projected
+
+
+def project_history_message(event: dict) -> dict:
+    """Business transcript for the model; boundary metadata stays in storage."""
+    return _fields(event, {'role', 'content', 'result_summary'})
+
+
+def project_history_messages(events: list[dict]) -> list[dict]:
+    return [project_history_message(event) for event in events
+            if event.get('role') in {'user', 'assistant'}]

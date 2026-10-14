@@ -19,6 +19,6 @@ def get_model_config():
         "model_name": LLM_CONFIG["model_name"],
         "api_key": LLM_CONFIG["api_key"],
         "base_url": LLM_CONFIG["base_url"],
-        "temperature": LLM_CONFIG.get("temperature", 0.7),
+        "temperature": LLM_CONFIG.get("temperature", 0.3),
         "max_tokens": LLM_CONFIG.get("max_tokens", 2000),
     }

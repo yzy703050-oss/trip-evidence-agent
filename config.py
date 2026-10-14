@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.deepseek.com"
     llm_input_usd_per_1m_tokens: float | None = Field(default=None, ge=0)
     llm_output_usd_per_1m_tokens: float | None = Field(default=None, ge=0)
-    memory_context_budget_tokens: int = Field(default=14854, gt=0)
+    memory_context_budget_tokens: int = Field(default=20000, gt=0)
 
 
 @lru_cache
@@ -37,7 +37,7 @@ LLM_CONFIG = {
     "base_url": settings.llm_base_url,
     "input_usd_per_million": settings.llm_input_usd_per_1m_tokens,
     "output_usd_per_million": settings.llm_output_usd_per_1m_tokens,
-    "temperature": 0.7,
+    "temperature": 0.3,
     "max_tokens": 1116,
     "thinking_mode": "disabled",
 }
@@ -46,7 +46,7 @@ LLM_CONFIG = {
 def get_model_generate_kwargs(config=None, *, thinking=None):
     """Keep runtime and evaluation generation options consistent."""
     cfg=LLM_CONFIG if config is None else config
-    options={'temperature':cfg.get('temperature',0.7),'max_tokens':cfg.get('max_tokens',2000)}
+    options={'temperature':cfg.get('temperature',0.3),'max_tokens':cfg.get('max_tokens',2000)}
     if cfg.get('model_name','').startswith('deepseek'):
         mode=thinking or cfg.get('thinking_mode','disabled')
         if mode not in {'disabled','low','high'}: raise ValueError('invalid thinking mode')

@@ -1,0 +1,14 @@
+{
+  "real_api_calls": 28,
+  "turns": 16,
+  "input_tokens": 121530,
+  "output_tokens": 4736,
+  "summary_calls": 4,
+  "tool_requests": 5,
+  "cache_hits": 0,
+  "external_requests": 5,
+  "checks_passed": 16,
+  "checks_total": 16,
+  "controlled_cache_cold_hit_rate": 0.8,
+  "controlled_cache_warm_hit_rate": 1.0
+}

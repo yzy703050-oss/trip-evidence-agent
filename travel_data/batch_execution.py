@@ -1,15 +1,18 @@
 """Isolated parallel fetches; parent state and evidence are merged serially."""
 
 import asyncio
+import logging
 from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime
+from time import perf_counter
 
 from agents.workflow_batches import mark_query_draft
 from agents.workflow_contracts import task_by_id
 from agents.workflow_state import STOPPED
 from context.telemetry import model_scope
 from travel_data.candidates import CandidateStore
+from utils.runtime_logging import log_event
 
 
 async def execute_query_batch(batch, run, executor, *, after_tool=None):
@@ -138,10 +141,17 @@ async def execute_query_batch(batch, run, executor, *, after_tool=None):
             task_id=request.get("task_id"),
             task_revision=request.get("task_revision"),
         ):
-            result = await executor.execute(
-                request["name"], request["parameters"], private, call_id=request["request_id"],
-                **({'cache_only': True} if request.get('cache_only') else {}),
-            )
+            started_at = perf_counter()
+            try:
+                result = await executor.execute(
+                    request["name"], request["parameters"], private, call_id=request["request_id"],
+                    **({'cache_only': True} if request.get('cache_only') else {}),
+                )
+            except Exception:
+                log_event(logging.getLogger(__name__), 'tool_call', turn_id=run.turn_id,
+                          request_id=request['request_id'], name=request['name'], status='error',
+                          cache_hit=None, latency_ms=round((perf_counter() - started_at) * 1000, 3))
+                raise
             return index, result
 
     pending = [asyncio.create_task(fetch(i, e)) for i, e in enumerate(started)]
@@ -160,6 +170,11 @@ async def execute_query_batch(batch, run, executor, *, after_tool=None):
             if run.workflow_tool_budget is not None:
                 run.workflow_tool_budget += reservation - private.external_request_count
             run.tool_requests.extend(private.tool_requests)
+            for metadata in private.tool_requests:
+                log_event(logging.getLogger(__name__), 'tool_call', turn_id=run.turn_id,
+                          request_id=metadata.get('id'), name=metadata.get('name'),
+                          status=metadata.get('status'), cache_hit=metadata.get('cache_hit'),
+                          latency_ms=metadata.get('elapsed_ms'))
             run.external_request_count += private.external_request_count
             run.external_requests_started |= private.external_requests_started
             record["completed_at"] = datetime.now(UTC).isoformat()

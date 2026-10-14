@@ -71,12 +71,18 @@ def prepare_saved_trip_amendment(workflow, intent):
             constraints=constraints,
             preferences=workflow.get("effective_preferences", {}),
         )
+        requirement = intent.get('selection_requirements', {}).get(row['domain'])
+        if requirement:
+            from agents.amendment_selection import matches_selection_requirement
+            full['items'] = [i for i in full['items']
+                             if matches_selection_requirement(i, row['domain'], requirement)]
         if not effective.get("hotel_keywords") or row["domain"] != "hotel" or full["items"]:
             covered.add(row["domain"])
         views.append(
             build_tool_result_view(
                 row["domain"],
-                {**row, "items": full["items"], "candidate_total": len(full["items"])},
+                {**row, "items": full["items"], "candidate_total": len(full["items"]),
+                 "view_offset": intent.get('candidate_offsets', {}).get(row['id'], 0)},
                 limits={"candidate_limit": intent.get("candidate_limit", 5)},
             )
         )

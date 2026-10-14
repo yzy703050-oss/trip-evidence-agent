@@ -1,0 +1,11 @@
+{
+  "mode": "replayed genuine history plus artificial fixed padding; boundary only",
+  "budget": 20000,
+  "trigger": 16000,
+  "before_tokens": 16500,
+  "after_tokens": 15943,
+  "covered_through_seq": 10,
+  "answer": "最新条件如下：\n\n- 去程：2026-10-21，成都→南京\n- 返程：2026-10-25\n- 人数：3人\n- 晚数：住4晚\n- 最晚到达时刻：19:00前到达南京\n- 房价是否已知：未知。酒店房价和空房尚未查询，不能编造，需订房时确认。\n\n本次仅复述确认，不查询、不修改。",
+  "api_input_tokens": 15622,
+  "counting_method": "utf8_conservative estimate; not exact model tokenizer"
+}

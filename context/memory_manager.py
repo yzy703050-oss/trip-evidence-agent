@@ -11,7 +11,7 @@ from .long_term_memory import LongTermMemory
 from .session_store import SessionStore
 from .workflow_store import WorkflowStore
 from .compaction import estimate_tokens, select_safe_prefix, complete_prefix_boundaries
-from agents.context_projection import project_session_message
+from agents.context_projection import project_session_message, project_history_messages
 import logging
 import json
 import threading
@@ -323,16 +323,20 @@ class MemoryManager:
             if (view := project_session_message(event)) is not None
         ]
 
-    def _compaction_selection(self, token_budget: int, token_counter):
+    def _compaction_selection(self, token_budget: int, token_counter, request_fits=None):
         state = self.session_store.read_state()
-        covered = max(state.get("covered_through_seq", 0), state.get("cleared_through_seq", 0))
         events = self._main_events(state)
+        if request_fits is not None and request_fits(state.get('summary', ''), events):
+            return state, events, []
         summary_tokens = (
             token_counter({"content": state.get("summary", "")}) if state.get("summary") else 0
         )
         cutoff = select_safe_prefix(
             events, token_budget - summary_tokens, token_counter=token_counter
         )
+        if cutoff is None and request_fits is not None:
+            boundaries = complete_prefix_boundaries(events)
+            cutoff = boundaries[0] if boundaries else None
         cuts = [
             seq
             for seq in complete_prefix_boundaries(events)
@@ -357,22 +361,28 @@ class MemoryManager:
         return updated
 
     @staticmethod
-    def _summary_fits(summary, events, cutoff, token_budget, token_counter):
+    def _summary_fits(summary, events, cutoff, token_budget, token_counter, request_fits=None):
+        if request_fits is not None:
+            return bool(summary.strip()) and request_fits(summary, [e for e in events if e['seq'] > cutoff])
         return bool(summary.strip()) and (
             token_counter({"content": summary})
             + sum(token_counter(e) for e in events if e["seq"] > cutoff)
             <= token_budget
         )
 
-    def compact_if_needed(self, token_budget: int, *, summarizer, token_counter=estimate_tokens):
+    def compact_if_needed(self, token_budget: int, *, summarizer, token_counter=estimate_tokens, request_fits=None):
         """Only commit a complete prefix when its replacement fits the budget."""
-        state, events, cuts = self._compaction_selection(token_budget, token_counter)
-        for cutoff in cuts:
-            selected = [e for e in events if e["seq"] <= cutoff]
+        state, events, cuts = self._compaction_selection(token_budget, token_counter, request_fits)
+        previous, prior_cut = state.get('summary', ''), 0
+        for cutoff in cuts[:3]:
+            selected = [e for e in events if prior_cut < e["seq"] <= cutoff]
             try:
-                summary = summarizer(state.get("summary", ""), selected)
-                if self._summary_fits(summary, events, cutoff, token_budget, token_counter):
+                summary = summarizer(previous, project_history_messages(selected))
+                if not summary.strip():
+                    return state
+                if self._summary_fits(summary, events, cutoff, token_budget, token_counter, request_fits):
                     return self._save_compaction(state, cutoff, summary)
+                previous, prior_cut = summary, cutoff
             except (ContextBudgetExceeded, ModelCallLimitExceeded):
                 raise
             except Exception:
@@ -380,29 +390,80 @@ class MemoryManager:
                 return state
         return state
 
-    async def compact_if_needed_async(self, token_budget: int, *, token_counter=estimate_tokens):
-        state, events, cuts = self._compaction_selection(token_budget, token_counter)
+    async def compact_if_needed_async(self, token_budget: int, *, token_counter=estimate_tokens, request_fits=None):
+        from utils.runtime_logging import log_event
+        diagnostic = {'summary_calls': 0, 'reason': 'no_safe_boundary'}
+        try:
+            return await self._compact_session_async(token_budget, token_counter, request_fits, diagnostic)
+        finally:
+            self.last_compaction_diagnostic = diagnostic
+            state = self.session_store.read_state()
+            log_event(logger, 'session_compaction', **diagnostic,
+                      covered_through_seq=state.get('covered_through_seq', 0))
+
+    async def _compact_session_async(self, token_budget, token_counter, request_fits, diagnostic):
+        state, events, cuts = self._compaction_selection(token_budget, token_counter, request_fits)
         if self.llm_model is None:
+            diagnostic['reason'] = 'summary_model_unavailable'
             return state
-        for cutoff in cuts:
-            selected = [e for e in events if e["seq"] <= cutoff]
+        previous, prior_cut = state.get('summary', ''), 0
+        # Start smaller if the preferred prefix cannot itself fit a summary call.
+        all_cuts = complete_prefix_boundaries(events)
+        attempts = 0
+        while cuts and attempts < 3:
+            cutoff = cuts.pop(0)
+            selected = [e for e in events if prior_cut < e["seq"] <= cutoff]
             prompt = (
                 "概括以下完整已完成用户轮次。保留用户目标、硬约束、已确认事实和待处理事项。"
                 "不要添加原文没有的事实。只返回简洁摘要。\n"
-                f"已有摘要：{state.get('summary', '')}\n"
-                f"待压缩主消息：{json.dumps(selected, ensure_ascii=False)}"
+                "保留最新更正、未知项、未完成目标及workflow_id/revision。尽量缩短重复叙述。\n"
+                f"已有摘要：{previous}\n"
+                f"待压缩主消息：{json.dumps(project_history_messages(selected), ensure_ascii=False)}"
             )
+            messages = [{"role": "user", "content": prompt}]
+            from context.context_budget import BudgetedModel, count_input_tokens
+            bounded = isinstance(self.llm_model, BudgetedModel)
+            input_tokens = count_input_tokens(messages, counter=self.llm_model.counter).tokens if bounded else 0
+            if bounded and input_tokens + 64 > self.llm_model.budget_tokens:
+                smaller = [seq for seq in all_cuts if prior_cut < seq < cutoff]
+                if not smaller:
+                    diagnostic['reason'] = 'summary_input_over_budget'
+                    return state
+                cuts = [smaller[-1], *[seq for seq in all_cuts if seq > smaller[-1]]]
+                continue
+            attempts += 1
+            diagnostic.update(summary_calls=attempts, reason='request_still_over_target')
+            options = {}
+            generated = getattr(self.llm_model, 'generate_kwargs', None)
+            if bounded and isinstance(generated, dict) and generated.get('max_tokens'):
+                options['max_tokens'] = min(generated['max_tokens'],
+                    self.llm_model.budget_tokens - input_tokens - 32, max(128, token_budget))
             try:
                 from context.telemetry import model_stage
 
                 with budget_scope("summary"), model_stage("main:summary"):
-                    response = await self.llm_model([{"role": "user", "content": prompt}])
+                    response = await self.llm_model(messages, **options)
                     summary = await _read_model_text(response)
-                if self._summary_fits(summary, events, cutoff, token_budget, token_counter):
-                    return self._save_compaction(state, cutoff, summary)
+                if not summary.strip():
+                    diagnostic['reason'] = 'empty_summary'
+                    return state
+                if self._summary_fits(summary, events, cutoff, token_budget, token_counter, request_fits):
+                    updated = self._save_compaction(state, cutoff, summary)
+                    diagnostic['reason'] = ('committed' if updated.get('covered_through_seq') == cutoff
+                                            and updated.get('summary') == summary.strip()
+                                            else 'state_conflict')
+                    return updated
+                if not selected and summary == previous:
+                    diagnostic['reason'] = 'no_progress'
+                    return state
+                previous, prior_cut = summary, cutoff
+                if not cuts and attempts < 3:
+                    cuts = [cutoff]  # one bounded rewrite of the candidate summary
             except (ContextBudgetExceeded, ModelCallLimitExceeded):
+                diagnostic['reason'] = 'summary_budget_limit'
                 raise
             except Exception:
+                diagnostic['reason'] = 'summary_failed'
                 logger.exception("Could not compact session context; raw events remain available")
                 return state
         return state
