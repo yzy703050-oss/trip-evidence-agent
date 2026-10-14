@@ -8,6 +8,7 @@ import asyncio
 import sys
 import os
 import logging
+from utils.runtime_logging import configure_runtime_logging, log_event
 from time import perf_counter
 from typing import Optional
 from sqlite3 import Error as SQLiteError
@@ -246,8 +247,14 @@ class TripEvidenceCLI:
         except Exception as exc:
             status = "error"
             error = str(exc)
+            logging.getLogger(__name__).exception('Request processing failed')
             raise
         finally:
+            log_event(logging.getLogger(__name__), 'query_run',
+                      session_id=getattr(self.memory_manager, 'session_id', None),
+                      turn_id=getattr(self.memory_manager, 'current_turn_id', None), status=status,
+                      stop_reason=(self.last_result or {}).get('stop_reason'),
+                      latency_ms=round((perf_counter() - started) * 1000, 3))
             if self.memory_manager:
                 try:
                     self.memory_manager.session_store.append_run({
@@ -631,10 +638,15 @@ def run_health_check_standalone() -> int:
 
 def main():
     """主函数"""
-    if len(sys.argv) > 1 and sys.argv[1].strip().lower() == "health":
-        exit(run_health_check_standalone())
-    cli = TripEvidenceCLI()
-    asyncio.run(cli.run())
+    path = configure_runtime_logging(level=SYSTEM_CONFIG.get('log_level', 'INFO'))
+    log_event(logging.getLogger(__name__), 'application_start', log_path=path)
+    try:
+        if len(sys.argv) > 1 and sys.argv[1].strip().lower() == "health":
+            raise SystemExit(run_health_check_standalone())
+        cli = TripEvidenceCLI()
+        asyncio.run(cli.run())
+    finally:
+        log_event(logging.getLogger(__name__), 'application_exit')
 
 
 if __name__ == "__main__":

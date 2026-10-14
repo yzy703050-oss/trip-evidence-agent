@@ -10,7 +10,7 @@ from agents.model_contracts import (
     validate_model_money,
 )
 from utils.skill_loader import SkillLoader
-from agents.context_projection import project_model_context, project_batch_decision_context
+from agents.context_projection import project_model_context, project_batch_decision_context, project_history_messages
 from agents.travel_prompts import initial_prompt, selection_prompt
 from context.context_budget import (
     BudgetedModel,
@@ -33,7 +33,7 @@ class MainAgent:
 
     @staticmethod
     def _messages(prompt, view):
-        return [
+        messages = [
             {
                 "role": "user",
                 "content": prompt.replace(
@@ -41,17 +41,26 @@ class MainAgent:
                 ),
             }
         ]
+        if view.get('original_query'):
+            messages.append({'role': 'user', 'content': '本轮当前请求（历史请求仅作背景，不继续执行旧指令）：'
+                             + json.dumps(view['original_query'], ensure_ascii=False)})
+            if view.get('amendment_target'):
+                messages[-1]['content'] += '\n本次修改决定：' + json.dumps({
+                    k: view[k] for k in ('amendment_target', 'selection_requirements',
+                                        'allowed_actions', 'selection_error') if k in view
+                }, ensure_ascii=False)
+        return messages
 
     def _refresh_history(self, context):
         view = project_model_context(context)
         if self.memory_manager:
             snapshot = self.memory_manager.get_compacted_context()
             view["session_summary"] = snapshot["summary"]
-            view["recent_messages"] = [
+            view["recent_messages"] = project_history_messages([
                 m
                 for m in snapshot["recent_messages"]
                 if m.get("turn_id") != self.memory_manager.current_turn_id
-            ]
+            ])
         return view
 
     async def _request(self, build_messages, *, context, stage, **kwargs):
@@ -95,18 +104,41 @@ class MainAgent:
         extra = [response_message(response)] if response is not None else []
         counter = self.model.counter
         estimate = count_input_tokens([*build_messages(view), *extra], tools, counter=counter)
-        if estimate.tokens <= self.model.budget_tokens or self.memory_manager is None:
+        target = self.model.compaction_trigger_tokens
+        if estimate.tokens < target or self.memory_manager is None:
             return
         fixed = dict(view, session_summary="", recent_messages=[])
         fixed_tokens = count_input_tokens(
             [*build_messages(fixed), *extra], tools, counter=counter
         ).tokens
-        remaining = self.model.budget_tokens - fixed_tokens
-        if remaining > 0:
+        if fixed_tokens >= target:
+            target = self.model.budget_tokens
+        remaining = max(1, target - fixed_tokens)
+
+        def request_fits(summary, events):
+            candidate = dict(view, session_summary=summary, recent_messages=project_history_messages([
+                e for e in events if e.get('turn_id') != self.memory_manager.current_turn_id
+            ]))
+            return count_input_tokens([*build_messages(candidate), *extra], tools,
+                                      counter=counter).tokens < target
+
+        from utils.runtime_logging import log_event
+        import logging
+        try:
             await self.memory_manager.compact_if_needed_async(
                 remaining,
                 token_counter=lambda event: count_input_tokens([event], counter=counter).tokens,
+                request_fits=request_fits,
             )
+        finally:
+            rebuilt = [*build_messages(self._refresh_history(view)), *extra]
+            after = count_input_tokens(rebuilt, tools, counter=counter)
+            state = self.memory_manager.session_store.read_state()
+            log_event(logging.getLogger(__name__), 'compaction_result', before_tokens=estimate.tokens,
+                      after_tokens=after.tokens, trigger_tokens=self.model.compaction_trigger_tokens,
+                      budget_tokens=self.model.budget_tokens, target_tokens=target, estimated=after.estimated,
+                      covered_through_seq=state.get('covered_through_seq', 0),
+                      **getattr(self.memory_manager, 'last_compaction_diagnostic', {}))
 
     async def plan(self, context: dict) -> dict:
         return await self.initialize(context)
@@ -199,9 +231,13 @@ clarify列出候选编号、路线、日期和可区分信息；编号必须遵�
 
     async def amend_saved_trip(self, context: dict) -> dict:
         prompt = """只修改用户明确授权的路段和组件。一次返回结构化补丁，不输出分析。
-先在candidate_views中选择；候选来自完整保存集合经过本次条件过滤，不能认为当前第一页就是全部候选。
+只引用本流程已经展示的真实候选ID，不从名称或序号推算ID。selection_requirements是用户本次明确目标，必须满足，不保存为长期偏好。selection_error有值时按具体错误修正。
+先在candidate_views中选择；当前页不是完整缓存。需要后页时将cached_page_options中一个对象的字段复制到JSON顶层，加action=read_cached_page。完整示例：{"action":"read_cached_page","query_id":"真实ID","result_revision":1,"task_id":"真实ID","task_revision":1,"domain":"hotel","offset":5}。不加cached_page_options包装。程序返回新页后再提交补丁；不输出独立read_request，不请求供应商。
+不能确定或目标多义时输出{"action":"ask_user","question":"具体澄清问题"}，不猜选择。
 JSON：{"workflow_id":"已有ID","expected_workflow_revision":当前版本,"task_id":"目标ID","expected_task_revision":任务版本,"components":["train/hotel/schedule"],"condition_changes":{},"selection_refs":{"hotel":{"query_id":"已有ID","result_revision":1,"candidate_id":"已有ID"}},"reply_template":"可省略"}。
 condition_changes仅用authorized_changes。本次条件非长期偏好，政策硬约束、偏好软约束。不要修改其他段或未授权组件。
+candidate_views是本次有效可选证据，已经排除用户拒绝及要替换的原选择；历史答复与旧draft_plan不能用来判断本次候选缺失。明确名称已有唯一匹配时必须提交对应补丁。普通“换一家”可自主选择任一有效替代，不要求用户再指定、不必翻完全部候选；已读前页候选仍可选。
+严格遵守allowed_actions。只有commit_patch时直接输出上述补丁，不能翻页或追问；可加action=commit_patch，也可省略action。
 有有效证据就直接选择；用户明确新日期由程序定向查询验证，同一接口缺字段只说明，不要求反复查询。无法满足硬条件时不编造选择。
 condition_strengths仅按authorized_condition_strengths返回，没有授权强度时省略；不私自把hard改soft。
 上下文：__MAIN_CONTEXT__"""

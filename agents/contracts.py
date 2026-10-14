@@ -109,6 +109,11 @@ def validate_plan(value: dict) -> dict:
     if not isinstance(value, dict):
         raise ValueError('plan must be an object')
     plan = deepcopy(value)
+    if plan.get('read_request') is not None and any(
+        plan.get(key) is not None
+        for key in ('travel_update', 'workflow_update', 'amendment_patch', 'workflow_proposal')
+    ):
+        raise ValueError('read_request cannot coexist with mutation; choose read or modification')
     if isinstance(plan.get('travel_update'),dict):
         target=plan['travel_update'].get('target',{})
         if isinstance(target,dict) and isinstance(target.get('workflow_id'),str):

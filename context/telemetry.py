@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from time import perf_counter
 from typing import Any, Callable
+from utils.runtime_logging import log_event
 
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,10 @@ class MeteredModel:
                 input_tokens * self.input_usd_per_million
                 + output_tokens * self.output_usd_per_million
             ) / 1_000_000
+        log_event(logger, 'model_call', stage=stage, model=getattr(self.model, 'model_name', type(self.model).__name__),
+                  status=status, api_input_tokens=input_tokens, api_output_tokens=output_tokens,
+                  latency_ms=round((perf_counter() - started) * 1000, 3),
+                  turn_id=_scope.get().get('turn_id'), task_id=_scope.get().get('task_id'))
         try:
             self.record(
                 {

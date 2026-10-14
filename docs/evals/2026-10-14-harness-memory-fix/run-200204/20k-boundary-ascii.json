@@ -1,0 +1,9 @@
+{
+  "mode": "replayed genuine history plus artificial fixed padding; boundary only",
+  "budget": 20000,
+  "trigger": 16000,
+  "before_tokens": 16500,
+  "after_tokens": 15218,
+  "covered_through_seq": 12,
+  "answer": "- 去程：2026-10-21  \n- 返程：2026-10-25  \n- 人数：3人  \n- 晚数：4晚  \n- 最晚到达时刻：19:00前到达  \n- 房价是否已知：未知；酒店房价、空房、入住及退改规则需订房时确认。"
+}
