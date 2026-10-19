@@ -1,0 +1,222 @@
+{
+  "source": "2026-10-14 one real model turn, trimmed replay evidence",
+  "bad_reply_template": {
+    "s1_transport": "去程上海到杭州的火车本次未查到可用车次，去程交通暂时待核实。",
+    "s1_lodging": "住宿建议选全季酒店(杭州城站地铁站西湖大道店)，入住2026-10-15、离店2026-10-16；房型、房价和空房状态尚未查询。",
+    "s2_transport": "返程暂定2026-10-16杭州东到金山北的G7324二等座，11:43出发、12:15到达；该方案需与去程和住宿衔接进一步核实。",
+    "trip_summary": "本次为2026-10-15上海至杭州、住一晚、2026-10-16返回上海的行程。去程车次未查到，返程为暂定车次，酒店为地点建议，房价和空房未知。"
+  },
+  "result": {
+    "status": "partial",
+    "stop_reason": "model_partial",
+    "validated_plan": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "train_selection_missing",
+          "task_ids": [
+            "task_8af4cd118a224cedb903882b88b70ac6"
+          ],
+          "blocking": true,
+          "message": "当前段尚无已核实的train候选选择。",
+          "evidence": null
+        },
+        {
+          "code": "hotel_price_unknown",
+          "task_ids": [
+            "task_8af4cd118a224cedb903882b88b70ac6"
+          ],
+          "blocking": false,
+          "message": "酒店地点不提供房价、空房或入住规则。",
+          "evidence": null
+        }
+      ],
+      "reconstructed_tasks": [
+        {
+          "task_id": "task_8af4cd118a224cedb903882b88b70ac6",
+          "task_revision": 1,
+          "origin": "上海",
+          "destination": "杭州",
+          "purpose": "visit",
+          "train": null,
+          "hotel": {
+            "id": "B0MUOS4A5Z",
+            "hotel_name": "全季酒店(杭州城站地铁站西湖大道店)",
+            "address": "馆驿后1号",
+            "city": "杭州市",
+            "district": "上城区",
+            "location": "120.176096,30.244488",
+            "source": {
+              "provider": "amap",
+              "fetched_at": "2026-10-14T22:11:37.668709+08:00",
+              "url": "https://developer.amap.com/api/webservice/guide/api-advanced/newpoisearch"
+            },
+            "phone": "0571-28197999",
+            "rating": "4.7",
+            "photos": [
+              {
+                "title": "外观",
+                "url": "https://store.is.autonavi.com/showpic/d8dfd5e3d7290db8f974a27382583b10"
+              },
+              {
+                "title": "外观",
+                "url": "https://store.is.autonavi.com/showpic/28beffd04b414dcfabbd95edde7de3e7"
+              },
+              {
+                "title": "",
+                "url": "https://store.is.autonavi.com/showpic/75846abf404d0e19fe61bdf9aa9c034c"
+              }
+            ],
+            "kind": "hotel_place",
+            "room_type": null,
+            "stay_total_cny": null,
+            "fees_included": null,
+            "availability": "unknown",
+            "cancellation": null,
+            "url": "https://developer.amap.com/api/webservice/guide/api-advanced/newpoisearch"
+          },
+          "schedule": {
+            "departure_at": null,
+            "arrival_at": null,
+            "check_in": "2026-10-15",
+            "check_out": "2026-10-16",
+            "next_departure_not_before": "2026-10-16"
+          }
+        },
+        {
+          "task_id": "task_06280145fbd8465c84b00d151f9540b1",
+          "task_revision": 1,
+          "origin": "杭州",
+          "destination": "上海",
+          "purpose": "return",
+          "train": {
+            "id": "2026-10-16|G7324|杭州东|金山北|O|二等座",
+            "train_number": "G7324",
+            "origin_station": "杭州东",
+            "destination_station": "金山北",
+            "departure_time": "11:43",
+            "arrival_time": "12:15",
+            "seat_class": "二等座",
+            "price_cny": "55",
+            "availability": "available",
+            "remaining": null,
+            "source": {
+              "provider": "聚合数据",
+              "fetched_at": "2026-10-14T22:11:38.628654+08:00",
+              "url": "https://www.juhe.cn/docs/api/id/817"
+            },
+            "url": null,
+            "departure_at": "2026-10-16T11:43:00+08:00",
+            "arrival_at": "2026-10-16T12:15:00+08:00",
+            "time_evidence": {
+              "departure": "query_date_and_provider_clock",
+              "arrival": "provider_segment_duration"
+            }
+          },
+          "hotel": null,
+          "schedule": {
+            "departure_at": "2026-10-16T11:43:00+08:00",
+            "arrival_at": "2026-10-16T12:15:00+08:00",
+            "check_in": null,
+            "check_out": null,
+            "next_departure_not_before": "2026-10-16T12:15:00+08:00"
+          }
+        }
+      ],
+      "budget": {
+        "known_subtotal_cny": "55",
+        "verified": false,
+        "missing_categories": [
+          {
+            "task_id": "task_8af4cd118a224cedb903882b88b70ac6",
+            "category": "hotel"
+          },
+          {
+            "task_id": "task_8af4cd118a224cedb903882b88b70ac6",
+            "category": "train"
+          }
+        ],
+        "lines": [
+          {
+            "category": "train",
+            "offer_id": "2026-10-16|G7324|杭州东|金山北|O|二等座",
+            "quantity": 1,
+            "unit_price_cny": "55",
+            "amount_cny": "55",
+            "source": {
+              "provider": "聚合数据",
+              "fetched_at": "2026-10-14T22:11:38.628654+08:00",
+              "url": "https://www.juhe.cn/docs/api/id/817"
+            },
+            "task_id": "task_06280145fbd8465c84b00d151f9540b1"
+          }
+        ]
+      },
+      "validated_revisions": {
+        "task_8af4cd118a224cedb903882b88b70ac6": 1,
+        "task_06280145fbd8465c84b00d151f9540b1": 1
+      },
+      "signature": "79a97aa661b5f9e169b781a70dfd5af4394cf49e5c5da863ad8c82d612099399"
+    },
+    "data_mode": "provider",
+    "gaps": [
+      {
+        "code": "train_selection_missing",
+        "task_ids": [
+          "task_8af4cd118a224cedb903882b88b70ac6"
+        ],
+        "blocking": true,
+        "message": "当前段尚无已核实的train候选选择。",
+        "evidence": null
+      },
+      {
+        "code": "hotel_price_unknown",
+        "task_ids": [
+          "task_8af4cd118a224cedb903882b88b70ac6"
+        ],
+        "blocking": false,
+        "message": "酒店地点不提供房价、空房或入住规则。",
+        "evidence": null
+      }
+    ],
+    "workflow": {
+      "id": "workflow_d906f1c810c140a5be49cb6ed7517a1a",
+      "tasks": [
+        {
+          "id": "task_8af4cd118a224cedb903882b88b70ac6",
+          "conditions": {
+            "departure_date": "2026-10-15",
+            "check_in": "2026-10-15",
+            "check_out": "2026-10-16",
+            "nights": 1,
+            "passengers": 1,
+            "guests": 1,
+            "hotel_keywords": "全季"
+          },
+          "field_sources": {
+            "departure_date": "user",
+            "check_in": "user",
+            "check_out": "user",
+            "nights": "user",
+            "passengers": "default",
+            "guests": "default",
+            "hotel_keywords": "user"
+          },
+          "requires_hotel": true
+        },
+        {
+          "id": "task_06280145fbd8465c84b00d151f9540b1",
+          "conditions": {
+            "departure_date": "2026-10-16",
+            "passengers": 1
+          },
+          "field_sources": {
+            "departure_date": "user",
+            "passengers": "default"
+          },
+          "requires_hotel": false
+        }
+      ]
+    }
+  }
+}

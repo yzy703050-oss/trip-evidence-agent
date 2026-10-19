@@ -2,7 +2,7 @@ import multiprocessing
 
 import pytest
 
-from context.session_store import SessionStore
+from trip_assistant.storage.sessions import SessionStore
 
 
 def event(**patch):
@@ -34,7 +34,7 @@ def test_append_is_idempotent_without_reading_history(tmp_path, monkeypatch):
 
 
 def test_state_patch_preserves_fields_and_rejects_stale_revision(tmp_path):
-    from context.sqlite_storage import StateConflictError
+    from trip_assistant.storage.sqlite import StateConflictError
 
     a, b = [SessionStore(tmp_path, "alice", "s") for _ in range(2)]
     old = a.update_state({"summary": "old", "pending_question": "q"})

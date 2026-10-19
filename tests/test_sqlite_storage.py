@@ -1,11 +1,11 @@
-from concurrent.futures import ThreadPoolExecutor
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 
 def storage(root, user="alice"):
-    from context.sqlite_storage import SQLiteStorage
+    from trip_assistant.storage.sqlite import SQLiteStorage
 
     return SQLiteStorage(root, user)
 

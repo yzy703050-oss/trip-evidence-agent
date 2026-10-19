@@ -1,6 +1,6 @@
-from workflow_support import populated_workflow
+from support.workflow import populated_workflow
 
-from agents.workflow_guard import check_workflow
+from trip_assistant.trips.validation import check_workflow
 
 
 def test_amendment_cannot_relax_saved_hard_train_policy():

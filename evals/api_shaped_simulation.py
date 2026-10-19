@@ -3,8 +3,8 @@
 from copy import deepcopy
 from dataclasses import replace
 
-from travel_data.amap_hotel import AmapHotelProvider
-from travel_data.juhe_train import JuheTrainProvider
+from trip_assistant.providers.amap_hotel import AmapHotelProvider
+from trip_assistant.providers.juhe_train import JuheTrainProvider
 
 
 class FixtureResponse:

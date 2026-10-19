@@ -9,14 +9,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.runtime import Msg
+from trip_assistant.llm.messages import Msg
 
 
 class FakeEmbeddingModel:
     def get_sentence_embedding_dimension(self):
         return 2
 
-    def encode(self, _text):
+    def encode(self, _text, *, show_progress_bar=False):
+        assert show_progress_bar is False
+
         class Vector:
             def tolist(self):
                 return [0.1, 0.2]

@@ -2,11 +2,10 @@
 初始化RAG知识库 (Plugin Version)
 从 .claude/skills/ask-question/data/documents 目录加载商旅相关文档并导入到向量数据库中
 """
-import sys
-import os
+
 import importlib.util
+import sys
 from pathlib import Path
-from typing import List, Dict
 
 # 添加项目根目录到路径 (假设脚本在 .claude/skills/ask-question/script/)
 current_dir = Path(__file__).parent
@@ -14,8 +13,9 @@ project_root = current_dir.parent.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from config import LLM_CONFIG, get_model_generate_kwargs
-from agents.openai_model import OpenAIChatModel
+from trip_assistant.llm.client import OpenAIChatModel  # noqa: E402
+from trip_assistant.settings import generation_options, get_settings  # noqa: E402
+
 
 # 动态加载同目录下的 agent.py
 def load_rag_agent_class():
@@ -26,16 +26,18 @@ def load_rag_agent_class():
     spec.loader.exec_module(module)
     return module.RAGKnowledgeAgent
 
+
 RAGKnowledgeAgent = load_rag_agent_class()
 
-def split_text(text: str, max_chars: int = 600, overlap: int = 100) -> List[str]:
+
+def split_text(text: str, max_chars: int = 600, overlap: int = 100) -> list[str]:
     """
     简单的文本切分：优先按段落切分，控制每块大小
     """
     chunks = []
 
     # 预处理：按空行分割成段落
-    lines = text.split('\n')
+    lines = text.split("\n")
     paragraphs = []
     current_para = []
 
@@ -63,12 +65,11 @@ def split_text(text: str, max_chars: int = 600, overlap: int = 100) -> List[str]
 
             # 如果单个段落非常长，强制切分
             if len(para) > max_chars:
-                # 这里的逻辑简单处理：直接把长段落作为新起点（可能会再次被切分，如果这里加递归太复杂，
-                # 简单起见，如果段落超长，就按长度硬切）
+                # 将过长段落按长度分割，保留剩余部分继续处理。
                 remaining = para
                 while len(remaining) > max_chars:
                     chunks.append(remaining[:max_chars])
-                    remaining = remaining[max_chars - overlap:]
+                    remaining = remaining[max_chars - overlap :]
                 current_chunk = remaining
             else:
                 # 开启新 chunk，并带上前一个 chunk 的尾部作为 overlap（如果需要）
@@ -80,7 +81,8 @@ def split_text(text: str, max_chars: int = 600, overlap: int = 100) -> List[str]
 
     return chunks
 
-def load_documents_from_directory(directory_path: str) -> List[Dict]:
+
+def load_documents_from_directory(directory_path: str) -> list[dict]:
     """
     从指定目录加载所有文档
     """
@@ -95,7 +97,7 @@ def load_documents_from_directory(directory_path: str) -> List[Dict]:
     doc_files = sorted(doc_dir.glob("*.txt"))
 
     if not doc_files:
-        print(f"❌ 未找到任何文档文件 (.txt)")
+        print("❌ 未找到任何文档文件 (.txt)")
         return documents
 
     # 定义类别映射（根据文件名判断）
@@ -107,7 +109,7 @@ def load_documents_from_directory(directory_path: str) -> List[Dict]:
         "emergency_procedures": "应急指南",
         "platform_guide": "平台指南",
         "city_specific_tips": "城市指南",
-        "environmental_initiatives": "环保倡议"
+        "environmental_initiatives": "环保倡议",
     }
 
     total_chunks = 0
@@ -115,7 +117,7 @@ def load_documents_from_directory(directory_path: str) -> List[Dict]:
     for file_path in doc_files:
         try:
             # 从文件名提取编号作为doc_id (如: 01_travel_standards.txt -> doc_001)
-            filename_parts = file_path.stem.split('_', 1)
+            filename_parts = file_path.stem.split("_", 1)
             if len(filename_parts) >= 2:
                 doc_num = filename_parts[0]
                 doc_key = filename_parts[1] if len(filename_parts) > 1 else ""
@@ -126,7 +128,7 @@ def load_documents_from_directory(directory_path: str) -> List[Dict]:
             base_doc_id = f"doc_{doc_num}"
 
             # 读取文件内容
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding="utf-8") as f:
                 content = f.read().strip()
 
             if not content:
@@ -134,7 +136,7 @@ def load_documents_from_directory(directory_path: str) -> List[Dict]:
                 continue
 
             # 提取标题（第一行）
-            lines = content.split('\n')
+            lines = content.split("\n")
             title = lines[0].strip() if lines else file_path.stem
 
             # 根据文件名确定类别
@@ -148,7 +150,7 @@ def load_documents_from_directory(directory_path: str) -> List[Dict]:
             chunks = split_text(content, max_chars=600, overlap=100)
 
             for i, chunk_content in enumerate(chunks):
-                doc_id = f"{base_doc_id}_{i+1}"
+                doc_id = f"{base_doc_id}_{i + 1}"
 
                 # 构建文档对象
                 document = {
@@ -156,12 +158,12 @@ def load_documents_from_directory(directory_path: str) -> List[Dict]:
                     "content": chunk_content,
                     "metadata": {
                         "category": category,
-                        "title": f"{title} (Part {i+1})",
+                        "title": f"{title} (Part {i + 1})",
                         "source": "商旅知识库文档",
                         "file_path": str(file_path),
                         "version": "2024版",
-                        "parent_doc": file_path.name
-                    }
+                        "parent_doc": file_path.name,
+                    },
                 }
                 documents.append(document)
 
@@ -176,22 +178,25 @@ def load_documents_from_directory(directory_path: str) -> List[Dict]:
 
 
 def main():
-    print("="*70)
+    print("=" * 70)
     print("初始化RAG知识库 (Plugin Version) - With Chunking")
-    print("="*70)
+    print("=" * 70)
     print()
 
     rag_agent = None
     try:
         # 创建模型
         print("1. 创建模型...")
+        settings = get_settings()
         model = OpenAIChatModel(
-            model_name=LLM_CONFIG["model_name"],
-            api_key=LLM_CONFIG["api_key"],
+            model_name=settings.llm_model,
+            api_key=settings.llm_api_key or settings.deepseek_api_key,
             client_kwargs={
-                "base_url": LLM_CONFIG["base_url"],
+                "base_url": settings.llm_base_url,
             },
-            generate_kwargs=get_model_generate_kwargs(),
+            generate_kwargs=generation_options(
+                settings.llm_model, max_tokens=settings.llm_max_tokens
+            ),
         )
         print("✓ 模型创建成功")
         print()
@@ -212,7 +217,7 @@ def main():
             model=model,
             knowledge_base_path=str(knowledge_base_path),
             collection_name="business_travel_knowledge",
-            top_k=3
+            top_k=3,
         )
 
         if not rag_agent.initialized:
@@ -274,11 +279,7 @@ def main():
 
         # 测试检索
         print("6. 测试知识检索...")
-        test_queries = [
-            "出差住宿标准是多少？",
-            "航班延误了怎么办？",
-            "机票应该提前多久预订？"
-        ]
+        test_queries = ["出差住宿标准是多少？", "航班延误了怎么办？", "机票应该提前多久预订？"]
 
         for query in test_queries:
             print(f"\n   查询: {query}")
@@ -287,24 +288,25 @@ def main():
                 print(f"   ✓ 找到 {len(results)} 个相关文档")
                 for i, doc in enumerate(results, 1):
                     # 安全获取 metadata
-                    metadata = doc.get('metadata', {})
+                    metadata = doc.get("metadata", {})
                     if isinstance(metadata, str):
                         try:
                             import json
+
                             metadata = json.loads(metadata)
-                        except:
+                        except Exception:
                             metadata = {}
 
-                    title = metadata.get('title', 'Unknown')
-                    distance = doc.get('distance', 0.0)
-                    print(f"      [{i}] {title} (相似度: {1-distance:.3f})")
+                    title = metadata.get("title", "Unknown")
+                    distance = doc.get("distance", 0.0)
+                    print(f"      [{i}] {title} (相似度: {1 - distance:.3f})")
             else:
                 print("   ❌ 未找到相关文档")
 
         print()
-        print("="*70)
+        print("=" * 70)
         print("知识库初始化完成！")
-        print("="*70)
+        print("=" * 70)
 
     finally:
         # 确保资源被正确清理
@@ -312,7 +314,7 @@ def main():
             print("\n正在清理资源...")
             try:
                 rag_agent.close()
-            except:
+            except Exception:
                 pass
             print("✓ 资源清理完成")
 

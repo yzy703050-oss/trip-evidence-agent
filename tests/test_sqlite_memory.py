@@ -1,18 +1,17 @@
-from concurrent.futures import ThreadPoolExecutor
-from copy import deepcopy
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from support.workflow import populated_workflow
 
-from context.long_term_memory import LongTermMemory
-from context.workflow_store import WorkflowStore
-from workflow_support import populated_workflow
+from trip_assistant.storage.preferences import LongTermMemory
+from trip_assistant.storage.trips import TripStore
 
 
 def test_workflow_summary_failure_preserves_previous_revision(tmp_path, monkeypatch):
-    import context.workflow_index as module
+    import trip_assistant.storage.index as module
 
-    store = WorkflowStore(tmp_path, "alice")
+    store = TripStore(tmp_path, "alice")
     saved = store.save(populated_workflow(), expected_revision=None)
     summaries = store.list_summaries()
 
@@ -80,7 +79,7 @@ def test_clear_history_keeps_preferences_and_never_reimports(tmp_path):
 
 
 def test_summary_select_does_not_load_full_content(tmp_path):
-    store = WorkflowStore(tmp_path, "alice")
+    store = TripStore(tmp_path, "alice")
     saved = store.save(populated_workflow(), expected_revision=None)
     assert hasattr(store, "storage"), "workflow storage must use a database"
     with store.storage.transaction() as conn:
@@ -91,7 +90,7 @@ def test_summary_select_does_not_load_full_content(tmp_path):
 
 
 def test_trip_export_failure_does_not_undo_commit(tmp_path, monkeypatch):
-    store = WorkflowStore(tmp_path, "alice")
+    store = TripStore(tmp_path, "alice")
 
     def fail(*args):
         raise OSError("export unavailable")
@@ -102,64 +101,85 @@ def test_trip_export_failure_does_not_undo_commit(tmp_path, monkeypatch):
 
 
 def test_restore_does_not_decode_covered_or_tool_payloads(tmp_path):
-    from context.memory_manager import MemoryManager
+    from trip_assistant.memory.context import build_context
+    from trip_assistant.storage.sessions import SessionStore
 
-    memory = MemoryManager("alice", "s", storage_path=str(tmp_path))
-    turn = memory.start_turn("old")
-    memory.record_message("assistant", "old reply", turn, final=True)
-    memory.record_agent_stage("information_query", 1, {"summary": "audit"}, turn)
-    memory.session_store.update_state({"summary": "old summary", "covered_through_seq": 2})
+    store = SessionStore(tmp_path, "alice", "s")
+    for seq in range(2):
+        store.append(
+            {
+                "type": "message",
+                "scope": "session",
+                "turn_id": "old",
+                "role": "user" if seq == 0 else "assistant",
+                "content": "old",
+                "final": seq == 1,
+            }
+        )
+    store.append({"type": "agent_stage", "scope": "policy", "content": {"audit": "private"}})
+    store.update_state({"summary": "old summary", "covered_through_seq": 2})
     for n in range(24):
-        turn = memory.start_turn(f"new {n}")
-        memory.record_message("assistant", f"reply {n}", turn, final=True)
-    with memory.session_store.storage.transaction() as conn:
+        for role in ("user", "assistant"):
+            store.append(
+                {
+                    "type": "message",
+                    "scope": "session",
+                    "turn_id": str(n),
+                    "role": role,
+                    "content": role + str(n),
+                    "final": role == "assistant",
+                }
+            )
+    with store.storage.transaction() as conn:
         conn.execute(
             "UPDATE events SET payload_json='cannot decode' WHERE seq<=2 OR scope<>'session'"
         )
-    restarted = MemoryManager("alice", "s", storage_path=str(tmp_path))
-    snapshot = restarted.get_compacted_context()
-    assert snapshot["summary"] == "old summary"
-    assert len(snapshot["recent_messages"]) == 48
-    assert len(restarted.short_term.messages) == 48
+    snapshot = build_context(SessionStore(tmp_path, "alice", "s"))
+    assert "old summary" in snapshot[0]["content"] and len(snapshot) == 49
 
 
 def test_tool_checks_do_not_read_history(tmp_path, monkeypatch):
-    from context.memory_manager import MemoryManager
+    from trip_assistant.storage.sessions import SessionStore
 
-    memory = MemoryManager("alice", "s", storage_path=str(tmp_path))
-    turn = memory.start_turn("q")
+    store = SessionStore(tmp_path, "alice", "s")
 
     def fail(*args, **kwargs):
         raise AssertionError("full event read")
 
-    monkeypatch.setattr(memory.session_store, "read_events", fail)
-    memory.record_tool_call([{"id": "call", "name": "weather"}], turn, "info")
-    assert memory.get_pending_tool_calls()[0]["id"] == "call"
-    memory.record_tool_result("call", "sunny", turn, "info")
-    assert memory.get_pending_tool_calls() == []
-    assert len(memory.short_term.messages) == 1
+    monkeypatch.setattr(store, "read_events", fail)
+    store.record_call({"id": "call", "name": "query", "arguments": {}}, "turn")
+    assert store.pending_tool_calls()[0]["id"] == "call"
+    store.record_result("call", {"status": "ok"}, "turn")
+    assert not store.pending_tool_calls()
 
 
 @pytest.mark.asyncio
 async def test_async_summary_cannot_restore_cleared_context(tmp_path):
-    from types import SimpleNamespace
-    from context.memory_manager import MemoryManager
+    from trip_assistant.memory.compaction import compact_completed_turns
+    from trip_assistant.memory.context import build_context
+    from trip_assistant.storage.sessions import SessionStore
 
-    memory = MemoryManager("alice", "s", storage_path=str(tmp_path))
-    for _ in range(3):
-        turn = memory.start_turn("q" * 40)
-        memory.record_message("assistant", "a" * 40, turn, final=True)
+    store = SessionStore(tmp_path, "alice", "s")
+    for n in range(3):
+        for role in ("user", "assistant"):
+            store.append(
+                {
+                    "type": "message",
+                    "scope": "session",
+                    "turn_id": str(n),
+                    "role": role,
+                    "content": "x" * 40,
+                    "final": role == "assistant",
+                }
+            )
 
-    async def summarize(messages):
-        memory.clear_short_term()
-        return SimpleNamespace(text="old facts")
+    async def summarize(previous, events):
+        store.clear_context()
+        return "old facts"
 
-    memory.llm_model = summarize
-    result = await memory.compact_if_needed_async(
-        100, token_counter=lambda row: len(row.get("content", ""))
+    await compact_completed_turns(
+        store, summarizer=summarize, request_fits=lambda summary, events: bool(summary)
     )
-    state = memory.session_store.read_state()
-    assert result == state
-    assert state["summary"] == ""
-    assert state["cleared_through_seq"] == 6
-    assert memory.get_compacted_context()["recent_messages"] == []
+    state = store.read_state()
+    assert state["summary"] == "" and state["cleared_through_seq"] == 6
+    assert build_context(store) == []

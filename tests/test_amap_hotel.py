@@ -1,44 +1,18 @@
-"""Provider boundary: real response parsing, with only the external HTTP call replaced."""
-
 import importlib
 import importlib.util
 
 import pytest
 import requests
+from support.amap_hotel import Response, poi
 
 
 def modules():
-    assert importlib.util.find_spec("travel_data.amap_hotel") is not None, (
+    assert importlib.util.find_spec("trip_assistant.providers.amap_hotel") is not None, (
         "AMap hotel provider is missing"
     )
-    return importlib.import_module("travel_data.amap_hotel"), importlib.import_module(
-        "travel_data.hotel_places"
+    return importlib.import_module("trip_assistant.providers.amap_hotel"), importlib.import_module(
+        "trip_assistant.providers.hotel_places"
     )
-
-
-class Response:
-    def __init__(self, data):
-        self.data = data
-
-    def raise_for_status(self):
-        pass
-
-    def json(self):
-        return self.data
-
-
-def poi(index=1):
-    return {
-        "id": f"B{index}",
-        "name": f"汉庭酒店{index}",
-        "typecode": "100100",
-        "address": f"示例路{index}号",
-        "cityname": "上海市",
-        "adname": "闵行区",
-        "location": "121.400000,31.200000",
-        "business": {"rating": "4.5", "tel": "021-12345678", "cost": "350"},
-        "photos": [{"title": "外观", "url": "https://example.com/hotel.jpg"}],
-    }
 
 
 @pytest.mark.asyncio
@@ -156,7 +130,7 @@ async def test_optional_fields_can_be_missing_and_bad_locations_are_not_candidat
 
 def test_settings_reads_amap_key_without_exposing_it_in_repr(monkeypatch):
     monkeypatch.setenv("AMAP_API_KEY", "test-secret")
-    from config import Settings
+    from trip_assistant.settings import Settings
 
     settings = Settings(_env_file=None)
     assert getattr(settings, "amap_api_key", None) == "test-secret"

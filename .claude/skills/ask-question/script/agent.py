@@ -16,31 +16,33 @@ RAG知识库智能体 RAGKnowledgeAgent
 安装：
 pip install milvus sentence-transformers
 """
-from context.context_budget import ContextBudgetExceeded
-from agents.runtime import AgentBase
-from agents.runtime import Msg
-from typing import Optional, Union, List, Dict
+
 import json
 import logging
 import os
-from pathlib import Path
 
 # Add project root to sys.path
 import sys
+from pathlib import Path
+
+from trip_assistant.llm.budget import ContextBudgetExceeded
+from trip_assistant.llm.messages import Msg
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
 
-_GRPC_MAX_MS = '2147483647'  # gRPC 使用的 int32 上限，约 24.8 天
-os.environ['GRPC_KEEPALIVE_TIME_MS'] = _GRPC_MAX_MS
-os.environ['GRPC_KEEPALIVE_TIMEOUT_MS'] = '20000'
-os.environ['GRPC_KEEPALIVE_PERMIT_WITHOUT_CALLS'] = '0'
-os.environ['GRPC_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS'] = _GRPC_MAX_MS
-os.environ['GRPC_HTTP2_MIN_PING_INTERVAL_WITHOUT_DATA_MS'] = _GRPC_MAX_MS
+_GRPC_MAX_MS = "2147483647"  # gRPC 使用的 int32 上限，约 24.8 天
+os.environ["GRPC_KEEPALIVE_TIME_MS"] = _GRPC_MAX_MS
+os.environ["GRPC_KEEPALIVE_TIMEOUT_MS"] = "20000"
+os.environ["GRPC_KEEPALIVE_PERMIT_WITHOUT_CALLS"] = "0"
+os.environ["GRPC_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS"] = _GRPC_MAX_MS
+os.environ["GRPC_HTTP2_MIN_PING_INTERVAL_WITHOUT_DATA_MS"] = _GRPC_MAX_MS
 
 logger = logging.getLogger(__name__)
 
 try:
-    from pymilvus import MilvusClient, DataType
+    from pymilvus import MilvusClient
     from sentence_transformers import SentenceTransformer
+
     DEPENDENCIES_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"RAG dependencies not available: {e}")
@@ -48,7 +50,7 @@ except ImportError as e:
     DEPENDENCIES_AVAILABLE = False
 
 
-class RAGKnowledgeAgent(AgentBase):
+class RAGKnowledgeAgent:
     """RAG知识库智能体"""
 
     def __init__(
@@ -60,9 +62,8 @@ class RAGKnowledgeAgent(AgentBase):
         embedding_model: str = "BAAI/bge-small-zh-v1.5",
         top_k: int = 3,
         rag_service=None,
-        **kwargs
+        **kwargs,
     ):
-        super().__init__()
         self.name = name
         self.model = model
         self.rag_service = rag_service
@@ -82,18 +83,23 @@ class RAGKnowledgeAgent(AgentBase):
         self.knowledge_base_path = Path(knowledge_base_path)
         self.collection_name = collection_name
         self.top_k = top_k
-        from utils.skill_loader import SkillLoader
+        from trip_assistant.providers.resources import SkillLoader
+
         self.skill_loader = SkillLoader()
 
         if not DEPENDENCIES_AVAILABLE:
-            logger.error("RAG dependencies not installed. Install with: pip install pymilvus sentence-transformers")
+            logger.error(
+                "RAG dependencies not installed. Install with: "
+                "pip install pymilvus sentence-transformers"
+            )
             self.initialized = False
             return
 
         # 优先使用 config 中的配置（支持本地路径，避免连 HuggingFace）
         try:
-            from config import RAG_CONFIG
-            embedding_model = RAG_CONFIG.get("embedding_model", embedding_model)
+            from trip_assistant.settings import get_settings
+
+            embedding_model = get_settings().rag_embedding_model
         except Exception:
             pass
 
@@ -108,11 +114,30 @@ class RAGKnowledgeAgent(AgentBase):
         else:
             if "/" in embedding_model or "\\" in embedding_model or embedding_model.startswith("."):
                 logger.warning(
-                    f"Configured embedding path does not exist: {embedding_model}，将使用 BAAI/bge-small-zh-v1.5 并尝试联网下载。"
+                    f"Configured embedding path does not exist: {embedding_model}，"
+                    "将使用 BAAI/bge-small-zh-v1.5 并尝试联网下载。"
                 )
                 model_path_or_id = "BAAI/bge-small-zh-v1.5"
         logger.info(f"Loading embedding model: {model_path_or_id}")
-        self.embedding_model = SentenceTransformer(model_path_or_id)
+        from huggingface_hub.utils import (
+            are_progress_bars_disabled,
+            disable_progress_bars,
+            enable_progress_bars,
+        )
+
+        quiet = are_progress_bars_disabled()
+        from transformers.utils import logging as model_logging
+
+        model_progress = model_logging.is_progress_bar_enabled()
+        model_logging.disable_progress_bar()
+        disable_progress_bars()
+        try:
+            self.embedding_model = SentenceTransformer(model_path_or_id)
+        finally:
+            if not quiet:
+                enable_progress_bars()
+            if model_progress:
+                model_logging.enable_progress_bar()
         self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
 
         # Windows 使用 Milvus Lite 3 的目录格式；保留旧版 .db 文件。
@@ -123,7 +148,16 @@ class RAGKnowledgeAgent(AgentBase):
         milvus_db_path = str((db_root / db_name).resolve())
         logger.info(f"Initializing Milvus Lite at: {milvus_db_path}")
 
-        self.milvus_client = MilvusClient(milvus_db_path, grpc_options={"keepalive_time": _GRPC_MAX_MS, "keepalive_timeout": "20000", "keepalive_permit_without_calls": "0", "http2_min_recv_ping_interval_without_data": _GRPC_MAX_MS, "http2_min_ping_interval_without_data": _GRPC_MAX_MS})
+        self.milvus_client = MilvusClient(
+            milvus_db_path,
+            grpc_options={
+                "keepalive_time": _GRPC_MAX_MS,
+                "keepalive_timeout": "20000",
+                "keepalive_permit_without_calls": "0",
+                "http2_min_recv_ping_interval_without_data": _GRPC_MAX_MS,
+                "http2_min_ping_interval_without_data": _GRPC_MAX_MS,
+            },
+        )
         self._client_created_at = None  # 用于追踪客户端创建时间
 
         # 检查collection是否存在
@@ -153,10 +187,10 @@ class RAGKnowledgeAgent(AgentBase):
             logger.warning(f"Milvus connection issue detected: {e}, reconnecting...")
             try:
                 # 关闭旧连接
-                if hasattr(self.milvus_client, 'close'):
+                if hasattr(self.milvus_client, "close"):
                     try:
                         self.milvus_client.close()
-                    except:
+                    except Exception:
                         pass
 
                 # 重新创建客户端
@@ -166,7 +200,7 @@ class RAGKnowledgeAgent(AgentBase):
                 logger.error(f"Failed to reconnect Milvus: {reconnect_error}")
                 raise
 
-    def add_documents(self, documents: List[Dict[str, str]]) -> Dict:
+    def add_documents(self, documents: list[dict[str, str]]) -> dict:
         """
         添加文档到知识库
 
@@ -192,42 +226,39 @@ class RAGKnowledgeAgent(AgentBase):
             for i, doc in enumerate(documents):
                 # Milvus 要求 id 必须是 int64
                 doc_id = current_count + i + 1
-                content = doc['content']
-                metadata = doc.get('metadata', {})
+                content = doc["content"]
+                metadata = doc.get("metadata", {})
 
                 # 生成向量
-                embedding = self.embedding_model.encode(content).tolist()
+                embedding = self.embedding_model.encode(content, show_progress_bar=False).tolist()
 
                 # Milvus 数据格式
-                data_to_insert.append({
-                    "id": doc_id,
-                    "vector": embedding,
-                    "content": content,
-                    "metadata": json.dumps(metadata, ensure_ascii=False)  # 将metadata转为JSON字符串
-                })
+                data_to_insert.append(
+                    {
+                        "id": doc_id,
+                        "vector": embedding,
+                        "content": content,
+                        "metadata": json.dumps(
+                            metadata, ensure_ascii=False
+                        ),  # 将metadata转为JSON字符串
+                    }
+                )
 
             # 批量插入到 Milvus
-            self.milvus_client.insert(
-                collection_name=self.collection_name,
-                data=data_to_insert
-            )
+            self.milvus_client.insert(collection_name=self.collection_name, data=data_to_insert)
 
             # 获取总数
             stats = self.milvus_client.get_collection_stats(self.collection_name)
             total_count = stats.get("row_count", len(documents))
 
             logger.info(f"Successfully added {len(documents)} documents to knowledge base")
-            return {
-                "status": "success",
-                "added_count": len(documents),
-                "total_count": total_count
-            }
+            return {"status": "success", "added_count": len(documents), "total_count": total_count}
 
         except Exception as e:
             logger.error(f"Error adding documents: {e}")
             return {"status": "error", "message": str(e)}
 
-    def search_knowledge(self, query: str, top_k: Optional[int] = None) -> List[Dict]:
+    def search_knowledge(self, query: str, top_k: int | None = None) -> list[dict]:
         """
         检索知识库
 
@@ -248,7 +279,7 @@ class RAGKnowledgeAgent(AgentBase):
             k = top_k or self.top_k
 
             # 生成查询向量
-            query_embedding = self.embedding_model.encode(query).tolist()
+            query_embedding = self.embedding_model.encode(query, show_progress_bar=False).tolist()
 
             # 已存在的集合在重新连接后可能处于 released 状态。
             self.milvus_client.load_collection(self.collection_name)
@@ -258,7 +289,7 @@ class RAGKnowledgeAgent(AgentBase):
                 collection_name=self.collection_name,
                 data=[query_embedding],
                 limit=k,
-                output_fields=["id", "content", "metadata"]
+                output_fields=["id", "content", "metadata"],
             )
 
             # 格式化结果
@@ -269,15 +300,17 @@ class RAGKnowledgeAgent(AgentBase):
                     metadata_str = hit.get("entity", {}).get("metadata", "{}")
                     try:
                         metadata = json.loads(metadata_str)
-                    except:
+                    except Exception:
                         metadata = {}
 
-                    retrieved_docs.append({
-                        'id': hit.get("entity", {}).get("id", ""),
-                        'content': hit.get("entity", {}).get("content", ""),
-                        'metadata': metadata,
-                        'distance': hit.get("distance", 0.0)
-                    })
+                    retrieved_docs.append(
+                        {
+                            "id": hit.get("entity", {}).get("id", ""),
+                            "content": hit.get("entity", {}).get("content", ""),
+                            "metadata": metadata,
+                            "distance": hit.get("distance", 0.0),
+                        }
+                    )
 
             logger.info(f"Retrieved {len(retrieved_docs)} documents for query: {query[:50]}")
             return retrieved_docs
@@ -287,7 +320,7 @@ class RAGKnowledgeAgent(AgentBase):
             logger.error(f"Error searching knowledge: {e}")
             return []
 
-    async def reply(self, x: Optional[Union[Msg, List[Msg]]] = None) -> Msg:
+    async def reply(self, x: Msg | list[Msg] | None = None) -> Msg:
         """
         RAG问答主流程
         1. 接收用户查询
@@ -297,11 +330,16 @@ class RAGKnowledgeAgent(AgentBase):
         if not self.initialized:
             return Msg(
                 name=self.name,
-                content=json.dumps({
-                    "status": "error",
-                    "message": "RAG Agent not initialized. Please install dependencies: pip install pymilvus sentence-transformers"
-                }),
-                role="assistant"
+                content=json.dumps(
+                    {
+                        "status": "error",
+                        "message": (
+                            "RAG Agent not initialized. Please install dependencies: "
+                            "pip install pymilvus sentence-transformers"
+                        ),
+                    }
+                ),
+                role="assistant",
             )
 
         if x is None:
@@ -315,7 +353,7 @@ class RAGKnowledgeAgent(AgentBase):
 
         # 尝试解析 JSON 输入 (来自 Orchestrator)
         user_query = content
-        if isinstance(content, str) and content.strip().startswith('{'):
+        if isinstance(content, str) and content.strip().startswith("{"):
             try:
                 data = json.loads(content)
                 # 只要解析成功，就认为 content 是结构化数据，尝试提取 query
@@ -327,7 +365,7 @@ class RAGKnowledgeAgent(AgentBase):
 
                 # 使用提取到的 query（即使为空，也比 JSON 字符串好）
                 user_query = extracted_query
-            except:
+            except Exception:
                 pass  # 解析失败则保留原字符串
 
         if self.rag_service is not None:
@@ -358,20 +396,23 @@ class RAGKnowledgeAgent(AgentBase):
                     "query": user_query,
                     "retrieved_documents": [],
                 }
-                return Msg(name=self.name, content=json.dumps(result, ensure_ascii=False), role="assistant")
+                return Msg(
+                    name=self.name, content=json.dumps(result, ensure_ascii=False), role="assistant"
+                )
             result = {
                 "status": "no_knowledge",
                 "query": user_query,
                 "answer": "抱歉，我在知识库中没有找到相关信息。",
-                "retrieved_documents": []
+                "retrieved_documents": [],
             }
-            return Msg(name=self.name, content=json.dumps(result, ensure_ascii=False), role="assistant")
+            return Msg(
+                name=self.name, content=json.dumps(result, ensure_ascii=False), role="assistant"
+            )
 
         # 构建知识上下文
-        knowledge_context = "\n\n".join([
-            f"【知识片段{i+1}】\n{doc['content']}"
-            for i, doc in enumerate(retrieved_docs)
-        ])
+        knowledge_context = "\n\n".join(
+            [f"【知识片段{i + 1}】\n{doc['content']}" for i, doc in enumerate(retrieved_docs)]
+        )
 
         # 如果有LLM，使用LLM生成答案
         if self.model:
@@ -392,7 +433,8 @@ class RAGKnowledgeAgent(AgentBase):
 {skill_instruction}
 
 【重要约束】
-1. 如果【知识库信息】中没有包含回答用户问题所需的信息，请直接回答“抱歉，知识库中没有找到相关信息”，不要尝试根据你自己的知识编造答案。
+1. 如果【知识库信息】中没有包含回答用户问题所需的信息，请直接回答“抱歉，知识库中没有找到相关信息”。
+不要尝试根据你自己的知识编造答案。
 2. 即使问题很基础，如果知识库里没写，就说不知道。
 3. 请以专业、客观的语气回答。
 """
@@ -401,30 +443,30 @@ class RAGKnowledgeAgent(AgentBase):
                 # 调用LLM生成答案
                 messages = [
                     {"role": "system", "content": "你是一个商旅知识专家。"},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ]
                 response = await self.model(messages)
 
                 # 获取响应内容 - 处理异步生成器
                 answer = ""
-                if hasattr(response, '__aiter__'):
+                if hasattr(response, "__aiter__"):
                     # 异步生成器，需要迭代获取内容
                     async for chunk in response:
                         if isinstance(chunk, str):
                             answer = chunk
-                        elif hasattr(chunk, 'content'):
+                        elif hasattr(chunk, "content"):
                             if isinstance(chunk.content, str):
                                 answer = chunk.content
                             elif isinstance(chunk.content, list):
                                 for item in chunk.content:
-                                    if isinstance(item, dict) and item.get('type') == 'text':
-                                        answer = item.get('text', '')
-                elif hasattr(response, 'text'):
+                                    if isinstance(item, dict) and item.get("type") == "text":
+                                        answer = item.get("text", "")
+                elif hasattr(response, "text"):
                     answer = response.text
-                elif hasattr(response, 'content'):
+                elif hasattr(response, "content"):
                     answer = response.content
-                elif isinstance(response, dict) and 'content' in response:
-                    answer = response['content']
+                elif isinstance(response, dict) and "content" in response:
+                    answer = response["content"]
                 else:
                     answer = str(response) if response else "无法生成答案"
 
@@ -439,7 +481,7 @@ class RAGKnowledgeAgent(AgentBase):
                         # 如果 LLM 输出了 {"answer": "..."} 或 {"content": "..."}
                         if isinstance(json_obj, dict):
                             answer = json_obj.get("answer") or json_obj.get("content") or answer
-                    except:
+                    except Exception:
                         pass
 
             except ContextBudgetExceeded:
@@ -456,17 +498,13 @@ class RAGKnowledgeAgent(AgentBase):
             "query": user_query,
             "answer": answer,
             "retrieved_documents": [
-                {
-                    "content": doc['content'],
-                    "metadata": doc['metadata']
-                }
-                for doc in retrieved_docs
-            ]
+                {"content": doc["content"], "metadata": doc["metadata"]} for doc in retrieved_docs
+            ],
         }
 
         return Msg(name=self.name, content=json.dumps(result, ensure_ascii=False), role="assistant")
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """获取知识库统计信息"""
         if not self.initialized:
             return {"status": "error", "message": "Not initialized"}
@@ -479,16 +517,16 @@ class RAGKnowledgeAgent(AgentBase):
                 "status": "success",
                 "collection_name": self.collection_name,
                 "total_documents": stats.get("row_count", 0),
-                "knowledge_base_path": str(self.knowledge_base_path)
+                "knowledge_base_path": str(self.knowledge_base_path),
             }
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
     def close(self):
         """关闭 Milvus 连接"""
-        if hasattr(self, 'milvus_client'):
+        if hasattr(self, "milvus_client"):
             try:
-                if hasattr(self.milvus_client, 'close'):
+                if hasattr(self.milvus_client, "close"):
                     self.milvus_client.close()
                     logger.info("Milvus client closed successfully")
             except Exception as e:
