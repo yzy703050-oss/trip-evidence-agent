@@ -1,0 +1,185 @@
+<svg class="rich-terminal" viewBox="0 0 994 830.8" xmlns="http://www.w3.org/2000/svg">
+    <!-- Generated with Rich https://www.textualize.io -->
+    <style>
+
+    @font-face {
+        font-family: "Fira Code";
+        src: local("FiraCode-Regular"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff2/FiraCode-Regular.woff2") format("woff2"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff/FiraCode-Regular.woff") format("woff");
+        font-style: normal;
+        font-weight: 400;
+    }
+    @font-face {
+        font-family: "Fira Code";
+        src: local("FiraCode-Bold"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff2/FiraCode-Bold.woff2") format("woff2"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff/FiraCode-Bold.woff") format("woff");
+        font-style: bold;
+        font-weight: 700;
+    }
+
+    .terminal-2412776329-matrix {
+        font-family: Fira Code, monospace;
+        font-size: 20px;
+        line-height: 24.4px;
+        font-variant-east-asian: full-width;
+    }
+
+    .terminal-2412776329-title {
+        font-size: 18px;
+        font-weight: bold;
+        font-family: arial;
+    }
+
+    .terminal-2412776329-r1 { fill: #68a0b3;font-weight: bold }
+.terminal-2412776329-r2 { fill: #c5c8c6 }
+.terminal-2412776329-r3 { fill: #d0b344 }
+.terminal-2412776329-r4 { fill: #c5c8c6;font-weight: bold }
+    </style>
+
+    <defs>
+    <clipPath id="terminal-2412776329-clip-terminal">
+      <rect x="0" y="0" width="975.0" height="779.8" />
+    </clipPath>
+    <clipPath id="terminal-2412776329-line-0">
+    <rect x="0" y="1.5" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-1">
+    <rect x="0" y="25.9" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-2">
+    <rect x="0" y="50.3" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-3">
+    <rect x="0" y="74.7" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-4">
+    <rect x="0" y="99.1" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-5">
+    <rect x="0" y="123.5" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-6">
+    <rect x="0" y="147.9" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-7">
+    <rect x="0" y="172.3" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-8">
+    <rect x="0" y="196.7" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-9">
+    <rect x="0" y="221.1" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-10">
+    <rect x="0" y="245.5" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-11">
+    <rect x="0" y="269.9" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-12">
+    <rect x="0" y="294.3" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-13">
+    <rect x="0" y="318.7" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-14">
+    <rect x="0" y="343.1" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-15">
+    <rect x="0" y="367.5" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-16">
+    <rect x="0" y="391.9" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-17">
+    <rect x="0" y="416.3" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-18">
+    <rect x="0" y="440.7" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-19">
+    <rect x="0" y="465.1" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-20">
+    <rect x="0" y="489.5" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-21">
+    <rect x="0" y="513.9" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-22">
+    <rect x="0" y="538.3" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-23">
+    <rect x="0" y="562.7" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-24">
+    <rect x="0" y="587.1" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-25">
+    <rect x="0" y="611.5" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-26">
+    <rect x="0" y="635.9" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-27">
+    <rect x="0" y="660.3" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-28">
+    <rect x="0" y="684.7" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-29">
+    <rect x="0" y="709.1" width="976" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2412776329-line-30">
+    <rect x="0" y="733.5" width="976" height="24.65"/>
+            </clipPath>
+    </defs>
+
+    <rect fill="#292929" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="992" height="828.8" rx="8"/><text class="terminal-2412776329-title" fill="#c5c8c6" text-anchor="middle" x="496" y="27">Trip&#160;Evidence&#160;Agent&#160;v1</text>
+            <g transform="translate(26,22)">
+            <circle cx="0" cy="0" r="7" fill="#ff5f57"/>
+            <circle cx="22" cy="0" r="7" fill="#febc2e"/>
+            <circle cx="44" cy="0" r="7" fill="#28c840"/>
+            </g>
+        
+    <g transform="translate(9, 41)" clip-path="url(#terminal-2412776329-clip-terminal)">
+    
+    <g class="terminal-2412776329-matrix">
+    <text class="terminal-2412776329-r1" x="0" y="20" textLength="134.2" clip-path="url(#terminal-2412776329-line-0)">行程有据&#160;—&#160;差旅助手</text><text class="terminal-2412776329-r2" x="976" y="20" textLength="12.2" clip-path="url(#terminal-2412776329-line-0)">
+</text><text class="terminal-2412776329-r3" x="0" y="44.4" textLength="536.8" clip-path="url(#terminal-2412776329-line-1)">v1&#160;·&#160;CLI&#160;output&#160;replay&#160;·&#160;simulated&#160;suppliers</text><text class="terminal-2412776329-r2" x="976" y="44.4" textLength="12.2" clip-path="url(#terminal-2412776329-line-1)">
+</text><text class="terminal-2412776329-r2" x="976" y="68.8" textLength="12.2" clip-path="url(#terminal-2412776329-line-2)">
+</text><text class="terminal-2412776329-r4" x="0" y="93.2" textLength="378.2" clip-path="url(#terminal-2412776329-line-3)">用户：后天想在上海从上午开始玩，帮我安排从重庆过去的旅游行程。</text><text class="terminal-2412776329-r2" x="976" y="93.2" textLength="12.2" clip-path="url(#terminal-2412776329-line-3)">
+</text><text class="terminal-2412776329-r2" x="976" y="117.6" textLength="12.2" clip-path="url(#terminal-2412776329-line-4)">
+</text><text class="terminal-2412776329-r2" x="0" y="142" textLength="97.6" clip-path="url(#terminal-2412776329-line-5)">已保存以下安排：</text><text class="terminal-2412776329-r2" x="976" y="142" textLength="12.2" clip-path="url(#terminal-2412776329-line-5)">
+</text><text class="terminal-2412776329-r2" x="976" y="166.4" textLength="12.2" clip-path="url(#terminal-2412776329-line-6)">
+</text><text class="terminal-2412776329-r2" x="0" y="190.8" textLength="73.2" clip-path="url(#terminal-2412776329-line-7)">重庆→上海：</text><text class="terminal-2412776329-r2" x="976" y="190.8" textLength="12.2" clip-path="url(#terminal-2412776329-line-7)">
+</text><text class="terminal-2412776329-r2" x="0" y="215.2" textLength="646.6" clip-path="url(#terminal-2412776329-line-8)">G9001，2026-10-20&#160;07:20出发，2026-10-20&#160;14:20抵达，二等座，200元。</text><text class="terminal-2412776329-r2" x="976" y="215.2" textLength="12.2" clip-path="url(#terminal-2412776329-line-8)">
+</text><text class="terminal-2412776329-r2" x="0" y="239.6" textLength="610" clip-path="url(#terminal-2412776329-line-9)">住宿：全季（上海模拟候选1），2026-10-20入住、2026-10-23退房；房价与房态未核实。</text><text class="terminal-2412776329-r2" x="976" y="239.6" textLength="12.2" clip-path="url(#terminal-2412776329-line-9)">
+</text><text class="terminal-2412776329-r2" x="0" y="264" textLength="207.4" clip-path="url(#terminal-2412776329-line-10)">活动：2026-10-21&#160;上午&#160;</text><text class="terminal-2412776329-r2" x="976" y="264" textLength="12.2" clip-path="url(#terminal-2412776329-line-10)">
+</text><text class="terminal-2412776329-r2" x="0" y="288.4" textLength="488" clip-path="url(#terminal-2412776329-line-11)">外滩与南京路步行街游览；上午从外滩沿江观景，随后逛南京路步行街，感受上海城市风貌</text><text class="terminal-2412776329-r2" x="976" y="288.4" textLength="12.2" clip-path="url(#terminal-2412776329-line-11)">
+</text><text class="terminal-2412776329-r2" x="0" y="312.8" textLength="12.2" clip-path="url(#terminal-2412776329-line-12)">。</text><text class="terminal-2412776329-r2" x="976" y="312.8" textLength="12.2" clip-path="url(#terminal-2412776329-line-12)">
+</text><text class="terminal-2412776329-r2" x="0" y="337.2" textLength="207.4" clip-path="url(#terminal-2412776329-line-13)">活动：2026-10-21&#160;下午&#160;</text><text class="terminal-2412776329-r2" x="976" y="337.2" textLength="12.2" clip-path="url(#terminal-2412776329-line-13)">
+</text><text class="terminal-2412776329-r2" x="0" y="361.6" textLength="390.4" clip-path="url(#terminal-2412776329-line-14)">豫园与城隍庙游览；下午前往豫园及城隍庙一带，看园林与老城厢街市。</text><text class="terminal-2412776329-r2" x="976" y="361.6" textLength="12.2" clip-path="url(#terminal-2412776329-line-14)">
+</text><text class="terminal-2412776329-r2" x="0" y="386" textLength="207.4" clip-path="url(#terminal-2412776329-line-15)">活动：2026-10-21&#160;晚上&#160;</text><text class="terminal-2412776329-r2" x="976" y="386" textLength="12.2" clip-path="url(#terminal-2412776329-line-15)">
+</text><text class="terminal-2412776329-r2" x="0" y="410.4" textLength="366" clip-path="url(#terminal-2412776329-line-16)">陆家嘴夜景；晚上到陆家嘴滨江看夜景，可远观东方明珠与三件套。</text><text class="terminal-2412776329-r2" x="976" y="410.4" textLength="12.2" clip-path="url(#terminal-2412776329-line-16)">
+</text><text class="terminal-2412776329-r2" x="0" y="434.8" textLength="207.4" clip-path="url(#terminal-2412776329-line-17)">活动：2026-10-22&#160;上午&#160;</text><text class="terminal-2412776329-r2" x="976" y="434.8" textLength="12.2" clip-path="url(#terminal-2412776329-line-17)">
+</text><text class="terminal-2412776329-r2" x="0" y="459.2" textLength="463.6" clip-path="url(#terminal-2412776329-line-18)">武康路与衡山路一带漫步；上午在武康路、衡山路一带看老洋房街区，适合慢走拍照。</text><text class="terminal-2412776329-r2" x="976" y="459.2" textLength="12.2" clip-path="url(#terminal-2412776329-line-18)">
+</text><text class="terminal-2412776329-r2" x="0" y="483.6" textLength="207.4" clip-path="url(#terminal-2412776329-line-19)">活动：2026-10-22&#160;下午&#160;</text><text class="terminal-2412776329-r2" x="976" y="483.6" textLength="12.2" clip-path="url(#terminal-2412776329-line-19)">
+</text><text class="terminal-2412776329-r2" x="0" y="508" textLength="414.8" clip-path="url(#terminal-2412776329-line-20)">新天地与田子坊游览；下午逛新天地、田子坊，体验石库门街区与休闲商业。</text><text class="terminal-2412776329-r2" x="976" y="508" textLength="12.2" clip-path="url(#terminal-2412776329-line-20)">
+</text><text class="terminal-2412776329-r2" x="0" y="532.4" textLength="207.4" clip-path="url(#terminal-2412776329-line-21)">活动：2026-10-23&#160;上午&#160;</text><text class="terminal-2412776329-r2" x="976" y="532.4" textLength="12.2" clip-path="url(#terminal-2412776329-line-21)">
+</text><text class="terminal-2412776329-r2" x="0" y="556.8" textLength="488" clip-path="url(#terminal-2412776329-line-22)">上海博物馆或滨江休闲；上午可参观上海博物馆（需留意开放与预约规则），或沿徐汇滨江</text><text class="terminal-2412776329-r2" x="976" y="556.8" textLength="12.2" clip-path="url(#terminal-2412776329-line-22)">
+</text><text class="terminal-2412776329-r2" x="0" y="581.2" textLength="36.6" clip-path="url(#terminal-2412776329-line-23)">散步。</text><text class="terminal-2412776329-r2" x="976" y="581.2" textLength="12.2" clip-path="url(#terminal-2412776329-line-23)">
+</text><text class="terminal-2412776329-r2" x="976" y="605.6" textLength="12.2" clip-path="url(#terminal-2412776329-line-24)">
+</text><text class="terminal-2412776329-r2" x="0" y="630" textLength="73.2" clip-path="url(#terminal-2412776329-line-25)">上海→重庆：</text><text class="terminal-2412776329-r2" x="976" y="630" textLength="12.2" clip-path="url(#terminal-2412776329-line-25)">
+</text><text class="terminal-2412776329-r2" x="0" y="654.4" textLength="646.6" clip-path="url(#terminal-2412776329-line-26)">G9008，2026-10-23&#160;16:20出发，2026-10-23&#160;23:20抵达，二等座，410元。</text><text class="terminal-2412776329-r2" x="976" y="654.4" textLength="12.2" clip-path="url(#terminal-2412776329-line-26)">
+</text><text class="terminal-2412776329-r2" x="976" y="678.8" textLength="12.2" clip-path="url(#terminal-2412776329-line-27)">
+</text><text class="terminal-2412776329-r2" x="0" y="703.2" textLength="195.2" clip-path="url(#terminal-2412776329-line-28)">交通小计：610元（不含住宿）。</text><text class="terminal-2412776329-r2" x="976" y="703.2" textLength="12.2" clip-path="url(#terminal-2412776329-line-28)">
+</text><text class="terminal-2412776329-r2" x="976" y="727.6" textLength="12.2" clip-path="url(#terminal-2412776329-line-29)">
+</text><text class="terminal-2412776329-r2" x="0" y="752" textLength="488" clip-path="url(#terminal-2412776329-line-30)">去程选早班车，下午抵沪后入住，次日起按上午、下午、晚上分段游览；返程安排在末日下</text><text class="terminal-2412776329-r2" x="976" y="752" textLength="12.2" clip-path="url(#terminal-2412776329-line-30)">
+</text><text class="terminal-2412776329-r2" x="0" y="776.4" textLength="378.2" clip-path="url(#terminal-2412776329-line-31)">午，上午活动结束后从容出发。酒店仅确定地点，房价与空房未核实。</text><text class="terminal-2412776329-r2" x="976" y="776.4" textLength="12.2" clip-path="url(#terminal-2412776329-line-31)">
+</text>
+    </g>
+    </g>
+</svg>

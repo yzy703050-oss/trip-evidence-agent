@@ -1,0 +1,591 @@
+"""Deterministic route feasibility and sourced display reconstruction."""
+
+import hashlib
+import json
+from copy import deepcopy
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+
+from trip_assistant.providers.budget import build_budget
+from trip_assistant.providers.plan_guard import _offer
+from trip_assistant.trips.activities import activity_issues
+from trip_assistant.trips.conditions import effective_conditions, task_by_id
+from trip_assistant.trips.evidence import resolve_selection
+from trip_assistant.trips.strengths import condition_is_hard, global_is_hard, hard_constraints
+
+
+def state_signature(workflow):
+    payload = {
+        "conditions": workflow["confirmed_conditions"],
+        "condition_strengths": workflow.get("condition_strengths", {}),
+        "tasks": [
+            {
+                k: t.get(k)
+                for k in (
+                    "id",
+                    "revision",
+                    "origin",
+                    "destination",
+                    "purpose",
+                    "content",
+                    "requires_hotel",
+                    "conditions",
+                    "condition_strengths",
+                    "draft_plan",
+                    "rejected_candidates",
+                    "update_scope",
+                )
+            }
+            for t in workflow["tasks"]
+        ],
+        "queries": workflow["results_by_query"],
+        "policy": workflow.get("policy_context"),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
+
+
+def issue(code, ids, message, *, blocking=True, evidence=None):
+    return dict(code=code, task_ids=ids, blocking=blocking, message=message, evidence=evidence)
+
+
+def check_task(workflow, task_id, draft):
+    task = task_by_id(workflow, task_id)
+    issues = []
+
+    def add(code, message, **kwargs):
+        issues.append(issue(code, [task_id], message, **kwargs))
+
+    effective, _ = effective_conditions(workflow["confirmed_conditions"], task["conditions"], {})
+    constraints = hard_constraints(workflow, task, effective)
+    plan = {
+        "task_id": task_id,
+        "task_revision": task["revision"],
+        "origin": task["origin"],
+        "destination": task["destination"],
+        "purpose": task.get("purpose", "unspecified"),
+        "content": deepcopy(task.get("content", [])),
+        "train": None,
+        "hotel": None,
+        "schedule": dict(
+            departure_at=None,
+            arrival_at=None,
+            check_in=None,
+            check_out=None,
+            next_departure_not_before=None,
+        ),
+    }
+    if draft is None:
+        add("selection_not_ready", "查询草稿尚未选择方案。")
+        return dict(valid=False, issues=issues, reconstructed_plan=plan)
+    if not isinstance(draft, dict) or set(draft) - {
+        "task_revision",
+        "train_selection",
+        "hotel_selection",
+        "schedule",
+        "unverified_requirements",
+    }:
+        add("invalid_draft", "草稿包含不支持的字段。")
+        return dict(valid=False, issues=issues, reconstructed_plan=plan)
+    if draft.get("task_revision") != task["revision"]:
+        add("stale_draft", "草稿不属于当前任务版本。")
+    schedule = draft.get("schedule") or {}
+    if not isinstance(schedule, dict) or set(schedule) - set(plan["schedule"]):
+        add("invalid_schedule", "时间安排包含不支持的字段。")
+        schedule = {}
+    for domain in ("train", "hotel"):
+        selection = draft.get(f"{domain}_selection")
+        if domain not in task.get("update_scope", ["train", "hotel"]) and selection != (
+            task.get("draft_plan") or {}
+        ).get(domain + "_selection"):
+            add("preserved_component_changed", "局部修改不能替换未授权的其他安排。")
+        if domain == "hotel" and not task["requires_hotel"]:
+            if selection is not None:
+                add("unexpected_hotel", "返程任务不能增加酒店。")
+            continue
+        if not selection:
+            add(f"{domain}_selection_missing", f"当前段尚无已核实的{domain}候选选择。")
+            continue
+        try:
+            row = workflow["results_by_query"][selection["query_id"]]
+            if row["domain"] != domain or row["status"] not in {"ok", "partial"}:
+                raise ValueError("wrong domain or status")
+            if row.get("needs_revalidation"):
+                add("evidence_needs_revalidation", "报价或库存刷新未完成，旧事实不能作为最新保证。")
+            item = resolve_selection(workflow, task_id, task["revision"], selection)
+            item = _offer(item, domain).to_dict()
+            parameters = row["parameters"]
+            if domain == "train":
+                if (
+                    parameters.get("origin") != task["origin"]
+                    or parameters.get("destination") != task["destination"]
+                ):
+                    raise ValueError("train route mismatch")
+                if parameters.get("passengers", 1) != effective["passengers"]:
+                    raise ValueError("train party mismatch")
+                fixed_date = task["conditions"].get("departure_date")
+                queried_date = (
+                    parameters.get("departure_date") or (item.get("departure_at") or "")[:10]
+                )
+                if fixed_date and queried_date != fixed_date:
+                    raise ValueError("train date mismatch")
+                departure = item.get("departure_at")
+                if (
+                    not departure
+                    and parameters.get("departure_date")
+                    and item.get("departure_time")
+                ):
+                    departure = (
+                        parameters["departure_date"] + "T" + item["departure_time"] + ":00+08:00"
+                    )
+                if departure and (
+                    (
+                        parameters.get("departure_date")
+                        and datetime.fromisoformat(departure).date().isoformat()
+                        != parameters["departure_date"]
+                    )
+                    or datetime.fromisoformat(departure).strftime("%H:%M") != item["departure_time"]
+                ):
+                    raise ValueError("departure evidence mismatch")
+                arrival = item.get("arrival_at")
+                if (
+                    arrival
+                    and datetime.fromisoformat(arrival).strftime("%H:%M") != item["arrival_time"]
+                ):
+                    raise ValueError("arrival evidence mismatch")
+                if (
+                    arrival
+                    and effective.get("arrival_date")
+                    and arrival[:10] != effective["arrival_date"]
+                ):
+                    raise ValueError("arrival date constraint mismatch")
+                if (
+                    arrival
+                    and effective.get("arrival_before")
+                    and datetime.fromisoformat(arrival)
+                    > datetime.fromisoformat(effective["arrival_before"])
+                ):
+                    raise ValueError("arrival deadline mismatch")
+                if (
+                    arrival
+                    and departure
+                    and datetime.fromisoformat(arrival) <= datetime.fromisoformat(departure)
+                ):
+                    raise ValueError("invalid train chronology")
+                plan["schedule"].update(departure_at=departure, arrival_at=arrival)
+                if not departure:
+                    add("departure_time_unknown", "火车出发时间未核实。")
+                if not arrival:
+                    add("arrival_time_unknown", "抵达日期未核实，不能保证住宿与下一段衔接。")
+                if item.get("availability") != "available":
+                    add("train_inventory_unknown", "火车余票未确认或不可用。")
+                if (
+                    item.get("remaining") is not None
+                    and item["remaining"] < effective["passengers"]
+                ):
+                    add("train_inventory_insufficient", "余票不足以满足本段人数。")
+                if item.get("price_cny") is None:
+                    add("train_price_unknown", "火车票价未核实。")
+                if (
+                    constraints.get("seat_class")
+                    and item.get("seat_class") != constraints["seat_class"]
+                ):
+                    add("seat_constraint_failed", "席别不符合用户要求。")
+                from trip_assistant.providers.rail_preferences import train_kind
+
+                if (
+                    constraints.get("train_kind")
+                    and train_kind(item.get("train_number")) != constraints["train_kind"]
+                ):
+                    add("train_kind_constraint_failed", "车种不符合用户明确要求。")
+                from trip_assistant.providers.rail_preferences import departure_time_matches
+
+                if not departure_time_matches(item, constraints):
+                    add("departure_time_constraint_failed", "出发时间未满足用户明确要求。")
+                price = (
+                    Decimal(item["price_cny"]) * effective["passengers"]
+                    if item.get("price_cny") is not None
+                    else None
+                )
+                if constraints.get("train_max_total_cny") is not None and (
+                    price is None or price > Decimal(str(constraints["train_max_total_cny"]))
+                ):
+                    add("train_budget_failed", "本段火车费用未满足预算。")
+            else:
+                keywords = effective.get("hotel_keywords")
+                if (
+                    keywords
+                    and condition_is_hard(workflow, task, "hotel_keywords")
+                    and not any(word in item.get("hotel_name", "") for word in keywords.split())
+                ):
+                    add("hotel_keyword_constraint_failed", "住宿候选不符合明确品牌或名称要求。")
+                if parameters.get("city") != task["destination"]:
+                    raise ValueError("hotel city mismatch")
+                if item.get("kind") == "hotel_place":
+                    if item.get("city") and item["city"].removesuffix("市") != task[
+                        "destination"
+                    ].removesuffix("市"):
+                        raise ValueError("hotel place city mismatch")
+                    price_required = bool(
+                        effective.get("hotel_quote_required")
+                        or any(k.startswith("hotel_max_") for k in constraints)
+                        or "total_budget_cny" in constraints
+                    )
+                    add(
+                        "hotel_price_unknown",
+                        "酒店地点不提供房价、空房或入住规则。",
+                        blocking=price_required,
+                    )
+                else:
+                    if item.get("guests") != effective["guests"]:
+                        raise ValueError("hotel party mismatch")
+                    if (
+                        item.get("availability") != "available"
+                        or item.get("fees_included") is not True
+                    ):
+                        add("hotel_inventory_unknown", "酒店报价或可用库存未完整核实。")
+                    amount = (
+                        Decimal(item["stay_total_cny"])
+                        if item.get("stay_total_cny") is not None
+                        else None
+                    )
+                    if amount is None:
+                        add("hotel_price_unknown", "酒店价格未知。")
+                    for k in ("hotel_max_total_cny", "hotel_max_nightly_cny"):
+                        if k in constraints:
+                            nights = (
+                                date.fromisoformat(item["check_out"])
+                                - date.fromisoformat(item["check_in"])
+                            ).days
+                            cost = (
+                                amount / nights
+                                if amount is not None and k.endswith("nightly_cny")
+                                else amount
+                            )
+                            if cost is None or cost > Decimal(str(constraints[k])):
+                                add("hotel_budget_failed", "住宿费用不符合预算。")
+            plan[domain] = {
+                **item,
+                **({"needs_revalidation": True} if row.get("needs_revalidation") else {}),
+            }
+        except (ValueError, KeyError, TypeError, ArithmeticError, AttributeError):
+            add(
+                "invalid_candidate_reference", f"{domain}候选的归属、版本、人数、日期或来源不匹配。"
+            )
+    if task["requires_hotel"]:
+        hotel = plan["hotel"] or {}
+        stay = {k: schedule.get(k) or effective.get(k) for k in ("check_in", "check_out")}
+        if not stay["check_in"] and plan["schedule"].get("arrival_at"):
+            stay["check_in"] = plan["schedule"]["arrival_at"][:10]
+        if stay["check_in"] and not stay["check_out"] and effective.get("nights"):
+            stay["check_out"] = (
+                date.fromisoformat(stay["check_in"]) + timedelta(days=effective["nights"])
+            ).isoformat()
+        for key in ("check_in", "check_out"):
+            fixed = condition_is_hard(workflow, task, key)
+            value = (effective.get(key) or stay.get(key)) if fixed else stay.get(key)
+            if hotel.get("kind") != "hotel_place" and hotel.get(key):
+                if value and value != hotel[key]:
+                    add("hotel_date_mismatch", "住宿安排与报价日期不匹配。")
+                value = hotel[key]
+            if value:
+                try:
+                    plan["schedule"][key] = date.fromisoformat(value).isoformat()
+                except (ValueError, TypeError):
+                    add("invalid_hotel_dates", "住宿日期格式无效。")
+            else:
+                add("hotel_dates_missing", "住宿安排尚缺入住或离店日期。")
+        start, end = plan["schedule"]["check_in"], plan["schedule"]["check_out"]
+        if start and end and start >= end:
+            add("invalid_hotel_dates", "离店日期必须晚于入住日期。")
+        if (
+            start
+            and end
+            and effective.get("nights")
+            and (date.fromisoformat(end) - date.fromisoformat(start)).days != effective["nights"]
+        ):
+            add("stay_nights_mismatch", "住宿晚数与用户要求不一致。")
+        arrival = plan["schedule"]["arrival_at"]
+        if start and arrival and start < datetime.fromisoformat(arrival).date().isoformat():
+            add("hotel_before_arrival", "入住日期早于火车实际抵达日期。")
+        plan["schedule"]["next_departure_not_before"] = end
+    else:
+        plan["schedule"]["next_departure_not_before"] = plan["schedule"]["arrival_at"]
+    return dict(
+        valid=not any(i["blocking"] for i in issues), issues=issues, reconstructed_plan=plan
+    )
+
+
+def check_workflow(workflow):
+    issues, plans, lines, missing = [], [], [], []
+    for index, task in enumerate(workflow["tasks"]):
+        if task["status"] not in {"draft", "validated"}:
+            issues.append(issue("task_not_draft", [task["id"]], "任务尚未形成当前版本草稿。"))
+        checked = check_task(workflow, task["id"], task.get("draft_plan"))
+        issues.extend(checked["issues"])
+        plan = checked["reconstructed_plan"]
+        plans.append(plan)
+        if index:
+            prev = workflow["tasks"][index - 1]
+            if task["origin"] != prev["destination"] or task["depends_on"] != [prev["id"]]:
+                issues.append(
+                    issue(
+                        "route_dependency_mismatch",
+                        [prev["id"], task["id"]],
+                        "路线或任务依赖不连续。",
+                    )
+                )
+            previous = plans[index - 1]["schedule"]
+            depart = plan["schedule"]["departure_at"]
+            if (
+                depart
+                and previous["arrival_at"]
+                and datetime.fromisoformat(depart) < datetime.fromisoformat(previous["arrival_at"])
+            ):
+                issues.append(
+                    issue(
+                        "departure_before_previous_arrival",
+                        [prev["id"], task["id"]],
+                        "下一段在前段抵达之前出发。",
+                    )
+                )
+            if (
+                depart
+                and previous["check_out"]
+                and datetime.fromisoformat(depart).date().isoformat() < previous["check_out"]
+            ):
+                issues.append(
+                    issue(
+                        "departure_before_previous_checkout",
+                        [prev["id"], task["id"]],
+                        "下一段在前段离店日期之前出发。",
+                    )
+                )
+        try:
+            effective, _ = effective_conditions(
+                workflow["confirmed_conditions"], task["conditions"], {}
+            )
+            train = (
+                _offer(plan["train"], "train")
+                if plan["train"] and not plan["train"].get("needs_revalidation")
+                else None
+            )
+            hotel = (
+                _offer(plan["hotel"], "hotel")
+                if plan["hotel"]
+                and plan["hotel"].get("kind") != "hotel_place"
+                and not plan["hotel"].get("needs_revalidation")
+                else None
+            )
+            budget = build_budget(
+                train,
+                hotel,
+                effective["passengers"],
+                {"train", "hotel"} if task["requires_hotel"] else {"train"},
+            ).to_dict()
+            lines.extend({**line, "task_id": task["id"]} for line in budget["lines"])
+            missing.extend(
+                {"task_id": task["id"], "category": category}
+                for category in budget["missing_categories"]
+            )
+        except (ValueError, TypeError, KeyError):
+            missing.append({"task_id": task["id"], "category": "unverified"})
+    subtotal = sum((Decimal(line["amount_cny"]) for line in lines), Decimal("0"))
+    start = workflow["confirmed_conditions"].get("start_date")
+    if (
+        start
+        and global_is_hard(workflow, "start_date")
+        and plans
+        and plans[0]["schedule"]["departure_at"]
+        and datetime.fromisoformat(plans[0]["schedule"]["departure_at"]).date().isoformat() != start
+    ):
+        issues.append(
+            issue(
+                "start_date_conflict",
+                [workflow["tasks"][0]["id"]],
+                "首段出发日期与用户确认的起始日期冲突。",
+            )
+        )
+    end = workflow["confirmed_conditions"].get("end_date")
+    if (
+        end
+        and global_is_hard(workflow, "end_date")
+        and plans
+        and plans[-1]["schedule"]["arrival_at"]
+        and datetime.fromisoformat(plans[-1]["schedule"]["arrival_at"]).date().isoformat() > end
+    ):
+        issues.append(
+            issue(
+                "end_date_conflict",
+                [workflow["tasks"][-1]["id"]],
+                "最后一段抵达日期超过用户可用日期。",
+            )
+        )
+    maximum = (
+        workflow["confirmed_conditions"].get("constraints", {}).get("total_budget_cny")
+        if global_is_hard(workflow, "total_budget_cny")
+        else None
+    )
+    policy = workflow.get("policy_context")
+    if (any(t.get("purpose") == "business" for t in workflow["tasks"]) and not policy) or (
+        policy
+        and (
+            policy.get("status") != "ok" or policy.get("missing_fields") or policy.get("conflicts")
+        )
+    ):
+        issues.append(
+            issue(
+                "policy_unverified",
+                [t["id"] for t in workflow["tasks"]],
+                "企业政策存在未核实条件或冲突。",
+            )
+        )
+    if policy:
+        evidence_ids = {r.get("id") for r in policy.get("references", [])}
+        for constraint in policy.get("constraints", []):
+            if not constraint.get("hard"):
+                continue
+            for task, plan in zip(workflow["tasks"], plans, strict=False):
+                scope = constraint.get("applicability", {})
+                if scope.get("city") and scope["city"] != task["destination"]:
+                    continue
+                field = constraint.get("field")
+                if field and field.startswith("hotel_") and not task["requires_hotel"]:
+                    continue
+                actual = None
+                try:
+                    if (
+                        not constraint.get("evidence_ids")
+                        or not set(constraint["evidence_ids"]) <= evidence_ids
+                    ):
+                        raise ValueError("policy citation missing")
+                    effective, _ = effective_conditions(
+                        workflow["confirmed_conditions"], task["conditions"], {}
+                    )
+                    if field == "seat_class" and plan["train"]:
+                        actual = plan["train"].get("seat_class")
+                    elif (
+                        field == "train_max_total_cny"
+                        and plan["train"]
+                        and plan["train"].get("price_cny") is not None
+                    ):
+                        actual = Decimal(str(plan["train"]["price_cny"])) * effective["passengers"]
+                    elif (
+                        field in {"hotel_max_total_cny", "hotel_max_nightly_cny"}
+                        and plan["hotel"]
+                        and plan["hotel"].get("kind") != "hotel_place"
+                    ):
+                        amount = plan["hotel"].get("stay_total_cny")
+                        if amount is not None:
+                            actual = Decimal(str(amount))
+                            if field == "hotel_max_nightly_cny":
+                                actual /= (
+                                    date.fromisoformat(plan["hotel"]["check_out"])
+                                    - date.fromisoformat(plan["hotel"]["check_in"])
+                                ).days
+                    if actual is None:
+                        raise ValueError("policy evidence unavailable")
+                    expected = (
+                        constraint["value"]
+                        if field == "seat_class"
+                        else Decimal(str(constraint["value"]))
+                    )
+                    failed = actual != expected if field == "seat_class" else actual > expected
+                    if failed:
+                        issues.append(
+                            issue(
+                                "policy_constraint_failed",
+                                [task["id"]],
+                                "所选方案不符合企业强制约束。",
+                                evidence=constraint["id"],
+                            )
+                        )
+                except (ValueError, KeyError, TypeError, ArithmeticError):
+                    issues.append(
+                        issue(
+                            "policy_constraint_unverified",
+                            [task["id"]],
+                            "缺少验证企业强制约束的有效证据。",
+                            evidence=constraint.get("id"),
+                        )
+                    )
+    for index, (task, plan) in enumerate(zip(workflow["tasks"], plans, strict=True)):
+        next_departure = (
+            plans[index + 1]["schedule"].get("departure_at") if index + 1 < len(plans) else None
+        )
+        activity_checks = activity_issues(task, plan, next_departure)
+        if next_departure:
+            for problem in activity_checks:
+                if problem["code"] in {"activity_after_departure", "activity_window_unverified"}:
+                    problem["task_ids"].append(workflow["tasks"][index + 1]["id"])
+        issues.extend(activity_checks)
+        effective, _ = effective_conditions(
+            workflow["confirmed_conditions"], task["conditions"], {}
+        )
+        for activity in task.get("content", []):
+            day = activity.get("date")
+            if not day:
+                continue
+            outside = any(
+                condition_is_hard(workflow, task, field)
+                and effective.get(field)
+                and (day < effective[field] if field == "start_date" else day > effective[field])
+                for field in ("start_date", "end_date")
+            )
+            if outside:
+                issues.append(
+                    issue(
+                        "activity_outside_trip_window",
+                        [task["id"]],
+                        "活动日期超出用户固定的行程日期范围。",
+                        evidence=activity["id"],
+                    )
+                )
+    if maximum is not None:
+        if missing:
+            issues.append(
+                issue(
+                    "total_budget_unknown",
+                    [t["id"] for t in workflow["tasks"]],
+                    "全程费用有未知部分，不能验证预算。",
+                )
+            )
+        elif subtotal > Decimal(str(maximum)):
+            issues.append(
+                issue(
+                    "total_budget_exceeded",
+                    [t["id"] for t in workflow["tasks"]],
+                    "全程火车及住宿费用超过预算。",
+                    evidence=str(subtotal),
+                )
+            )
+    return dict(
+        valid=not any(i["blocking"] for i in issues),
+        issues=issues,
+        reconstructed_tasks=plans,
+        budget=dict(
+            known_subtotal_cny=str(subtotal),
+            verified=not missing,
+            missing_categories=missing,
+            lines=lines,
+        ),
+        validated_revisions={t["id"]: t["revision"] for t in workflow["tasks"]},
+        signature=state_signature(workflow),
+    )
+
+
+def finalize_workflow(workflow, check):
+    if (
+        not check.get("valid")
+        or check.get("signature") != state_signature(workflow)
+        or not check_workflow(workflow)["valid"]
+    ):
+        raise ValueError("workflow has not passed current global validation")
+    w = deepcopy(workflow)
+    for task in w["tasks"]:
+        task["status"] = "validated"
+    w.update(
+        status="completed", validation=deepcopy(check), stop_reason="validated", checkpoint=None
+    )
+    return w

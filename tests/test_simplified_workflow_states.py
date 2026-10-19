@@ -2,8 +2,8 @@ from copy import deepcopy
 
 import pytest
 
-from agents.workflow_contracts import create_workflow
-from context.workflow_store import WorkflowStore
+from trip_assistant.storage.trips import TripStore
+from trip_assistant.trips.conditions import create_workflow
 
 
 def workflow():
@@ -16,7 +16,7 @@ def workflow():
     "old,reason", [("needs_input", "needs_input"), ("paused", "paused"), ("cancelled", "cancelled")]
 )
 def test_legacy_state_and_stop_guards_preserve_identity(old, reason):
-    from agents.workflow_state import derive_dispatchability, normalize_workflow_states
+    from trip_assistant.trips.state import derive_dispatchability, normalize_workflow_states
 
     w = workflow()
     w["status"] = old
@@ -32,7 +32,7 @@ def test_legacy_state_and_stop_guards_preserve_identity(old, reason):
 
 
 def test_inflight_unknown_completion_prevents_replay_and_invalidation_keeps_history():
-    from agents.workflow_state import derive_dispatchability, invalidate_query_binding
+    from trip_assistant.trips.state import derive_dispatchability, invalidate_query_binding
 
     w = workflow()
     t = w["tasks"][0]
@@ -46,14 +46,14 @@ def test_inflight_unknown_completion_prevents_replay_and_invalidation_keeps_hist
 
 
 def test_unknown_state_is_rejected_and_store_indexes_stop_reason(tmp_path):
-    from agents.workflow_state import normalize_workflow_states
+    from trip_assistant.trips.state import normalize_workflow_states
 
     w = workflow()
     w["status"] = "unknown"
     with pytest.raises(ValueError):
         normalize_workflow_states(w)
     w["status"] = "cancelled"
-    store = WorkflowStore(str(tmp_path), "a")
+    store = TripStore(str(tmp_path), "a")
     saved = store.save(w, expected_revision=None)
     assert saved["status"] == "running"
     assert store.list_summaries()[0]["stop_reason"] == "cancelled"
@@ -61,7 +61,7 @@ def test_unknown_state_is_rejected_and_store_indexes_stop_reason(tmp_path):
 
 
 def test_legacy_querying_preserves_unknown_request_before_normalizing():
-    from agents.workflow_state import derive_dispatchability, normalize_workflow_states
+    from trip_assistant.trips.state import derive_dispatchability, normalize_workflow_states
 
     w = workflow()
     t = w["tasks"][0]
@@ -76,9 +76,9 @@ def test_legacy_querying_preserves_unknown_request_before_normalizing():
 
 
 def test_legacy_completed_with_invalid_selection_requires_revalidation():
-    from workflow_support import populated_workflow
+    from support.workflow import populated_workflow
 
-    from agents.workflow_state import normalize_workflow_states
+    from trip_assistant.trips.state import normalize_workflow_states
 
     w = populated_workflow()
     w["status"] = "completed"
@@ -94,9 +94,9 @@ def test_legacy_completed_with_invalid_selection_requires_revalidation():
 
 
 def test_legacy_completed_with_valid_evidence_keeps_completed():
-    from workflow_support import populated_workflow
+    from support.workflow import populated_workflow
 
-    from agents.workflow_state import normalize_workflow_states
+    from trip_assistant.trips.state import normalize_workflow_states
 
     w = populated_workflow()
     w["status"] = "completed"

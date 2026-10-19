@@ -1,4 +1,4 @@
-name: V0 CI
+name: Native runtime CI
 
 on:
   push:
@@ -12,9 +12,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: python -m pip install -r requirements.txt pytest pytest-asyncio
+      - run: python -m pip install -r requirements.txt pytest pytest-asyncio jsonschema ruff
       - run: python -m pytest -q tests
+      - run: python -m compileall -q trip_assistant cli.py
+      - run: python -m ruff check trip_assistant cli.py
+      - run: python -m evals.native_runner --output .test-tmp/native-eval
       - name: Secret scan
         run: >-
-          ! rg -n 'sk-[A-Za-z0-9_-]{12,}|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY'
+          ! rg -n '\bsk-[A-Za-z0-9_-]{12,}|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY'
           -g '!docs/evals/**'

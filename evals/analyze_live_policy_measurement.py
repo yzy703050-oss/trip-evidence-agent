@@ -8,9 +8,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from agents.policy_preflight import validate_policy_context  # noqa: E402
-from agents.workflow_contracts import CONDITION_KEYS, PURPOSES, create_workflow  # noqa: E402
-from utils.json_parser import robust_json_parse  # noqa: E402
+from trip_assistant.agents.policy import validate_policy_context  # noqa: E402
+from trip_assistant.llm.structured import robust_json_parse  # noqa: E402
+from trip_assistant.trips.conditions import CONDITION_KEYS, PURPOSES, create_workflow  # noqa: E402
 
 
 def write_json(path, value):

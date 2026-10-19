@@ -6,7 +6,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_direct_policy_extraction_once_and_no_generic_answer():
-    from agents.policy_preflight import TravelPolicyAgent
+    from trip_assistant.agents.policy import TravelPolicyAgent
 
     calls = []
 
@@ -55,7 +55,7 @@ async def test_direct_policy_extraction_once_and_no_generic_answer():
 
 
 def test_policy_rejects_fake_source_unit_and_scope():
-    from agents.policy_preflight import validate_policy_context
+    from trip_assistant.agents.policy import validate_policy_context
 
     evidence = {"references": [{"id": "real"}]}
     base = {
@@ -93,7 +93,7 @@ def test_policy_rejects_fake_source_unit_and_scope():
 
 @pytest.mark.asyncio
 async def test_no_policy_evidence_has_no_model_and_complex_rule_is_gap():
-    from agents.policy_preflight import TravelPolicyAgent, validate_policy_context
+    from trip_assistant.agents.policy import TravelPolicyAgent, validate_policy_context
 
     class Empty:
         async def search(self, text, limit):
@@ -129,9 +129,9 @@ async def test_no_policy_evidence_has_no_model_and_complex_rule_is_gap():
 
 
 def test_policy_scope_and_effective_date_resolve_from_scheduled_trip_without_model():
-    from workflow_support import populated_workflow
+    from support.workflow import populated_workflow
 
-    from agents.policy_preflight import resolve_policy_for_workflow
+    from trip_assistant.agents.policy import resolve_policy_for_workflow
 
     w = populated_workflow()
     policy = {

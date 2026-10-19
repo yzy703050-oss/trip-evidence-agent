@@ -1,0 +1,260 @@
+{
+  "acceptance": "guide_capability_disabled_and_validated_other_quality_gap_remains",
+  "full_user_requests": 10,
+  "probes": 0,
+  "automatic_passed": 10,
+  "manual_passed": 9,
+  "requirements_covered": 55,
+  "requirements_total": 56,
+  "totals": {
+    "model_calls": 23,
+    "input_tokens": 181235,
+    "output_tokens": 14305,
+    "cached_input_tokens": 113280,
+    "uncached_input_tokens": 67955,
+    "elapsed_seconds": 73.496,
+    "total_tokens": 195540
+  },
+  "means": {
+    "model_calls": 2.3,
+    "input_tokens": 18123.5,
+    "output_tokens": 1430.5,
+    "cached_input_tokens": 11328.0,
+    "uncached_input_tokens": 6795.5,
+    "elapsed_seconds": 7.35,
+    "total_tokens": 19554.0
+  },
+  "tool_calls": 28,
+  "repeated_actions": 0,
+  "supplier_calls": 30,
+  "repeated_supplier_keys": 0,
+  "guide_actions": 0,
+  "web_actions": 0,
+  "baseline_r11": {
+    "manual_passed": 7,
+    "automatic_passed": 8,
+    "mean_model_calls": 2.6,
+    "mean_total_tokens": 22840.9,
+    "mean_elapsed_seconds": 7.9778,
+    "requirements_covered": 55,
+    "requirements_total": 56
+  },
+  "baseline_r9": {
+    "manual_passed": 8,
+    "automatic_passed": 9,
+    "mean_model_calls": 2.3,
+    "mean_total_tokens": 19403,
+    "mean_elapsed_seconds": 6.899
+  },
+  "cases": [
+    {
+      "sample": "01-business_policy_missing",
+      "case": "business_policy_missing",
+      "automatic": {
+        "outcome": "expected_partial",
+        "failures": [],
+        "semantic_review": "pending"
+      },
+      "manual_passed": true,
+      "manual_notes": [
+        "安排符合预期；首批仍提前查去程，后续TripPlan复用有效证据，但最终展示额外候选，尚非最简。"
+      ],
+      "metrics": {
+        "input_tokens": 23343,
+        "output_tokens": 1559,
+        "cached_input_tokens": 17152,
+        "uncached_input_tokens": 6191,
+        "model_calls": 3,
+        "elapsed_seconds": 9.267
+      }
+    },
+    {
+      "sample": "01-business_policy_ok",
+      "case": "business_policy_ok",
+      "automatic": {
+        "outcome": "complete",
+        "failures": [],
+        "semantic_review": "pending"
+      },
+      "manual_passed": true,
+      "manual_notes": [],
+      "metrics": {
+        "input_tokens": 22614,
+        "output_tokens": 1517,
+        "cached_input_tokens": 13184,
+        "uncached_input_tokens": 9430,
+        "model_calls": 3,
+        "elapsed_seconds": 9.037
+      }
+    },
+    {
+      "sample": "01-content_amend",
+      "case": "content_amend",
+      "automatic": {
+        "outcome": "complete",
+        "failures": [],
+        "semantic_review": "pending"
+      },
+      "manual_passed": true,
+      "manual_notes": [],
+      "metrics": {
+        "input_tokens": 9183,
+        "output_tokens": 318,
+        "cached_input_tokens": 6656,
+        "uncached_input_tokens": 2527,
+        "model_calls": 1,
+        "elapsed_seconds": 2.41
+      }
+    },
+    {
+      "sample": "01-flexible_tourism",
+      "case": "flexible_tourism",
+      "automatic": {
+        "outcome": "complete",
+        "failures": [],
+        "semantic_review": "pending"
+      },
+      "manual_passed": true,
+      "manual_notes": [],
+      "metrics": {
+        "input_tokens": 15438,
+        "output_tokens": 1752,
+        "cached_input_tokens": 2304,
+        "uncached_input_tokens": 13134,
+        "model_calls": 2,
+        "elapsed_seconds": 8.335
+      }
+    },
+    {
+      "sample": "01-mixed_high_speed",
+      "case": "mixed_high_speed",
+      "automatic": {
+        "outcome": "complete",
+        "failures": [],
+        "semantic_review": "pending"
+      },
+      "manual_passed": true,
+      "manual_notes": [],
+      "metrics": {
+        "input_tokens": 15599,
+        "output_tokens": 1629,
+        "cached_input_tokens": 10752,
+        "uncached_input_tokens": 4847,
+        "model_calls": 2,
+        "elapsed_seconds": 7.83
+      }
+    },
+    {
+      "sample": "02-business_policy_missing",
+      "case": "business_policy_missing",
+      "automatic": {
+        "outcome": "expected_partial",
+        "failures": [],
+        "semantic_review": "pending"
+      },
+      "manual_passed": true,
+      "manual_notes": [
+        "安排符合预期；首批仍提前查去程，后续TripPlan复用有效证据，但最终展示额外候选，尚非最简。"
+      ],
+      "metrics": {
+        "input_tokens": 23311,
+        "output_tokens": 1441,
+        "cached_input_tokens": 17152,
+        "uncached_input_tokens": 6159,
+        "model_calls": 3,
+        "elapsed_seconds": 7.402
+      }
+    },
+    {
+      "sample": "02-business_policy_ok",
+      "case": "business_policy_ok",
+      "automatic": {
+        "outcome": "complete",
+        "failures": [],
+        "semantic_review": "pending"
+      },
+      "manual_passed": true,
+      "manual_notes": [
+        "安排符合预期；首批仍提前查去程，后续TripPlan复用有效证据，但最终展示额外候选，尚非最简。"
+      ],
+      "metrics": {
+        "input_tokens": 23652,
+        "output_tokens": 1661,
+        "cached_input_tokens": 17152,
+        "uncached_input_tokens": 6500,
+        "model_calls": 3,
+        "elapsed_seconds": 8.578
+      }
+    },
+    {
+      "sample": "02-content_amend",
+      "case": "content_amend",
+      "automatic": {
+        "outcome": "complete",
+        "failures": [],
+        "semantic_review": "pending"
+      },
+      "manual_passed": true,
+      "manual_notes": [],
+      "metrics": {
+        "input_tokens": 9134,
+        "output_tokens": 293,
+        "cached_input_tokens": 6656,
+        "uncached_input_tokens": 2478,
+        "model_calls": 1,
+        "elapsed_seconds": 2.509
+      }
+    },
+    {
+      "sample": "02-flexible_tourism",
+      "case": "flexible_tourism",
+      "automatic": {
+        "outcome": "complete",
+        "failures": [],
+        "semantic_review": "pending"
+      },
+      "manual_passed": true,
+      "manual_notes": [
+        "行程合理且无攻略调用；item车种强度继承错误纠正一次，3调用。活动description仍混写日内多个时段，粒度可继续改善。"
+      ],
+      "metrics": {
+        "input_tokens": 23304,
+        "output_tokens": 2392,
+        "cached_input_tokens": 11520,
+        "uncached_input_tokens": 11784,
+        "model_calls": 3,
+        "elapsed_seconds": 10.071
+      }
+    },
+    {
+      "sample": "02-mixed_high_speed",
+      "case": "mixed_high_speed",
+      "automatic": {
+        "outcome": "complete",
+        "failures": [],
+        "semantic_review": "pending"
+      },
+      "manual_passed": false,
+      "manual_notes": [
+        "交通住宿和两日游览已保存，但24日上午新增退房返程辅助活动，违背已确认活动范围。"
+      ],
+      "metrics": {
+        "input_tokens": 15657,
+        "output_tokens": 1743,
+        "cached_input_tokens": 10752,
+        "uncached_input_tokens": 4905,
+        "model_calls": 2,
+        "elapsed_seconds": 8.057
+      }
+    }
+  ],
+  "conditions": {
+    "model": "deepseek-flash",
+    "temperature": 0.3,
+    "thinking": "disabled",
+    "suppliers_and_policy": "simulated",
+    "rail_duration_minutes": 420,
+    "fixed_current_time": "2026-10-19T17:40:36.664442+08:00",
+    "activity_offset_days": 2
+  }
+}

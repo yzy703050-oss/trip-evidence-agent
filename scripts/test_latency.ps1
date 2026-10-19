@@ -26,8 +26,8 @@ New-Item -ItemType Directory -Path $output -Force | Out-Null
 $output = (Resolve-Path -LiteralPath $output).Path
 $log = Join-Path $output 'run.log'
 $cases = @('query_price', 'default_date', 'multi_route_unspecified_stay')
-$evalArgs = @('-m', 'evals.run_preflight_simulated', '--cases') + $cases +
-    @('--thinking', 'disabled', '--output', $output)
+$evalArgs = @('-m', 'evals.native_runner', '--cases') + $cases +
+    @('--thinking', 'disabled', '--output', $output, '--live-model')
 Write-Host ('Network label (manual): ' + $Label)
 Write-Host 'Three cases. Thinking: disabled. LLM: real. Train/hotel: simulation.'
 Write-Host ('Output: ' + $output)

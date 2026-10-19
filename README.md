@@ -1,286 +1,281 @@
-# 行程有据 · Trip Evidence Agent
+# 行程有据 · Trip Evidence Agent v1
 
-一个基于 Python 和大语言模型的命令行出行助手，支持多城市火车与住宿规划、企业差旅政策约束、条件性偏好记忆，以及已有行程的查询、修改和恢复。
+**一个以查询证据为依据、支持持续修改的高铁差旅规划 Agent。**
 
-系统以**主 Agent 做决策、程序编排执行、查询结果提供证据、TripPlan 保存状态**为核心。大模型负责理解需求和选择方案，程序负责调用接口、控制并发、校验引用与约束、维护版本和持久化。
+采用 **ReAct + Workflow + Harness + Verifier** 混合架构：大模型理解需求、规划和比较方案；程序批量执行工具、校验证据与约束；TripPlan 保存可追踪的行程，提供 Rich 命令行交互。
 
-[功能](#功能) · [架构](#架构) · [规划与修改](#规划与修改) · [状态与数据](#状态与数据) · [快速开始](#快速开始) · [开发](#开发)
+**版本说明：** 本文及对应代码为 **v1**。GitHub 原有版本已完整保存在 [`v0` 分支](https://github.com/yzy703050-oss/trip-evidence-agent/tree/v0)，对应提交 [`d017f6b`](https://github.com/yzy703050-oss/trip-evidence-agent/commit/d017f6ba9c6e587ffa5bcd7f041b75962f129dd9)。v1 通过独立 PR 提交，保留 v0 历史。[版本迁移说明](docs/releases/v1.md)
 
-## 功能
+## 1. Project Overview · 项目简介
 
-- **多段出行规划**：按城市顺序拆分路段，为需要住宿的路段安排酒店地点建议，检查交通、入住、离店和后续路段的衔接；未明确要求单程时默认考虑返程。
-- **局部修改**：定位用户指定的路段和组件，替换酒店、调整日期或修改路线，优先复用已有证据，保留未受影响的安排。
-- **出差政策检索**：从本地企业资料中检索政策，提取带来源、适用范围和生效信息的约束，参与行程校验。
-- **长期偏好记忆**：保存用户明确表达的条件性偏好；符合条件时低频分析历史行程，形成可增量更新的自然语言记忆。
-- **历史查询与恢复**：通过行程索引定位 TripPlan，查看细节和候选，继续未完成的规划或修改已有方案。
-- **独立信息查询**：通过工具查询火车、酒店地点、天气和网页信息；攻略查询可返回参考链接。
-- **运行观测**：记录模型阶段、调用次数、输入/输出 token、耗时、工具结果和异常，支持回放与评估。
+差旅规划需要同时处理自然语言要求、交通候选、住宿、企业政策与用户偏好。一次查询成功不代表行程合理，模型写出计划也不代表计划已正确保存。
 
-可以用自然语言表达需求：
+本项目把开放决策交给模型，把确定性执行与数据规则交给程序：规划依据对应证据，修改保留无关成果，恢复不重放已完成写入，评测同时检查运行正确性、规划合理性与成本。
 
-```text
-从重庆出发，明天去上海住两晚，再去杭州住一晚，最后回重庆，安排火车和酒店。
-这是出差，按公司的差旅政策安排，必须周五上午到上海。
-把上海那段的酒店换一家，火车和杭州的安排保持不变。
-以后出差都尽量选择高铁，酒店优先考虑全季。
-查看上次上海行程的返程候选，不用重新查询。
-```
+### v0 → v1
 
-## 架构
-
-当前请求流程由 `WorkflowRunner` 统一控制。`ExecutionHarness` 提供兼容入口，主 Agent 返回结构化决定，工具和存储层负责执行及保存。政策理解和历史偏好分析由专门 Agent 按需完成。
-
-```mermaid
-flowchart TD
-    U["用户 / Rich CLI"] --> H["ExecutionHarness：请求入口"]
-    H --> R["WorkflowRunner：流程编排"]
-    R --> P["偏好更新与读取工具"]
-    P --> R
-    R -->|"需要历史分析"| A["PreferenceAnalysisAgent"]
-    A --> R
-    R -->|"出差 / 政策查询"| K["TravelPolicyAgent"]
-    K --> G["RAG 检索：嵌入模型 + Milvus Lite"]
-    G --> K
-    K -->|"带来源的约束"| R
-    R -->|"需求、记忆、约束和候选"| M["MainAgent：规划与判断"]
-    M -->|"提案、选择、修改或询问"| R
-    R --> T["ToolExecutor / 查询批次执行"]
-    T --> API["火车 / 酒店地点 / 天气 / 网页"]
-    API --> T
-    T -->|"规范化结果与查询证据"| R
-    R --> V["程序校验：引用、版本、日期与政策"]
-    V -->|"可用事实与缺口"| F["最终回复渲染"]
-    F --> U
-    R <--> S[("SQLite：会话、偏好、TripPlan、证据与日志")]
-```
-
-### 模块职责
-
-| 模块 | 职责 |
-| --- | --- |
-| `MainAgent` | 识别意图、定位新旧旅行、生成完整任务提案、选择候选、判断冲突、提出局部修改或澄清问题 |
-| `WorkflowRunner` | 前置资料协调、模型调用、查询计划绑定、任务调度、状态推进、局部修复、保存与恢复 |
-| `ExecutionHarness` | 提供统一请求入口，将当前主流程交给 Runner |
-| `ToolExecutor` / 批次执行 | 参数校验、缓存复用、依赖与并发控制、超时处理、接口调用、数据规范化和结果收集 |
-| `TravelPolicyAgent` | 检索政策、理解条款、提取结构化约束，并保留来源、适用范围和缺口 |
-| `PreferenceAnalysisAgent` | 依据有效历史行程低频总结软偏好，保存历史证据引用 |
-| 偏好与记忆工具 | 直接读取、增加、替换或撤回长期记忆，不为普通读写调用模型 |
-| `MemoryManager` / SQLite 存储 | 管理用户与会话、长期记忆、行程索引、完整计划、查询证据和运行观测 |
-| 程序校验与回复层 | 根据引用重建所选事实，校验全程，输出具体安排、未知项和冲突说明 |
-
-专业检索服务通过技能注册器按需加载。`information_query` 及旧偏好、记忆 Agent 的实现仍保留，但当前主流程不调度它们；查询由工具执行，偏好分析与政策提取使用各自专门流程。
-
-### Agent、工具与程序的边界
-
-主 Agent 输出任务、候选引用和修改决定。任务 ID、状态、版本和执行记录由程序生成及推进；模型不能靠改写这些字段绕过校验。
-
-工具返回查询结果及来源。接口未提供的房价、库存或时刻保持未知；成功但没有候选、接口失败、条件筛除和证据过期分别处理。模型不将当前查询范围等同于整个市场，也不靠反复调用同一个接口补齐它没有的能力。
-
-候选选择使用 `query_id`、`result_revision` 和 `candidate_id` 引用证据。程序验证任务归属与版本，重建交通、住宿和费用，再生成用户可读回复。
-
-火车与酒店候选默认每页展示 5 条。首批候选不合适且有效缓存还有后页时，主 Agent 可以在提交方案前自主读取下一页；程序验证查询条件、任务版本及偏移，直接读取本地缓存，不增加供应商请求。排序和每页条数保持不变，前页有效候选仍可用于最终方案。高德目前只获取接口第 1 页、最多 25 条地点，本地翻页不会继续抓取接口后页；全部读取仍受模型决策与时间上限约束。
-
-## 规划与修改
-
-### 一次完整规划
-
-1. **处理前置信息**：优先执行明确偏好更新，再读取当前记忆；需要出差政策时检索并提取适用约束。
-2. **生成任务提案**：主 Agent 识别路线、日期、住宿时长及硬软条件，一次提出所有路段。缺住宿时长时给出有来源的建议，用户固定安排保持不变。
-3. **准备查询**：程序创建 TripPlan 和任务，将火车、酒店等查询绑定到相应任务、版本及条件。
-4. **执行查询**：满足依赖的独立请求可以并行；结果进入完整缓存，程序向模型提供有界候选。
-5. **批量选择**：主 Agent 根据候选、偏好和政策提交方案；无法确定的事实保留缺口。
-6. **校验与保存**：程序检查引用、时刻、住宿衔接、金额及政策，保存计划并渲染最终答复。
-
-通常完整的新旅行使用“提案生成 → 批量选择”两次主模型调用。政策提取、首次历史偏好分析、无效输出修正和实际冲突处理可能增加调用；系统不把两次设为所有请求的固定上限。
-
-### 用户修改已有旅行
-
-修改先定位 TripPlan、路段和组件。例如“上海酒店换一家，火车不变”只影响上海住宿。程序优先在有效缓存中筛选和重组，必要时才执行受影响的新查询，然后重新校验全程。
-
-```mermaid
-flowchart TD
-    U["用户修改需求"] --> L["主 Agent 定位目标和修改范围"]
-    L -->|"范围不明确"| Q["询问用户并保存断点"]
-    L -->|"范围明确"| P["程序检查补丁及硬条件"]
-    P --> C["优先复用有效缓存"]
-    C -->|"已有候选可用"| S["重组或替换指定组件"]
-    C -->|"合法新条件 / 明确刷新"| T["定向查询受影响组件"]
-    T --> S
-    S --> V["重新校验全程"]
-    V --> F["保存并说明修改及剩余缺口"]
-```
-
-日期和住宿时长分别记录来源及强度：`field_sources` 说明条件从哪里来，`condition_strengths` 的 `hard` / `soft` 说明能否调整。用户说“最好周五去”和“必须周五到达”具有不同约束，来源为用户也不自动等于强制。
-
-- **软条件存在实际冲突**：主 Agent 可以提出合理的新日期，协调去程、住宿和返程；程序只查询受影响的新日期。
-- **固定条件确认不兼容**：说明冲突及可放宽的安排，等待用户选择，保留可恢复状态。
-- **接口失败或字段未知**：保留其他可用部分，如酒店地点和暂定返程，明确说明未核实项。
-
-## 状态与数据
-
-### TripPlan 与三层状态
-
-TripPlan 是持久化旅行对象，包含有序路段 `tasks`、查询容器、完整查询结果、候选引用、执行记录、校验结果和恢复断点。代码中部分模块仍使用 `workflow` 命名。
-
-每个路段默认需要火车查询容器，需要住宿时再增加酒店容器。程序管理任务和结果版本；条件改变后，受影响引用失效，历史证据仍可保留。
-
-| 层级 | 状态 | 含义 |
+| 维度 | v0 存档实现 | v1 当前实现 |
 | --- | --- | --- |
-| TripPlan | `running` / `completed` | 旅行仍需处理 / 当前计划通过完整校验 |
-| task | `pending` / `draft` / `validated` | 待处理 / 已有查询或选择草稿 / 当前版本校验通过 |
-| 查询容器 | `empty` / `ready` / `failed` | 没有当前有效绑定 / 已有有效查询结果 / 查询失败 |
+| 顶层执行 | ExecutionHarness / WorkflowRunner | run_turn 唯一顶层循环 |
+| 决策协议 | 主 Agent 返回结构化流程决定 | 原生 Function Calling，支持批量 tool_calls |
+| 规划评估 | Runner 协调主模型规划与选择 | Main 完整初案，工具后 Summary/Verifier 评估及局部修复 |
+| 查询执行 | 原流程绑定和调度查询 | TripQueryExecutor 自动执行待查项，与独立查询复用证据 |
+| 状态边界 | Runner 协调流程和 TripPlan | ExecutionState 管运行，TripService 管业务版本与生命周期 |
+| 回复事实 | 按查询引用重建并汇总 | reply 绑定同次保存回执，避免重新抄写车次、时间与价格 |
 
-`ready` 不保证存在可选候选；成功空结果仍需进一步判断。`draft_stage` 区分查询草稿与选择草稿，缺输入、等待依赖和在途请求由断点、条件及执行记录派生。暂停、取消和异常通过停止原因记录。
+多段行程、政策、SQLite、长期偏好和历史恢复是在既有项目上保留与演进的能力，并非 v1 重新开发。
 
-用户收到的本轮结果可以是 `partial`，而 TripPlan 仍保持 `running`：例如去程失败，但酒店和返程已有建议。`completed` 表示计划校验通过，不表示已经购票、订房或实际完成旅行。
+## 2. Features · 核心功能
 
-### 偏好与企业政策
+| 功能 | 当前能力 |
+| --- | --- |
+| 高铁差旅规划 | 估算交通占用，统筹去返程、住宿与活动；默认高铁，明确其他车种按用户要求 |
+| 多城市与多任务 | 一个 TripPlan 包含多个有序旅段，比较各段候选并选择交通、住宿 |
+| 持续对话修改 | 调整活动、酒店、日期或路线；联动受影响的住宿与查询，复用有效成果 |
+| 企业政策 | 本地资料检索、条款理解、带来源和适用性的约束；缺资料如实保留缺口 |
+| 用户记忆 | SQLite 保存明确偏好、撤回保护及低频历史总结；偏好与硬要求分开 |
+| 独立查询 | 铁路、酒店地点、天气和网页查询，不重复提交 TripPlan 已覆盖的查询 |
+| 证据与版本 | 校验引用、展示记录、有效期、归属及版本，条件变化使相关绑定失效 |
+| 执行可靠性 | 批量预检、独立查询并发、缓存、预算、重试、熔断及中断恢复 |
 
-长期偏好保存为可增量更新的自然语言记忆，例如：
+**能力边界：** 当前没有攻略检索工具，活动由模型结合需求与常识提出建议，不保证实时开放或预约。酒店接口提供地点，不能证明房价与空房。项目不执行购票、订房、支付或退改签。
+
+## 3. Demo · 演示与截图
 
 ```text
-出差时尽量选择高铁；若高铁无法满足必须到达的时间，可考虑其他可行安排。
-旅游住宿优先考虑靠海的位置，但不要求每次都满足。
+后天想在上海从上午开始玩，帮我安排从重庆过去的旅游行程。
 ```
 
-用户明确表达“以后……”等长期要求时直接保存；读取、更新和撤回无需模型重新总结。一次旅行的日期、人数和临时预算保存在任务条件中。
+下面是一次真实模型评测输出的 **CLI 回放渲染图**。测试时间固定为 2026-10-19，交通、酒店和政策为模拟供应商，资源不代表真实可购买车次或房间。
 
-历史偏好分析首次在累计至少三份有效已完成计划、且进入相应规划流程时触发；模拟、取消、异常等记录不作为有效样本。首次总结后不在每轮重复分析，用户明确要求重新总结时才再次触发。历史推荐和政策强制选择不能直接当作用户偏好。
+![v1 CLI 规划输出回放](docs/demo/v1-planning.svg)
 
-政策流程是“检索资料 → 模型理解 → 结构化约束 → 来源与适用性校验”。结果包含约束、适用范围、引用、生效信息、缺失字段和冲突。**偏好是软约束；已确认适用的政策及用户硬条件不能自动放宽。** 无出差信息时，不自行套用企业身份和政策金额门槛。
+模型安排前一天抵沪，保留后天上午游玩，联动三晚住宿与返程，经初案、工具查询和 Verifier 选择两次模型调用完成。[脱敏示例](docs/demo/v1-planning-example.json)
 
-### 上下文与渐进披露
+持续修改与偏好示例：
 
-系统先通过轻量行程索引定位目标，再加载选中的完整 TripPlan；主 Agent 接收任务概览、相关记忆、约束和有界候选。火车、酒店默认每页最多五条，完整结果保存在缓存中，可以按需继续读取。
-
-查看已保存行程和候选采用只读通道，支持分页或分批展示全部结果，不推进计划状态、不重新查询供应商。历史对话通过会话摘要与近期主消息按预算组装，原始运行日志不直接塞入提示词。
-
-### 存储与可观测性
-
-每个用户的数据位于 `data/memory/user_<身份哈希>/agent.sqlite3`，由 SQLite 保存会话、偏好、TripPlan、索引、查询证据、事件和运行记录。完整计划与小结同事务更新，版本校验保护旧状态，用户之间按存储目录隔离。
-
-模型观测记录调用阶段、输入/输出 token、耗时及首段响应时间；工具执行记录请求、结果、缓存命中和失败原因。可选单价用于估算费用，实际 token 以模型返回的 usage 为依据。
-
-旧文件数据在首次访问时迁移，源文件保留，迁移后以 SQLite 为权威存储。备份与恢复方式见[存储说明](docs/development/2026-10-12-sqlite-storage-validation.md)。
-
-## 快速开始
-
-### 1. 安装
-
-使用 Python 3.11，在仓库根目录执行。Windows PowerShell：
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+```text
+把这次上海行程已建议的散步改成同日参观博物馆，其他安排保持原样，保存后告诉我。
+把返程顺延一天，需要的住宿也一起调整，其他安排保持原样。
+后天上午在上海开会，帮我从重庆安排交通和酒店，只安排我提到的会议。
+以后出差尽量选高铁，酒店优先考虑全季。
 ```
 
-macOS / Linux 的虚拟环境激活命令为 `source .venv/bin/activate`，随后使用相同的安装和启动命令。
+纯活动修改可以直接保存并复用交通、酒店；日期变化会重新处理受影响项，修改不能只写在解释文字里。
 
-### 2. 配置
+## 4. Architecture · 系统架构
 
-首次配置时复制示例文件，已有 `.env` 请保留：
-
-```powershell
-Copy-Item .env.example .env
+```mermaid
+flowchart TD
+    U["用户 / Rich CLI"] --> L["run_turn · 唯一顶层循环"]
+    L --> M["MainAgent · 理解需求与全局规划"]
+    M --> B["execute_batch · 批量预检与执行"]
+    B -->|"政策依赖"| P["TravelPolicyAgent / RAG"]
+    P -->|"观察结果后规划"| M
+    B --> T["TripService · 权威写入与校验"]
+    T --> Q["TripQueryExecutor · 执行待查项"]
+    Q --> A["QueryService / Scheduler"]
+    B -->|"独立查询"| A
+    A --> E["供应商结果 / 证据缓存"]
+    E --> V["Summary / Verifier · 比较、选择、局部修复"]
+    V -->|"select / amend"| B
+    V -->|"全局重规划"| M
+    T -->|"同次保存回执"| R["绑定行程事实回复"]
+    R --> U
+    L <--> S[("SQLite · 会话、偏好、TripPlan、证据与回执")]
+    T <--> S
 ```
 
-| 配置项 | 用途 |
+| 职责 | 实际实现 |
 | --- | --- |
-| `LLM_API_KEY` | 模型服务密钥 |
-| `LLM_BASE_URL` | OpenAI 兼容模型服务地址 |
-| `LLM_MODEL` | 对应服务支持的模型名称 |
-| `JUHE_TRAIN_API_KEY` | 聚合火车查询授权密钥 |
-| `AMAP_API_KEY` | 高德 Web 服务密钥，用于酒店地点搜索 |
-| `MEMORY_CONTEXT_BUDGET_TOKENS` | 模型上下文预算；默认值见 `.env.example` |
-| `LLM_INPUT_USD_PER_1M_TOKENS` / `LLM_OUTPUT_USD_PER_1M_TOKENS` | 可选费用估算单价 |
+| Main 规划与原生工具决策 | [agents/main.py](trip_assistant/agents/main.py)、分阶段提示 |
+| 编排、调度与批量执行 | [runtime/loop.py](trip_assistant/runtime/loop.py)、[runtime/execution.py](trip_assistant/runtime/execution.py)、Scheduler |
+| Harness 确定性规则 | 工具契约、整批预检、[TripService](trip_assistant/trips/service.py) 和 trips 校验模块 |
+| 自动查询 | [trips/query_execution.py](trip_assistant/trips/query_execution.py)、QueryService |
+| Summary / Verifier | 同一主模型的评估阶段，使用独立职责提示及受限工具，不另起顶层循环 |
+| 事实展示与持久化 | [presentation/trip_reply.py](trip_assistant/presentation/trip_reply.py)、SQLite repositories |
 
-模型使用 OpenAI Python SDK 适配。未配置供应商密钥或供应商查询失败时，程序会说明对应证据缺口。
+普通独立查询由 SUMMARY_PROMPT 总结，不默认创建或修改 TripPlan。政策、历史定位等规划依赖完成后，由原循环继续 Main。
 
-### 3. 启动和对话
+## 5. Key Designs · 核心工程设计
+
+### 5.1 Hybrid Orchestration
+
+**模型决定查什么、怎么规划；程序决定合法动作怎样执行。**
+
+- Main 尽量同次完成估算、条件、全部旅段、活动及查询地图；不意味着整个用户请求只调用一次模型。
+- write_trip.propose 保存草案，TripQueryExecutor 自动执行待查项，不再独立 query 重复提交。
+- 政策存在真实依赖时先取得并观察；其余参数已知的独立工具可同批提出、并行执行。
+- Verifier 对照原请求、完整计划、偏好、政策、候选及版本评估；局部直接修复，全局策略变化才交回 Main。
+- 相同规范化请求复用有效原始证据，按当前约束与排序重新投影；连续无真实进展时有界停止，版本自增不算进展。
+
+默认 SINGLE_PASS_PLANNING=false。历史整轮单次实验仅保留显式回放兼容，不作为当前正式规划路径。
+
+### 5.2 Evidence Validation
+
+通过 query_id + result_revision + candidate_id 引用真实候选。程序检查归属、是否已展示、有效期、条件绑定及版本，再重建所选事实。
+
+候选先按硬条件过滤，再按模型显式排序，每次展示 Top5。软条件不冒充硬过滤；完整证据保留缓存，当前不向模型开放翻页。过期结果按有效原查询条件刷新，失败保持为缺口。
+
+最终 select/amend 同次提交 reply 引用，车次、时间、票价、住宿和活动由实际保存回执生成；模型解释取舍。引用绑定能减少事实抄写错误，不能证明所有规划语义合理。
+
+接口失败不等于市场无资源，酒店地点不等于房价或空房，保存成功不等于出票或预订。
+
+### 5.3 TripPlan State Management
+
+TripService 是权威业务写入口。模型提出 proposal 或补丁，程序生成身份、版本与状态，管理 Task、查询容器、证据绑定及依赖失效。
+
+| 状态层 | 典型状态 | 职责 |
+| --- | --- | --- |
+| TripPlan | running / completed | 当前业务版本是否仍需处理 |
+| Task | pending / draft / validated | 各旅段查询、选择及校验进度 |
+| 查询容器 | empty / ready / failed | 当前查询绑定，ready 不保证存在候选 |
+| ExecutionState / execution job | 决策、执行、校验、修复、停止与恢复 | 工具、预算和重试进度，与业务状态分开 |
+
+constraint_snapshot 保护硬条件与活动；来源说明条件从何而来，hard/soft 说明是否可调整，用户偏好不会自动升级为硬要求。
+
+局部修改保留无关安排，日期等条件改变后相关绑定失效。版本检查与 SQLite 事务保护原子保存，工作草案和上次提交方案分别维护。用户可继续修改，不以模型自评作为提交口令。
+
+状态机管理数据生命周期，不按业务关键词替模型规划或决定工具。粗时段部分重叠交模型判断；确定的引用、权限和时间冲突由程序保护。
+
+### 5.4 Memory & Multi-Agent
+
+- **用户记忆**：明确偏好直接增改撤回，必要摘要注入上下文，不增加详细偏好按需读取入口。
+- **历史总结**：符合条件的已保存行程低频增量分析，明确偏好与撤回保护优先，避免每轮重分析。
+- **政策 Agent**：独立临时上下文处理 RAG 证据、条款、来源及适用性，不持有第二个业务循环。
+- **偏好分析 Agent**：只总结长期偏好，不操作 TripPlan。Main 与 Verifier 是主模型不同阶段职责。
+- **上下文与恢复**：默认 20,000 Token 预算，80% 触发旧完整轮次压缩；保留活动轮、工具配对和原审计。回执和检查点持久化，已完成写入不重放，恢复沿用本轮已消耗预算。
+
+## 6. Quick Start · 快速运行
+
+Python **3.11**。在仓库根目录运行。PR 合并前先切换到 codex/v1-native-agent-readme 取得 v1；合并后使用 main，旧版可从 v0 分支检出。
 
 ```powershell
-python cli.py
+git clone https://github.com/yzy703050-oss/trip-evidence-agent.git
+cd trip-evidence-agent
+# PR 合并前：git switch codex/v1-native-agent-readme
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+.venv/Scripts/python.exe cli.py
 ```
 
-按提示输入用户 ID 和长期居住城市，再输入旅行需求。首次启动建立新会话；`resume` 用于选择恢复历史对话。常住城市用于缺出发地时的可靠默认值，可以后续更新。
+macOS / Linux 改用 .venv/bin/python，配置复制使用 cp .env.example .env。已有 .env 时保留原文件。
+
+| 配置项 | 说明 |
+| --- | --- |
+| LLM_API_KEY / DEEPSEEK_API_KEY | 模型密钥，二者选用，仅存本地 .env |
+| LLM_MODEL / LLM_BASE_URL | OpenAI 兼容模型名称及地址，默认值见 [.env.example](.env.example) |
+| JUHE_TRAIN_API_KEY | 铁路查询授权密钥 |
+| AMAP_API_KEY | 高德酒店地点搜索，不提供房价或空房 |
+| SINGLE_PASS_PLANNING / PLANNING_ROUNDS | false / 8，分阶段规划、评估与有限修复 |
+| LLM_MAX_TOKENS / MEMORY_CONTEXT_BUDGET_TOKENS | 默认输出上限 8192 / 上下文预算 20000，思考关闭 |
+| LLM_INPUT_USD_PER_1M_TOKENS / LLM_OUTPUT_USD_PER_1M_TOKENS | 可选费用估算单价，未知费用不记零 |
+
+缺授权或查询失败时如实返回不可用，不自动拿模拟数据代替真实供应商。模拟数据仅用于明确测试入口。
+
+首次启动输入用户 ID 和长期居住城市。常用命令：
 
 | 命令 | 用途 |
 | --- | --- |
-| `help` | 查看帮助与示例 |
-| `history` | 查看历史行程 |
-| `resume` | 选择并恢复历史对话 |
-| `preferences` | 查看偏好 |
-| `preferences set 类型 值` | 设置偏好 |
-| `preferences delete 类型` | 删除指定偏好 |
-| `status` | 查看当前状态和记忆 |
-| `health` | 检查模型服务 |
-| `clear` | 清空当前任务，保留长期记忆 |
-| `exit` | 退出 |
+| help / status | 帮助与当前会话状态 |
+| preferences / preferences set 类型 值 / preferences delete 类型 | 查看、设置和撤回偏好 |
+| history / resume | 行程摘要、选择历史会话恢复 |
+| clear | 清空模型上下文，保留偏好、行程和原始审计 |
+| health / exit | 检查模型服务、退出 |
 
-### 4. 准备政策知识库
+```powershell
+.venv/Scripts/python.exe cli.py --help
+.venv/Scripts/python.exe cli.py health
+```
 
-企业资料放在 `.claude/skills/ask-question/data/documents/`，当前初始化脚本读取其中的 `.txt` 文档。仓库包含演示资料；用于自己的企业时，应替换为相应政策。
-
-嵌入模型默认路径在 `config.py` 的 `RAG_CONFIG` 中，为 `data/models/bge-small-zh-v1.5`。准备本地模型后，初始化知识库：
+**可选政策知识库：** 资料位于 .claude/skills/ask-question/data/documents/，初始化读取 .txt。默认嵌入模型路径为 data/models/bge-small-zh-v1.5，可用 RAG_EMBEDDING_MODEL 配置本地路径。准备模型与适用资料后执行（会写知识库）：
 
 ```powershell
 python .claude/skills/ask-question/script/init_knowledge_base.py
 ```
 
-检索使用 Sentence Transformers 和 Milvus Lite。缺少本地模型时，实现可能尝试联网下载。Windows 中文路径环境可以在初始化和运行前设置同一个 ASCII 存储路径：
+Windows 中文路径环境可在初始化及运行前设置相同路径：`$env:V0_RAG_DB_DIR = 'C:\trip-evidence-rag'`。变量名保留兼容，不代表应用版本为 v0；政策资料缺失只能提供合规待核实草案。
+
+## 7. Testing & Evaluation · 测试与评测
+
+### 离线测试
 
 ```powershell
-$env:V0_RAG_DB_DIR = 'C:\trip-evidence-rag'
+python -m pip install pytest pytest-asyncio jsonschema ruff
+python -m pytest -q tests
+python -m compileall -q trip_assistant cli.py
+python -m ruff check trip_assistant cli.py
+python -m evals.native_runner --output .test-tmp/native-eval
 ```
 
-## 能力范围
+覆盖工具批次、依赖并发、证据缓存/过期、引用版本、硬软条件、修改、政策、隔离、事务与恢复。当前全量记录为 **1117 项通过**；运行测试通过不等于自然语言规划全部合理。
 
-当前主要生成火车与酒店地点安排，不执行购票、订房、支付或退改签，也不自动生成详细景点活动日程。攻略或网页链接用于参考。
+### 真实模型 + 模拟供应商
 
-高德酒店查询返回名称、地址、位置及部分地点信息，不能证明指定日期的房型、房价、空房或退改规则。存在硬报价或政策金额要求时，这些缺口会如实保留。
+```powershell
+python -m evals.manual.planning_reliability --label v1-review --repeats 2 --thinking disabled --isolate-public
+```
 
-火车候选的时刻、票价和余票取决于授权接口当次返回；查询时有票不等于已经预订。天气仅能使用接口提供的日期范围。模拟评估的车次、地点、报价和库存均用于测试，不代表真实可购买资源。
+此命令调用真实模型，会产生用量；铁路、酒店与政策仍为模拟。使用新的 label，输出目录不能已存在。常规高铁测试使用请求后两天的活动；重庆↔上海 7 小时只是模拟假设。
 
-## 开发
+| 指标 | 最新同条件十例 |
+| --- | ---: |
+| 自动运行检查 | 10/10 |
+| 人工规划合理性 | **9/10** |
+| 平均模型调用 | 2.3 次/请求 |
+| 平均输入 / 输出 Token | 18,123.5 / 1,430.5 |
+| 平均总 Token | 19,554 |
+| 平均端到端耗时 | 7.35 秒 |
+| 攻略 / 替代攻略网页动作 | 0 / 0 |
 
-普通运行日志位于项目根目录的 `data/logs/runtime.log`，启动 CLI（含 `health`）时启用。
-UTF-8、上海时间、默认 INFO，单文件 5 MiB、保留 5 份旧日志。可直接查看模型阶段及 API
-输入/输出 token、工具缓存命中、请求耗时和上下文压缩结果；原 SQLite 审计仍保留。
-正常摘要不复制完整问题、模型消息或供应商响应。
+包含旅游、政策可用/缺失、混合酒店查询、已有活动修改，每类两例。温度 0.3、关闭思考，全部 **23 次模型调用、195,540 Token**；政策缺失按预期 partial 评估。样本量小，模拟接口不含生产供应商及真实政策检索延时，不能等同线上成功率或性能保证。
 
-`MEMORY_CONTEXT_BUDGET_TOKENS` 默认 20,000，完整主请求达到预算 80%（默认 16,000）
-时尝试压缩已完成旧轮次，保留当前 turn。软阈值不能压缩时仍允许在硬预算以内运行；
-摘要提交前按完整请求重新验收。上下文 token 当前为本地估算，API 用量单独显示，
-二者不同；此参数不改变模型服务本身支持的窗口。单 turn 内按阶段压缩留待未来扩展。
+**已知问题：** 一例又把退房返程写成独立活动，人工未通过；部分跨时段描述、参数纠错和额外提前查票仍可优化。攻略能力及这些细节留待后续迭代，不用自动通过掩盖语义问题。[完整评测摘要](docs/evals/v1/assessment.md)
 
-### 目录
+## 8. Project Structure · 项目结构
 
 ```text
-agents/            主 Agent、政策/偏好分析、流程调度、状态与校验
-travel_data/       工具契约、供应商适配、批次执行、缓存与候选视图
-context/           会话、长期记忆、SQLite、上下文预算与运行计量
-utils/             JSON 解析、最终回复、服务容错及辅助工具
-.claude/skills/    按需加载的检索服务、能力指南及保留实现
-tests/             离线回归与接口形状测试夹具
-evals/             模型与系统评估脚本
-docs/              架构说明、开发文档和验证记录
-openspec/          正式行为规格与变更归档
-cli.py             命令行入口
-config.py          应用与模型配置
+cli.py                       # CLI 薄入口
+trip_assistant/
+  bootstrap.py settings.py   # 组装与配置
+  agents/                    # Main 阶段提示、政策和偏好子任务
+  runtime/                   # 单循环、批量执行、预算、并发、恢复、观测
+  tools/                     # read/query/write_memory/write_trip/query_policy
+  trips/                     # TripPlan、约束、状态、依赖、自动查询和校验
+  storage/                   # SQLite 仓库、回执和旧数据迁移
+  memory/                    # 上下文投影、历史与压缩
+  providers/                 # 外部接口、结果清洗及候选视图
+  llm/ presentation/         # 模型协议、计量、事实绑定与展示
+.claude/skills/ask-question/  # 现有政策 RAG 资源及初始化入口
+tests/                       # 离线回归与模拟供应商
+evals/                       # 回放、真实模型和旧报告分析
+docs/                        # 演示、设计、版本说明和评测摘要
+openspec/                    # 仓库已公开的历史规格与归档
 ```
 
-### 测试与评估
+## 9. Tech Stack · 技术栈
 
-安装测试依赖并运行离线回归：
+| 层 | 技术与用途 |
+| --- | --- |
+| 语言与交互 | Python 3.11、asyncio、Rich CLI |
+| 模型与协议 | OpenAI Python SDK、原生 Function Calling，默认评测使用 DeepSeek |
+| 契约配置 | Pydantic、pydantic-settings、JSON Schema |
+| 编排可靠性 | 自研单循环 Workflow、批量预检、调度、预算、重试与熔断 |
+| 持久化 | SQLite：会话、偏好、TripPlan、证据及操作回执 |
+| 政策 RAG | Sentence Transformers、BGE 中文嵌入、Milvus Lite、现有 MCP 检索适配 |
+| 外部数据 | 聚合铁路、高德酒店地点、天气与网页适配 |
+| 质量工程 | pytest、pytest-asyncio、Ruff、GitHub Actions、OpenSpec |
 
-```powershell
-python -m pip install pytest pytest-asyncio
-python -m pytest -q tests
-```
+具体版本以 [requirements.txt](requirements.txt) 为准。保留的旧攻略组件不代表当前开放攻略工具。
 
-测试覆盖任务状态、查询依赖与并发隔离、候选与版本引用、硬软条件、政策约束、局部修改、只读查询、跨会话恢复和存储事务。CI 使用 Python 3.11 运行回归及密钥模式检查。
+## 10. Roadmap · 未来规划
 
-`evals/` 中部分脚本会调用配置的真实模型或外部服务，可能产生费用；执行前查看具体脚本的场景、模拟范围及调用上限。真实模型、模拟供应商和真实供应商结果应分别标记，评估同时检查最终回答的事实、完整度和缺口，不仅检查 JSON 是否合法。
+- [ ] 接入可验证的攻略和景点信息，明确开放、预约、位置与来源边界。
+- [ ] 改善活动时段与辅助事项表达，减少冗余查询及无效修复。
+- [ ] 扩充多城市、连续修改和复杂政策的真实模型评测。
+- [ ] 在供应商授权支持下补齐酒店报价/房态及高铁筛选能力。
+- [ ] 提供更直观的行程展示和交互，复用同一权威 TripPlan。
+- [ ] 降低上下文重复、Token 与延时，完善运行指标和回归基准。
 
-[行为规格](openspec/specs/) · [开发说明](docs/development/2026-10-12-follow-up-context-and-workflow.md) · [验证记录](docs/superpowers/reviews/) · [评估报告](docs/evals/)
+以上为未来计划，不代表当前已实现能力。v0 存档与 v1 增量演进分别保留，便于对比和回溯。

@@ -9,14 +9,12 @@ from agents.workflow_contracts import task_by_id, effective_conditions
 from agents.workflow_queries import resolve_selection
 from travel_data.plan_guard import _offer
 from travel_data.budget import build_budget
-from agents.condition_strengths import condition_is_hard, global_is_hard
 
 
 def state_signature(workflow):
     payload = {'conditions': workflow['confirmed_conditions'],
-               'condition_strengths': workflow.get('condition_strengths', {}),
-               'tasks': [{k: t.get(k) for k in ('id', 'revision', 'origin', 'destination', 'purpose', 'requires_hotel', 'conditions', 'condition_strengths', 'draft_plan', 'rejected_candidates', 'update_scope')}
-                         for t in workflow['tasks']], 'queries': workflow['results_by_query'], 'policy': workflow.get('policy_context')}
+               'tasks': [{k: t.get(k) for k in ('id', 'revision', 'origin', 'destination', 'purpose', 'requires_hotel', 'conditions', 'draft_plan', 'rejected_candidates', 'update_scope')}
+                         for t in workflow['tasks']], 'queries': workflow['results_by_query']}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -122,7 +120,7 @@ def check_task(workflow, task_id, draft):
     if task['requires_hotel']:
         hotel = plan['hotel'] or {}
         for key in ('check_in', 'check_out'):
-            fixed = condition_is_hard(workflow, task, key)
+            fixed = task.get('field_sources', {}).get(key) in {'user', 'context'}
             value = (task['conditions'].get(key) or schedule.get(key)) if fixed else (schedule.get(key) or task['conditions'].get(key))
             if hotel.get('kind') != 'hotel_place' and hotel.get(key):
                 if value and value != hotel[key]: add('hotel_date_mismatch', '住宿安排与报价日期不匹配。')
@@ -147,8 +145,6 @@ def check_task(workflow, task_id, draft):
 def check_workflow(workflow):
     issues, plans, lines, missing = [], [], [], []
     for index, task in enumerate(workflow['tasks']):
-        if task.get('draft_stage') == 'query':
-            issues.append(issue('selection_not_ready', [task['id']], '查询草稿尚未选择方案。'))
         if task['status'] not in {'draft', 'validated'}:
             issues.append(issue('task_not_draft', [task['id']], '任务尚未形成当前版本草稿。'))
         checked = check_task(workflow, task['id'], task.get('draft_plan'))
@@ -173,50 +169,12 @@ def check_workflow(workflow):
             missing.append({'task_id': task['id'], 'category': 'unverified'})
     subtotal = sum((Decimal(line['amount_cny']) for line in lines), Decimal('0'))
     start = workflow['confirmed_conditions'].get('start_date')
-    if start and global_is_hard(workflow, 'start_date') and plans and plans[0]['schedule']['departure_at'] and datetime.fromisoformat(plans[0]['schedule']['departure_at']).date().isoformat() != start:
+    if start and plans and plans[0]['schedule']['departure_at'] and datetime.fromisoformat(plans[0]['schedule']['departure_at']).date().isoformat() != start:
         issues.append(issue('start_date_conflict', [workflow['tasks'][0]['id']], '首段出发日期与用户确认的起始日期冲突。'))
     end = workflow['confirmed_conditions'].get('end_date')
-    if end and global_is_hard(workflow, 'end_date') and plans and plans[-1]['schedule']['arrival_at'] and datetime.fromisoformat(plans[-1]['schedule']['arrival_at']).date().isoformat() > end:
+    if end and plans and plans[-1]['schedule']['arrival_at'] and datetime.fromisoformat(plans[-1]['schedule']['arrival_at']).date().isoformat() > end:
         issues.append(issue('end_date_conflict', [workflow['tasks'][-1]['id']], '最后一段抵达日期超过用户可用日期。'))
     maximum = workflow['confirmed_conditions'].get('constraints', {}).get('total_budget_cny')
-    policy = workflow.get('policy_context')
-    if policy and (policy.get('status') != 'ok' or policy.get('missing_fields') or policy.get('conflicts')):
-        issues.append(issue('policy_unverified', [t['id'] for t in workflow['tasks']], '企业政策存在未核实条件或冲突。'))
-    if policy:
-        evidence_ids = {r.get('id') for r in policy.get('references', [])}
-        for constraint in policy.get('constraints', []):
-            if not constraint.get('hard'):
-                continue
-            for task, plan in zip(workflow['tasks'], plans):
-                scope = constraint.get('applicability', {})
-                if scope.get('city') and scope['city'] != task['destination']:
-                    continue
-                field = constraint.get('field')
-                if field and field.startswith('hotel_') and not task['requires_hotel']:
-                    continue
-                actual = None
-                try:
-                    if not constraint.get('evidence_ids') or not set(constraint['evidence_ids']) <= evidence_ids:
-                        raise ValueError('policy citation missing')
-                    effective, _ = effective_conditions(workflow['confirmed_conditions'], task['conditions'], {})
-                    if field == 'seat_class' and plan['train']:
-                        actual = plan['train'].get('seat_class')
-                    elif field == 'train_max_total_cny' and plan['train'] and plan['train'].get('price_cny') is not None:
-                        actual = Decimal(str(plan['train']['price_cny'])) * effective['passengers']
-                    elif field in {'hotel_max_total_cny', 'hotel_max_nightly_cny'} and plan['hotel'] and plan['hotel'].get('kind') != 'hotel_place':
-                        amount = plan['hotel'].get('stay_total_cny')
-                        if amount is not None:
-                            actual = Decimal(str(amount))
-                            if field == 'hotel_max_nightly_cny':
-                                actual /= (date.fromisoformat(plan['hotel']['check_out']) - date.fromisoformat(plan['hotel']['check_in'])).days
-                    if actual is None:
-                        raise ValueError('policy evidence unavailable')
-                    expected = constraint['value'] if field == 'seat_class' else Decimal(str(constraint['value']))
-                    failed = actual != expected if field == 'seat_class' else actual > expected
-                    if failed:
-                        issues.append(issue('policy_constraint_failed', [task['id']], '所选方案不符合企业强制约束。', evidence=constraint['id']))
-                except (ValueError, KeyError, TypeError, ArithmeticError):
-                    issues.append(issue('policy_constraint_unverified', [task['id']], '缺少验证企业强制约束的有效证据。', evidence=constraint.get('id')))
     if maximum is not None:
         if missing: issues.append(issue('total_budget_unknown', [t['id'] for t in workflow['tasks']], '全程费用有未知部分，不能验证预算。'))
         elif subtotal > Decimal(str(maximum)):
@@ -228,7 +186,6 @@ def check_workflow(workflow):
 
 def finalize_workflow(workflow, check):
     if not check.get('valid') or check.get('signature') != state_signature(workflow) or not check_workflow(workflow)['valid']:
-        raise ValueError('workflow has not passed current global validation')
     w = deepcopy(workflow)
     for task in w['tasks']: task['status'] = 'validated'
     w.update(status='completed', validation=deepcopy(check), stop_reason='validated', checkpoint=None)
