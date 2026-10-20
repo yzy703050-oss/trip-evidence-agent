@@ -109,7 +109,7 @@ flowchart TD
 - Verifier 对照原请求、完整计划、偏好、政策、候选及版本评估；局部直接修复，全局策略变化才交回 Main。
 - 相同规范化请求复用有效原始证据，按当前约束与排序重新投影；连续无真实进展时有界停止，版本自增不算进展。
 
-默认 SINGLE_PASS_PLANNING=false。历史整轮单次实验仅保留显式回放兼容，不作为当前正式规划路径。
+历史整轮单次生成实验已退役，统一使用 Main→工具→Verifier。旧配置 false 兼容，true 会明确报错；旧实验未完成轮次不重放，已保存行程可通过新请求继续调整。
 
 ### 5.2 Evidence Validation
 
@@ -168,7 +168,7 @@ macOS / Linux 改用 .venv/bin/python，配置复制使用 cp .env.example .env�
 | LLM_MODEL / LLM_BASE_URL | OpenAI 兼容模型名称及地址，默认值见 [.env.example](.env.example) |
 | JUHE_TRAIN_API_KEY | 铁路查询授权密钥 |
 | AMAP_API_KEY | 高德酒店地点搜索，不提供房价或空房 |
-| SINGLE_PASS_PLANNING / PLANNING_ROUNDS | false / 8，分阶段规划、评估与有限修复 |
+| PLANNING_ROUNDS | 8，分阶段规划、评估与有限修复 |
 | LLM_MAX_TOKENS / MEMORY_CONTEXT_BUDGET_TOKENS | 默认输出上限 8192 / 上下文预算 20000，思考关闭 |
 | LLM_INPUT_USD_PER_1M_TOKENS / LLM_OUTPUT_USD_PER_1M_TOKENS | 可选费用估算单价，未知费用不记零 |
 
@@ -209,7 +209,7 @@ python -m ruff check trip_assistant cli.py
 python -m evals.native_runner --output .test-tmp/native-eval
 ```
 
-覆盖工具批次、依赖并发、证据缓存/过期、引用版本、硬软条件、修改、政策、隔离、事务与恢复。当前精简后的全量回归为 **1052 项通过**（此前1117项；移除65项重复或已退役入口的测试）；运行测试通过不等于自然语言规划全部合理。
+覆盖工具批次、依赖并发、证据缓存/过期、引用版本、硬软条件、修改、政策、隔离、事务与恢复。当前精简后的全量回归为 **1039 项通过**（此前1117→1052项；本轮退役17项实验测试、合并1项旧参数维度并新增5项退役边界测试）；运行测试通过不等于自然语言规划全部合理。
 
 ### 真实模型 + 模拟供应商
 

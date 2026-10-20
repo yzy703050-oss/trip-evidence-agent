@@ -137,7 +137,7 @@ class ReplayModel:
 
 
 async def run_case(case, args):
-    settings = Settings(single_pass_planning=False)
+    settings = Settings()
     day = date.today() + timedelta(days=3)
     model = ReplayModel(case, day)
     if args.live_model:

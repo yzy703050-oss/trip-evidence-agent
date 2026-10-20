@@ -54,10 +54,7 @@ class NativeRuntimeFixture:
         from trip_assistant.trips.query_execution import TripQueryExecutor
         from trip_assistant.trips.service import TripService
 
-        # Historical fixtures exercise the explicit multi-turn compatibility path.
-        self.settings = settings or Settings(_env_file=None, single_pass_planning=False)
-        if settings is not None and "single_pass_planning" not in settings.model_fields_set:
-            self.settings = settings.model_copy(update={"single_pass_planning": False})
+        self.settings = settings or Settings(_env_file=None)
         self.sessions = SessionStore(root, "a", "s")
         self.memory = LongTermMemory("a", str(root))
         self.scheduler = Scheduler(self.settings)
@@ -118,7 +115,7 @@ def make_application(user_id, session_id, storage_path="data/memory", **kwargs):
     from trip_assistant.settings import Settings
 
     return create_application(
-        Settings(_env_file=None, single_pass_planning=False),
+        Settings(_env_file=None),
         model=ScriptedModel([]),
         providers={},
         storage_root=storage_path,

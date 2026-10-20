@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     rag_embedding_model: str = "data/models/bge-small-zh-v1.5"
     memory_context_budget_tokens: int = Field(default=20000, gt=0)
     planning_rounds: int = Field(default=8, gt=0)
+    # Accept old disabled configurations, but never reactivate the retired experiment.
     single_pass_planning: bool = False
     tools_per_batch: int = Field(default=8, gt=0)
     external_queries_per_batch: int = Field(default=12, gt=0)
@@ -37,6 +38,13 @@ class Settings(BaseSettings):
     half_open_concurrency: int = Field(default=1, gt=0)
     recovery_successes: int = Field(default=2, gt=0)
     evidence_max_age_seconds: float = Field(default=3600, gt=0)
+
+    @field_validator("single_pass_planning")
+    @classmethod
+    def reject_retired_experiment(cls, value):
+        if value:
+            raise ValueError("单次生成实验已退役，使用当前Main→工具→Verifier流程。")
+        return value
 
 
 @lru_cache

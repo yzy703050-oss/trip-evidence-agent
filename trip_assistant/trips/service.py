@@ -87,10 +87,7 @@ class TripService:
                     query=turn.get("original_query", ""),
                     departure_date=task["conditions"].get("departure_date"),
                     current_time=turn.get("current_time"),
-                    enabled=not (
-                        turn.get("single_pass_planning")
-                        or turn.get("model_managed_activity_times")
-                    ),
+                    enabled=not turn.get("model_managed_activity_times"),
                 )
                 task["condition_strengths"] = deepcopy(row.get("condition_strengths", {}))
                 task["field_sources"].update(row.get("field_sources", {}))
@@ -156,10 +153,7 @@ class TripService:
                         query=query,
                         departure_date=task["conditions"].get("departure_date"),
                         current_time=turn.get("current_time"),
-                        enabled=not (
-                            turn.get("single_pass_planning")
-                            or turn.get("model_managed_activity_times")
-                        ),
+                        enabled=not turn.get("model_managed_activity_times"),
                     )
                 if "schedule" in scope:
                     scope.update({"train", "hotel"})

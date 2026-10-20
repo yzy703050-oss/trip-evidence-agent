@@ -105,7 +105,7 @@ async def test_real_request_bootstrap_once_after_three_plans_and_reopen(tmp_path
         [json.dumps({"memories": [], "covered_trip_ids": ids}), "已使用上下文中的长期偏好。"]
     )
     app = create_application(
-        Settings(_env_file=None, single_pass_planning=False),
+        Settings(_env_file=None),
         model=model,
         providers={},
         storage_root=tmp_path,
@@ -129,7 +129,7 @@ async def test_real_request_bootstrap_once_after_three_plans_and_reopen(tmp_path
     assert len(records) == 1 and records[0]["turn_id"]
     model.script = ["已使用上下文中的长期偏好。"]
     reopened = create_application(
-        Settings(_env_file=None, single_pass_planning=False),
+        Settings(_env_file=None),
         model=model,
         providers={},
         storage_root=tmp_path,

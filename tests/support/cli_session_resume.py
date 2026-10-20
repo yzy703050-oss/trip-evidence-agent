@@ -11,7 +11,7 @@ from trip_assistant.settings import Settings
 
 def app_for(root):
     app = TripEvidenceCLI(
-        settings=Settings(_env_file=None, single_pass_planning=False),
+        settings=Settings(_env_file=None),
         storage_root=root,
         model=ScriptedModel(["回复"]),
         providers={},

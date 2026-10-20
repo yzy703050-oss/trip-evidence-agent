@@ -149,8 +149,7 @@ def test_inherited_start_date_error_identifies_the_actual_global_source(tmp_path
     assert not runtime.memory.workflow_store.list_all()
 
 
-@pytest.mark.parametrize("mode", [True, False])
-def test_known_filter_leaf_moves_to_constraint_without_changing_meaning(mode):
+def test_known_filter_leaf_moves_to_constraint_without_changing_meaning():
     raw = {
         "tripplan": {
             "tasks": [
@@ -163,7 +162,7 @@ def test_known_filter_leaf_moves_to_constraint_without_changing_meaning(mode):
         }
     }
     before = deepcopy(raw)
-    row = normalize(raw, {"single_pass_planning": mode})["tripplan"]["tasks"][0]
+    row = normalize(raw)["tripplan"]["tasks"][0]
     assert row["conditions"] == {
         "departure_date": "2026-10-21",
         "constraints": {"departure_time_after": "19:00"},
@@ -173,7 +172,7 @@ def test_known_filter_leaf_moves_to_constraint_without_changing_meaning(mode):
     assert normalize(raw)["tripplan"]["tasks"][0] == row
 
 
-def test_single_pass_filter_relocation_rejects_conflicting_duplicate_values():
+def test_filter_relocation_rejects_conflicting_duplicate_values():
     raw = {
         "tripplan": {
             "tasks": [
@@ -187,7 +186,7 @@ def test_single_pass_filter_relocation_rejects_conflicting_duplicate_values():
         }
     }
     with pytest.raises(ValueError, match="conflict"):
-        normalize(raw, {"single_pass_planning": True})
+        normalize(raw)
 
 
 @pytest.mark.parametrize(

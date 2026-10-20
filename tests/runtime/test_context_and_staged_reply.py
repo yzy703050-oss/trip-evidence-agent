@@ -23,7 +23,7 @@ async def test_actual_place_provider_capability_is_visible_without_extra_read(tm
 
     model = ScriptedModel(["你好"])
     app = create_application(
-        Settings(_env_file=None, single_pass_planning=False),
+        Settings(_env_file=None),
         model=model,
         providers={"hotel": SimulatedHotelProvider()},
         storage_root=tmp_path,
@@ -50,7 +50,7 @@ async def test_actual_place_provider_capability_is_visible_without_extra_read(tm
 async def test_all_active_memory_and_summary_are_in_first_context(tmp_path):
     model = ScriptedModel(["你好"])
     app = create_application(
-        Settings(_env_file=None, single_pass_planning=False),
+        Settings(_env_file=None),
         model=model,
         providers={},
         storage_root=tmp_path,
@@ -96,7 +96,7 @@ async def test_memory_write_refreshes_injected_snapshot_without_read(tmp_path, p
         ]
     )
     app = create_application(
-        Settings(_env_file=None, single_pass_planning=False),
+        Settings(_env_file=None),
         model=model,
         providers={},
         storage_root=tmp_path,
@@ -229,7 +229,7 @@ async def test_retraction_removes_memory_from_next_injected_snapshot(tmp_path, h
 
     model = ScriptedModel([])
     app = create_application(
-        Settings(_env_file=None, single_pass_planning=False),
+        Settings(_env_file=None),
         model=model,
         providers={},
         storage_root=tmp_path,

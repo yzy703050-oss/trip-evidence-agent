@@ -12,7 +12,6 @@ from trip_assistant.tools.trip_contracts import (
     NativePlan,
     PrePolicyPlan,
     ReviewPlan,
-    SinglePassPlan,
 )
 from trip_assistant.trips.contracts import GoalAssessment, Input, QueryItem, TripPlanInput
 from trip_assistant.trips.parameter_schema import CONDITIONS, MEMORY_UPDATE
@@ -116,37 +115,6 @@ class ReviewTripArguments(TripArguments):
 
 class PrePolicyTripArguments(TripArguments):
     tripplan: PrePolicyPlan
-
-
-class SinglePassTripArguments(TripArguments):
-    tripplan: SinglePassPlan
-    final_answer: str = Field(min_length=1)
-
-
-class SinglePassMemoryArguments(MemoryArguments):
-    operation: Literal["update"] = "update"
-
-
-def single_pass_registry(registry):
-    """Offer only actions which do not delegate another model decision."""
-    result = {
-        k: v for k, v in registry.items() if k in {"read", "query", "write_trip", "write_memory"}
-    }
-    if "write_trip" in result:
-        result["write_trip"] = replace(
-            result["write_trip"],
-            arguments=SinglePassTripArguments,
-            description="一次提交完整行程草案或修改及final_answer；reason说明铁路耗时估算依据。"
-            "未知车次不填选择引用，查询结果由程序另存证据，本轮不再调模型选择。"
-            "估算不能冒充车次票价库存；已有有效引用仍须校验。",
-        )
-    if "write_memory" in result:
-        result["write_memory"] = replace(
-            result["write_memory"],
-            arguments=SinglePassMemoryArguments,
-            description="同批增加、修改、撤回用户明确的长期偏好；不调用模型重分析。",
-        )
-    return result
 
 
 def creation_registry(registry, *, policy_observed):
@@ -268,16 +236,13 @@ class ToolDefinition:
         schema = self.arguments.model_json_schema()
         if issubclass(self.arguments, TripArguments):
             schema.get("properties", {}).pop("goal_assessment", None)
-            if not issubclass(self.arguments, SinglePassTripArguments):
-                schema.get("properties", {}).pop("final_answer", None)
+            schema.get("properties", {}).pop("final_answer", None)
             schema.get("$defs", {}).pop("GoalAssessment", None)
         definitions = schema.get("$defs", {})
         for definition in list(definitions.values()):
             for key in ("conditions", "confirmed_conditions"):
                 fields = definition.get("properties", {})
                 if key in fields:
-                    if fields[key].get("$ref") == "#/$defs/SharedPlanConditions":
-                        continue
                     fields[key] = {"$ref": "#/$defs/PlanningConditions"}
                     definitions["PlanningConditions"] = CONDITIONS
         return {
@@ -289,7 +254,6 @@ class ToolDefinition:
                 + (
                     TRIP_ARGUMENT_HELP
                     if issubclass(self.arguments, TripArguments)
-                    and not issubclass(self.arguments, SinglePassTripArguments)
                     else ""
                 ),
                 "parameters": compact_schema(

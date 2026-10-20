@@ -6,7 +6,6 @@ from typing import Annotated, Literal
 from pydantic import Field, StrictInt, create_model
 
 from trip_assistant.trips.contracts import Input, TaskInput, TripPlanInput
-from trip_assistant.trips.parameter_schema import CONDITIONS
 
 
 def subset(name, source, fields, **overrides):
@@ -64,25 +63,6 @@ NativePlan = Annotated[
 ]
 
 
-class SharedPlanConditions(Input):
-    """Only genuinely shared fields; departure dates belong to individual tasks."""
-
-    end_date: str | None = None
-    passengers: int | None = Field(default=None, ge=1)
-    guests: int | None = Field(default=None, ge=1)
-    hotel_quote_required: bool | None = None
-    constraints: dict = Field(
-        default_factory=dict, json_schema_extra=CONDITIONS["properties"]["constraints"]
-    )
-
-
-class SinglePassCreatePlan(CreatePlan):
-    confirmed_conditions: SharedPlanConditions = Field(default_factory=SharedPlanConditions)
-
-
-SinglePassPlan = Annotated[
-    SinglePassCreatePlan | SelectPlan | AmendPlan | ControlPlan, Field(discriminator="operation")
-]
 ReviewPlan = Annotated[SelectPlan | AmendPlan, Field(discriminator="operation")]
 
 PrePolicyCreateTask = create_model(
