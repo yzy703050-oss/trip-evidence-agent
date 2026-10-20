@@ -47,7 +47,7 @@ def runtime(tmp_path):
             query,
             model=MainAgent(scripted),
             registry=registry,
-            context={"single_pass_planning": False, **extra.pop("context", {})},
+            context=extra.pop("context", {}),
             sessions=sessions,
             budget=extra.pop("budget", TurnBudget(Settings())),
             **extra,

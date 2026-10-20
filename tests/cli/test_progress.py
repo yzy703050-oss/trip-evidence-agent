@@ -27,7 +27,7 @@ async def test_progress_tracks_actual_model_and_tools_and_resets(tmp_path):
         ]
     )
     app = create_application(
-        Settings(_env_file=None, single_pass_planning=False),
+        Settings(_env_file=None),
         model=model,
         providers={},
         storage_root=tmp_path,
@@ -82,7 +82,7 @@ async def test_cli_spinner_closes_on_success_error_and_cancel(failure):
 
     console = Console()
     cli = TripEvidenceCLI(
-        settings=Settings(_env_file=None, single_pass_planning=False), console=console
+        settings=Settings(_env_file=None), console=console
     )
     cli.app = App()
     if failure:
@@ -101,7 +101,7 @@ async def test_broken_progress_display_does_not_fail_model_request(tmp_path):
 
     model = ScriptedModel(["你好"])
     app = create_application(
-        Settings(_env_file=None, single_pass_planning=False),
+        Settings(_env_file=None),
         model=model,
         providers={},
         storage_root=tmp_path,

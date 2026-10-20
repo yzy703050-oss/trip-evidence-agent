@@ -14,6 +14,29 @@ def restore_turn(sessions, turn_id, *, settings, clock=monotonic, trip_service=N
     active = sessions.read_state().get("active_turn", {})
     if active.get("turn_id") != turn_id:
         raise ValueError("unknown active turn")
+    if active.get("single_pass_planning"):
+        reason = "旧单次生成实验已退役，原有行程与记录已保留，请以新请求继续调整。"
+        pending = [c for c in sessions.pending_tool_calls() if c["turn_id"] == turn_id]
+        for call in pending:
+            sessions.record_result(
+                call["id"],
+                {
+                    "call_id": call["id"],
+                    "name": call["name"],
+                    "status": "unknown",
+                    "reason": "旧模式已退役，原操作结果未核实，本次不重放。",
+                    "error": {"code": "RETIRED_EXPERIMENT", "details": {}},
+                },
+                turn_id,
+            )
+        sessions.checkpoint_turn(turn_id, {"status": "stopped", "reason": reason})
+        return {
+            "context": {**active, "turn_id": turn_id},
+            "budget": TurnBudget(settings, snapshot=active, clock=clock),
+            "can_resume": False,
+            "unknown_calls": [c["id"] for c in pending],
+            "reason": reason,
+        }
     legacy_executions = active.get("executions") or {}
     import_legacy(sessions, active)
     store = ActionStore(sessions)

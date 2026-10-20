@@ -110,18 +110,12 @@ def test_ready_reply_uses_bound_result_ahead_of_legacy_prose():
     assert ExecutionState.ready_reply(calls, [result]) == "G9002，15:20抵达"
 
 
-def test_default_schema_shows_reply_but_legacy_input_and_experiment_still_work():
-    from trip_assistant.tools.registry import build_registry, single_pass_registry
+def test_default_schema_shows_reply_but_legacy_input_still_works():
+    from trip_assistant.tools.registry import build_registry
 
     registry = build_registry({})
     public = registry["write_trip"].schema["function"]["parameters"]["properties"]
     assert "reply" in public and "final_answer" not in public
-    assert (
-        "final_answer"
-        in single_pass_registry(registry)["write_trip"].schema["function"]["parameters"][
-            "properties"
-        ]
-    )
     args = {
         "request_kind": "planning",
         "tripplan": {"operation": "amend", "trip_plan_id": "t", "expected_revision": 1},

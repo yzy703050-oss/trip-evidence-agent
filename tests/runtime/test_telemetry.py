@@ -52,7 +52,7 @@ async def test_truncated_model_attempt_keeps_usage_and_never_executes_partial_to
             )
 
     app = create_application(
-        Settings(_env_file=None, extra_retries=retries, single_pass_planning=False),
+        Settings(_env_file=None, extra_retries=retries),
         model=Truncated(),
         providers={},
         storage_root=tmp_path,

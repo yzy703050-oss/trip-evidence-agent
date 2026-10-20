@@ -105,8 +105,7 @@ class Application:
                 )
                 context["model_managed_activity_times"] = True
                 context["bound_trip_replies"] = True
-                if not self.settings.single_pass_planning:
-                    await self.update_inferred_preferences(budget)
+                await self.update_inferred_preferences(budget)
                 self.refresh_memory_context(context)
                 context["refresh_memory_context"] = self.refresh_memory_context
                 result = await run_turn(

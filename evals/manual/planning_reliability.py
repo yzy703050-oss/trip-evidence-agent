@@ -429,7 +429,6 @@ async def run_case(case, root, settings, now, *, thinking=None, isolate_public=F
         "activity_date": (now + timedelta(days=2)).date().isoformat(),
         "model": settings.llm_model,
         "planning_rounds": settings.planning_rounds,
-        "single_pass_planning": settings.single_pass_planning,
         "rail_fixture": {
             "kind": "high_speed",
             "duration_minutes": train.duration_minutes,

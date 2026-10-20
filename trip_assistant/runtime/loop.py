@@ -7,7 +7,6 @@ from uuid import uuid4
 from trip_assistant.agents.prompts import (
     MAIN_PROMPT,
     REPLY_POLICY,
-    SINGLE_PASS_PROMPT,
     SUMMARY_PROMPT,
     TRIP_REVIEW_PROMPT,
 )
@@ -27,19 +26,19 @@ from trip_assistant.runtime.execution import execute_batch
 from trip_assistant.runtime.limits import LimitError
 from trip_assistant.runtime.progress import report_progress
 from trip_assistant.runtime.review import decision_role
-from trip_assistant.runtime.single_pass import decision_reply, planning_context
 from trip_assistant.runtime.state import ExecutionState
 from trip_assistant.runtime.telemetry import model_scope
 from trip_assistant.runtime.trip_jobs import run_trip_jobs
 from trip_assistant.storage.actions import ActionStore
 from trip_assistant.tools.registry import (
     creation_registry,
-    single_pass_registry,
     trip_review_registry,
 )
 
 
 async def run_turn(query, *, model, registry, context, sessions, budget):
+    if context.get("single_pass_planning"):
+        raise ValueError("旧单次生成实验已退役，请以新请求继续规划。")
     turn_id = context.get("turn_id") or "turn_" + uuid4().hex
     turn = {
         **context,
@@ -50,10 +49,6 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
         "budget": budget,
     }
     turn["actions"] = ActionStore(sessions)
-    single_pass = turn.get("single_pass_planning", budget.limits.single_pass_planning)
-    turn["single_pass_planning"] = single_pass
-    if single_pass:
-        registry = single_pass_registry(registry)
     for key in (
         "shown_candidates",
         "candidate_views",
@@ -77,7 +72,6 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
             **budget.checkpoint(),
             "query": query,
             "status": "running",
-            "single_pass_planning": single_pass,
         },
     )
     results = [
@@ -104,7 +98,7 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
 
     writer = registry.get("write_trip")
     service = writer.followup.service if writer and writer.followup else None
-    final = "" if single_pass else recover_reply(sessions, turn_id, service) or ""
+    final = recover_reply(sessions, turn_id, service)
     stop_reason = machine.stop_reason
     observation_only = machine.summary_only
     generation_failures = sum(
@@ -117,7 +111,7 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
         generation_failures += 1
         sessions.append_run({"type": kind, "turn_id": turn_id, "number": generation_failures})
         persist_phase()
-        return not single_pass and generation_failures <= budget.limits.extra_retries
+        return generation_failures <= budget.limits.extra_retries
 
     with model_scope(turn_id=turn_id):
         try:
@@ -149,29 +143,6 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
                 machine.observe(results)
                 persist_phase()
             while not final:
-                active = sessions.read_state().get("active_turn", {})
-                if single_pass and active.get("single_pass_model_started"):
-                    decision = active.get("single_pass_decision", {})
-                    received = {r.get("call_id") for r in results}
-                    missing = [c for c in decision.get("tool_calls", []) if c["id"] not in received]
-                    if missing and not machine.summary_only:
-                        persist_phase("executing")
-                        results.extend(
-                            await execute_batch(
-                                missing,
-                                registry=registry,
-                                turn=turn,
-                                budget=budget,
-                                sessions=sessions,
-                            )
-                        )
-                        persist_phase("validating")
-                        machine.observe(results)
-                    final = decision_reply(decision, results)
-                    if not decision:
-                        stop_reason = "model_result_unavailable"
-                        machine.stop(stop_reason)
-                    break
                 budget.require_time()
                 if budget.planning and budget.rounds >= budget.limits.planning_rounds:
                     observation_only = True
@@ -205,10 +176,10 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
                     decision_role(results) == "main" or new_user_with_plan
                 )
                 turn["decision_role"] = (
-                    "main" if single_pass or replanning or not trip_ids else "verifier"
+                    "main" if replanning or not trip_ids else "verifier"
                 )
                 turn["mixed_request"] = mixed
-                if not single_pass and not observation_only and not machine.summary_only:
+                if not observation_only and (not machine.summary_only):
                     refreshed = await refresh_before_review(
                         executor, trip_ids, turn, sessions, budget
                     )
@@ -327,9 +298,6 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
                         else MAIN_PROMPT,
                     }
                 ]
-                if single_pass:
-                    messages = [{"role": "system", "content": SINGLE_PASS_PROMPT}]
-                    active_registry = registry
                 if observation_only:
                     messages.append(
                         {
@@ -375,8 +343,7 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
                             + json.dumps(turn["system_context"], ensure_ascii=False),
                         }
                     )
-                if not single_pass:
-                    messages.append({"role": "system", "content": REPLY_POLICY})
+                messages.append({"role": "system", "content": REPLY_POLICY})
                 tools = (
                     [] if observation_only else [tool.schema for tool in active_registry.values()]
                 )
@@ -397,11 +364,6 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
                             ),
                         }
                     ]
-                if single_pass:
-                    payload = planning_context(sessions, turn, service)
-                    options["projection"] = lambda payload=payload: [
-                        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
-                    ]
                 async with asyncio.timeout(budget.remaining_seconds()):
                     messages = await prepare_context(sessions, **options)
                     if review is not None:
@@ -416,8 +378,6 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
                         "正在整理查询结果与回复…" if results else "正在理解请求并安排旅程…"
                     )
                     try:
-                        if single_pass:
-                            sessions.checkpoint_turn(turn_id, {"single_pass_model_started": True})
                         response = await model.respond(
                             messages,
                             tools,
@@ -432,16 +392,6 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
                             continue
                         raise
                     await prepare_context(sessions, **options, response=response)
-                    if single_pass:
-                        sessions.checkpoint_turn(
-                            turn_id,
-                            {
-                                "single_pass_decision": {
-                                    "text": response.text,
-                                    "tool_calls": response.tool_calls,
-                                }
-                            },
-                        )
                 budget.require_time()
                 if not response.tool_calls:
                     if not response.text.strip():
@@ -497,11 +447,6 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
                 persist_phase()
                 observation_only = machine.summary_only
                 stop_reason = machine.stop_reason
-                if single_pass:
-                    final = decision_reply(
-                        {"text": response.text, "tool_calls": response.tool_calls}, results
-                    )
-                    break
                 # A partial update may already have changed some memories.
                 if any(r.get("name") == "write_memory" for r in batch):
                     if turn.get("refresh_memory_context"):
@@ -559,11 +504,10 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
             if stop_reason == "context_budget_exceeded"
             else "模型响应暂不可用，已保留当前进度。"
         )
-    if stop_reason and not single_pass and turn.get("bound_trip_replies"):
+    if stop_reason and turn.get('bound_trip_replies'):
         final = stopped_trip_reply(results) or final
-    if not single_pass and (
-        any(r.get("rendered_answer") for r in results)
-        or (stop_reason and turn.get("bound_trip_replies"))
+    if any(r.get("rendered_answer") for r in results) or (
+        stop_reason and turn.get("bound_trip_replies")
     ):
         final = append_related_facts(final, results)
     persist_phase("reply_ready")

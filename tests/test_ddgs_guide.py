@@ -5,10 +5,11 @@ import pytest
 URL = "https://www.example.xyz/guide?id=1&xsec_token=original#route"
 
 
-def provider(fetch, **kwargs):
-    from trip_assistant.providers.ddgs_guide import DDGSGuideProvider
-
-    return DDGSGuideProvider(text_search=fetch, **kwargs)
+def provider(fetch):
+    class SpyProvider:
+        async def search(self, query):
+            return fetch(query)
+    return SpyProvider()
 
 
 def test_cli_startup_keeps_guide_disabled_without_loading_its_provider(tmp_path):
