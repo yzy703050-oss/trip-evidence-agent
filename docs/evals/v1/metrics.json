@@ -1,9 +1,15 @@
 {
-  "acceptance": "guide_capability_disabled_and_validated_other_quality_gap_remains",
+  "acceptance": "all_ten_pass_under_user_confirmed_scope",
+  "acceptance_review": {
+    "date": "2026-10-19",
+    "basis": "用户确认附带退房返程辅助活动不作为不通过项；按当前验收口径复核已有结果。",
+    "new_model_runs": false,
+    "original_local_records_preserved": true
+  },
   "full_user_requests": 10,
   "probes": 0,
   "automatic_passed": 10,
-  "manual_passed": 9,
+  "manual_passed": 10,
   "requirements_covered": 55,
   "requirements_total": 56,
   "totals": {
@@ -234,9 +240,9 @@
         "failures": [],
         "semantic_review": "pending"
       },
-      "manual_passed": false,
+      "manual_passed": true,
       "manual_notes": [
-        "交通住宿和两日游览已保存，但24日上午新增退房返程辅助活动，违背已确认活动范围。"
+        "交通住宿和两日游览已保存；附带退房返程辅助活动按当前验收口径接受。"
       ],
       "metrics": {
         "input_tokens": 15657,

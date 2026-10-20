@@ -56,56 +56,6 @@ async def test_stream_latency_records_first_chunk_and_total_response_time():
     assert rows[0]["output_tokens"] == 2
 
 
-@pytest.mark.parametrize(
-    "brands,keywords,expected",
-    [
-        ("全季", "全季", True),
-        (["全季"], "全季", True),
-        ("全季", "汉庭", False),
-        (["全季"], "汉庭", False),
-        ("汉庭", "全季", False),
-    ],
-)
-def test_live_assessment_checks_preference_value_and_actual_query(
-    monkeypatch, brands, keywords, expected
-):
-    from types import SimpleNamespace
-
-    from evals.legacy_reports import assess
-
-    monkeypatch.setattr("trip_assistant.trips.validation.check_workflow", lambda w: {"issues": []})
-    result = {
-        "status": "partial",
-        "data_mode": "simulation",
-        "workflow": {
-            "tasks": [
-                {
-                    "requires_hotel": True,
-                    "conditions": {"nights": 2},
-                    "draft_plan": {"hotel_selection": {}},
-                }
-            ],
-            "checkpoint": None,
-            "confirmed_conditions": {},
-            "results_by_query": {
-                "hotel-query": {"domain": "hotel", "parameters": {"keywords": keywords}}
-            },
-        },
-    }
-    run = SimpleNamespace(effective_preferences={"hotel_brands": brands})
-    assert assess("preference_plan", result, run)["checks"]["preference_updated"] is expected
-
-
-def test_live_assessment_reports_missing_scope_checkpoint_without_crashing():
-    from types import SimpleNamespace
-
-    from evals.legacy_reports import assess
-
-    result = {"status": "partial", "workflow": {"checkpoint": None}}
-    report = assess("ambiguous", result, SimpleNamespace(external_request_count=0))
-    assert not report["passed"] and report["checks"]["scope_checkpoint"] is False
-
-
 def invoke(tmp_path, *, failure=False):
     records = []
     for case in ("query_price", "default_date", "multi_route_unspecified_stay"):

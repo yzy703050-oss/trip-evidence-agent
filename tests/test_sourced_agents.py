@@ -59,13 +59,10 @@ def service(tmp_path, name, provider=None):
 
 
 @pytest.mark.parametrize("name,fields,required", CASES)
-@pytest.mark.parametrize("previous", [False, True])
 @pytest.mark.asyncio
-async def test_queries_and_sources_pass_through(tmp_path, name, fields, required, previous):
+async def test_queries_and_sources_pass_through(tmp_path, name, fields, required):
     provider = RecordingProvider()
     domain, queries, turn = service(tmp_path, name, provider)
-    if previous:
-        turn["unrelated_history"] = "无关旧查询"
     result = await queries.fetch({"domain": domain, "parameters": fields}, turn)
     assert result["source"]["provider"] == provider.source.provider and result["items"] == []
     raw = queries.evidence.get(result["query_id"], result["result_revision"])

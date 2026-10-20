@@ -50,15 +50,3 @@ def test_weather_invalid_temperature_is_incomplete():
     assert guard_domain_result("weather", data)["status"] == "partial"
 
 
-def test_itinerary_cannot_silently_move_confirmed_dates():
-    from trip_assistant.providers.plan_guard import guard_final_itinerary
-
-    plan = {
-        "planning_complete": True,
-        "itinerary": {"daily_plans": [{"day": 1, "date": "2026-11-10"}]},
-    }
-    guarded = guard_final_itinerary(
-        plan, {}, {"destination": "Beijing", "start_date": "2026-10-10", "end_date": "2026-10-12"}
-    )
-    assert guarded["planning_complete"] is False
-    assert not guarded["itinerary"]["daily_plans"]

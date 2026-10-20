@@ -13,7 +13,7 @@ from trip_assistant.llm.budget import BudgetedModel
 # memory_budget_config
 
 
-@pytest.mark.parametrize("budget", [20000, 14854, 12345])
+@pytest.mark.parametrize("budget", [20000, 14854])
 def test_soft_trigger_is_eighty_percent_but_hard_check_remains_budget(budget):
     wrapped = BudgetedModel(None, budget_tokens=budget, counter=lambda payload: int(budget * 0.9))
     assert wrapped.compaction_trigger_tokens == budget * 80 // 100

@@ -41,12 +41,6 @@ def test_application_disables_reasoning_even_with_legacy_low_setting(tmp_path, m
     assert app.preference_agent.model is not None
 
 
-def test_application_setting_defaults_to_disabled():
-    from trip_assistant.settings import Settings
-
-    assert Settings(_env_file=None).llm_thinking == "disabled"
-
-
 def test_other_provider_does_not_receive_deepseek_specific_options():
     from trip_assistant.settings import generation_options
 

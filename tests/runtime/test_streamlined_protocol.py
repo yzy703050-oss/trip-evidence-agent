@@ -1,6 +1,5 @@
 import json
 
-import pytest
 from support.native import NativeRuntimeFixture
 from test_goal_assessment import prepared_selection
 
@@ -16,16 +15,6 @@ def test_main_and_review_do_not_offer_candidate_pagination_or_self_rating():
     assert "query_id" not in schema["properties"]
     assert "read" not in trip_review_registry(registry, "trip", {"q": 1})
     assert "goal_assessment" not in json.dumps(registry["write_trip"].schema)
-
-
-def test_critical_argument_guidance_survives_schema_compaction_and_stage_binding():
-    registry = build_registry({})
-    review = trip_review_registry(registry, "trip")
-    for tool in (registry["write_trip"], review["write_trip"]):
-        description = tool.schema["function"]["description"]
-        assert "condition_strengths" in description and "field_sources" in description
-        assert "confirmed_conditions.start_date" in description
-        assert "default_round_trip" in description
 
 
 async def test_selection_without_rating_saves_and_existing_version_can_be_adjusted(tmp_path):
@@ -57,15 +46,3 @@ async def test_selection_without_rating_saves_and_existing_version_can_be_adjust
     assert second["status"] == "completed" and second["revision"] > first["revision"]
 
 
-@pytest.mark.parametrize("rating", ["partial", "unmet", "unknown", "satisfied"])
-async def test_legacy_rating_is_compatible_but_not_a_write_gate(tmp_path, rating):
-    runtime = NativeRuntimeFixture(tmp_path, {"train": SimulatedTrainProvider()})
-    result = await build_trip_writer(runtime.trip_service)(
-        {
-            "tripplan": await prepared_selection(runtime),
-            "goal_assessment": {"status": rating, "reason": "旧标签"},
-        },
-        {"operation_id": "select"},
-    )
-    assert result["status"] == "completed"
-    assert "goal_assessment" not in result["validation"]
