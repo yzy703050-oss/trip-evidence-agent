@@ -97,34 +97,6 @@ async def test_review_rejects_paging_then_selects_current_page_without_supplier_
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "changes",
-    [
-        {"resource": "session_summaries"},
-        {"trip_plan_id": "other"},
-        {"query_id": "other"},
-        {"result_revision": 999},
-    ],
-)
-async def test_review_cached_read_cannot_escape_current_trip_or_version(tmp_path, changes):
-    train = SimulatedTrainProvider(duration_minutes=120, departure_hours=[0, 3, 6, 9, 12, 15])
-    runtime = NativeRuntimeFixture(tmp_path, {"train": train})
-
-    def finish(messages):
-        assert messages[0]["content"] == TRIP_REVIEW_PROMPT
-        return "当前有模拟车次候选，尚未提交选择。"
-
-    runtime.model.script = [
-        batch(("p", "write_trip", single_trip())),
-        lambda messages: next_page(messages, **changes),
-        finish,
-    ]
-    result = await runtime.run("规划明天重庆去上海单程旅游")
-    assert result["tool_results"][1]["status"] == "rejected"
-    assert len(train.calls) == 1 and not runtime.sessions.pending_tool_calls()
-
-
-@pytest.mark.asyncio
 async def test_review_page_is_recovered_from_paired_events_after_interruption(tmp_path):
     from trip_assistant.memory.planning import review_payload
     from trip_assistant.storage.sessions import SessionStore

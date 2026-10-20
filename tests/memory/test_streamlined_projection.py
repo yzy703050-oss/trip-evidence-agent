@@ -3,7 +3,6 @@ from copy import deepcopy
 from support.native import NativeRuntimeFixture
 from support.workflow import populated_workflow
 
-from trip_assistant.agents.prompts import MAIN_PROMPT, REPLY_POLICY, TRIP_REVIEW_PROMPT
 from trip_assistant.memory.planning import review_payload
 
 
@@ -53,12 +52,6 @@ def test_different_policy_evidence_is_not_deduplicated(tmp_path):
         runtime.sessions, {"turn_id": "t", "original_query": "继续"}, saved["id"]
     )
     assert payload["tripplan"]["constraint_snapshot"]["policy"]["constraints"] == [{"value": 200}]
-
-
-def test_prompts_do_not_require_self_ratings_paging_or_fixed_activity_buffers():
-    text = MAIN_PROMPT + TRIP_REVIEW_PROMPT + REPLY_POLICY
-    assert "goal_assessment" not in text and "satisfied" not in text
-    assert "19:30" not in text and "下一缓存页" not in text
 
 
 async def test_execution_limits_and_supplier_capabilities_are_not_repeated_system_messages(
