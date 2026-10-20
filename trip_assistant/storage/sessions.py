@@ -6,14 +6,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-
-def storage_component(value: str) -> str:
-    """Reject path traversal while allowing existing Unicode user IDs."""
-    if not isinstance(value, str) or not value or value in {".", ".."}:
-        raise ValueError("user_id and session_id must be non-empty path components")
-    if any(character in value for character in "/\\:\0<>|?*") or value.endswith((".", " ")):
-        raise ValueError("user_id and session_id must be safe path components")
-    return value
+from trip_assistant.storage.identity import storage_component as storage_component
 
 
 class SessionStore:

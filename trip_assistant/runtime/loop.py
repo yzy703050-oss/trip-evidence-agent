@@ -25,8 +25,7 @@ from trip_assistant.runtime.evidence_refresh import (
 from trip_assistant.runtime.execution import execute_batch
 from trip_assistant.runtime.limits import LimitError
 from trip_assistant.runtime.progress import report_progress
-from trip_assistant.runtime.review import decision_role
-from trip_assistant.runtime.state import ExecutionState
+from trip_assistant.runtime.state import ExecutionState, decision_role
 from trip_assistant.runtime.telemetry import model_scope
 from trip_assistant.runtime.trip_jobs import run_trip_jobs
 from trip_assistant.storage.actions import ActionStore
@@ -241,16 +240,7 @@ async def run_turn(query, *, model, registry, context, sessions, budget):
                         trip_review_registry(
                             registry,
                             sorted(trip_ids) if mixed else target,
-                            {
-                                view["query_id"]: view["result_revision"]
-                                for plan in review.get("tripplans", [review["tripplan"]])
-                                for view in plan.get("candidates", [])
-                                if view.get("has_more")
-                                and view.get("query_id") in plan.get("candidate_queries", {})
-                                and plan["candidate_queries"][view["query_id"]]
-                                == view.get("result_revision")
-                            },
-                            retryable_query_intents(sessions, turn_id),
+                            retry_queries=retryable_query_intents(sessions, turn_id),
                         )
                         if trip_ids and not replanning
                         else active_registry

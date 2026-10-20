@@ -42,7 +42,10 @@ def _summary(arguments, text=None):
 
 
 def previous_round(sessions, turn_id):
-    events = sessions.read_events(turn_id=turn_id, scope="session")
+    return _previous_round(sessions.read_events(turn_id=turn_id, scope="session"))
+
+
+def _previous_round(events):
     call = next((e for e in reversed(events) if e["type"] == "tool_call"), None)
     if not call:
         return {"summary": "", "results": []}, {}
@@ -229,7 +232,12 @@ def reply_facts(saved):
 
 def planning_query_results(sessions, turn_id, saved_trip):
     """Project successful lookups; bindings describe reuse, not review eligibility."""
-    events = sessions.read_events(turn_id=turn_id, scope="session")
+    return _planning_query_results(
+        sessions.read_events(turn_id=turn_id, scope="session"), saved_trip
+    )
+
+
+def _planning_query_results(events, saved_trip):
     results = {e["tool_call_id"]: e["content"] for e in events if e["type"] == "tool_result"}
     projected = []
     bindings = list(saved_trip.get("results_by_query", {}).values()) if saved_trip else []
@@ -297,7 +305,10 @@ def planning_query_results(sessions, turn_id, saved_trip):
 
 
 def planning_memory_results(sessions, turn_id):
-    events = sessions.read_events(turn_id=turn_id, scope="session")
+    return _planning_memory_results(sessions.read_events(turn_id=turn_id, scope="session"))
+
+
+def _planning_memory_results(events):
     results = {e["tool_call_id"]: e["content"] for e in events if e["type"] == "tool_result"}
     return [
         {"updates": deepcopy(call["arguments"].get("updates", [])), **deepcopy(results[call["id"]])}
@@ -309,7 +320,10 @@ def planning_memory_results(sessions, turn_id):
 
 
 def _current_pages(sessions, turn_id, saved):
-    events = sessions.read_events(turn_id=turn_id, scope="session")
+    return _current_pages_from_events(sessions.read_events(turn_id=turn_id, scope="session"), saved)
+
+
+def _current_pages_from_events(events, saved):
     cutoff = max(
         (
             e["seq"]
@@ -353,8 +367,12 @@ def _current_pages(sessions, turn_id, saved):
 
 
 def execution_summaries(sessions, turn_id):
+    return _execution_summaries(sessions.read_events(turn_id=turn_id, event_type="execution_job"))
+
+
+def _execution_summaries(events):
     rows = []
-    for event in sessions.read_events(turn_id=turn_id, event_type="execution_job"):
+    for event in events:
         if event.get("state") not in {"completed", "unknown"}:
             continue
         result = event["content"]
@@ -389,10 +407,45 @@ def execution_summaries(sessions, turn_id):
 
 
 def review_payload(sessions, turn, trip_plan_id=None):
+    events = sessions.read_events(turn_id=turn["turn_id"])
+    session_events = [e for e in events if e.get("scope", "session") == "session"]
+    identities = trip_plan_id if isinstance(trip_plan_id, list) else [trip_plan_id]
+    saved_by_id = {}
+    if any(identities):
+        store = TripStore(sessions.storage.root, sessions.user_id)
+        for identity in identities:
+            if not identity or identity in saved_by_id:
+                continue
+            try:
+                storage_component(identity)
+            except ValueError:
+                saved_by_id[identity] = None
+            else:
+                saved_by_id[identity] = store.load(identity)
+    common = {
+        "round": _previous_round(session_events),
+        "execution_results": _execution_summaries(
+            e for e in events if e["type"] == "execution_job"
+        ),
+        "memory_results": _planning_memory_results(session_events),
+    }
+    return _review_payload(sessions, turn, trip_plan_id, session_events, saved_by_id, common)
+
+
+def _review_payload(
+    sessions, turn, trip_plan_id, session_events, saved_by_id, common, *, include_queries=True
+):
     if isinstance(trip_plan_id, list):
-        payloads = [review_payload(sessions, turn, identity) for identity in trip_plan_id]
+        payloads = [
+            _review_payload(
+                sessions, turn, identity, session_events, saved_by_id, common, include_queries=False
+            )
+            for identity in trip_plan_id
+        ]
         payloads = [p for p in payloads if p]
-        payload = review_payload(sessions, turn)
+        payload = _review_payload(
+            sessions, turn, None, session_events, saved_by_id, common, include_queries=False
+        )
         payload["tripplan"] = {}
         payload["tripplans"] = [p["tripplan"] for p in payloads]
         payload["reply_facts"] = [
@@ -404,16 +457,15 @@ def review_payload(sessions, turn, trip_plan_id=None):
             for change in p["adjustment_history"]
         ]
         combined = {"results_by_query": {}, "tasks": [], "last_candidate_views": []}
-        store = TripStore(sessions.storage.root, sessions.user_id)
         for identity in trip_plan_id:
-            saved = store.load(identity)
+            saved = saved_by_id.get(identity)
             if saved:
                 combined["results_by_query"].update(saved.get("results_by_query", {}))
                 combined["tasks"].extend(saved["tasks"])
                 combined["last_candidate_views"].extend(saved.get("last_candidate_views", []))
-        payload["query_results"] = planning_query_results(sessions, turn["turn_id"], combined)
+        payload["query_results"] = _planning_query_results(session_events, combined)
         return payload
-    summary, attempted = previous_round(sessions, turn["turn_id"])
+    summary, attempted = common["round"]
     history = []
     query_results = []
     if trip_plan_id:
@@ -421,7 +473,7 @@ def review_payload(sessions, turn, trip_plan_id=None):
             storage_component(trip_plan_id)
         except ValueError:
             return None
-        saved = TripStore(sessions.storage.root, sessions.user_id).load(trip_plan_id)
+        saved = saved_by_id.get(trip_plan_id)
         if saved is None:
             return None
         snapshot = {
@@ -478,7 +530,7 @@ def review_payload(sessions, turn, trip_plan_id=None):
             and row.get("task_revision")
             == next((t["revision"] for t in saved["tasks"] if t["id"] == row.get("task_id")), None)
         }
-        pages = _current_pages(sessions, turn["turn_id"], saved)
+        pages = _current_pages_from_events(session_events, saved)
         previous_pages = [
             view
             for view in snapshot["candidates"]
@@ -546,13 +598,14 @@ def review_payload(sessions, turn, trip_plan_id=None):
         for change in history:
             if change["operation"] == "propose":
                 change["changes"] = {"initial_plan_in_current_snapshot": True}
-        query_results = planning_query_results(sessions, turn["turn_id"], saved)
+        if include_queries:
+            query_results = _planning_query_results(session_events, saved)
 
     else:
         snapshot = deepcopy(attempted)
     observations = [
         {"call_id": e["tool_call_id"], **deepcopy(e["content"])}
-        for e in sessions.read_events(turn_id=turn["turn_id"], scope="session")
+        for e in session_events
         if e["type"] == "tool_result" and e["content"].get("name") in {"read", "query_policy"}
     ]
     for observation in observations:
@@ -574,16 +627,16 @@ def review_payload(sessions, turn, trip_plan_id=None):
             } | {"candidates_in_tripplan": True}
         elif trip_plan_id and data.get("id") == trip_plan_id:
             observation["data"] = {"trip_plan_id": trip_plan_id, "in_current_snapshot": True}
-    if not trip_plan_id:
-        query_results = planning_query_results(sessions, turn["turn_id"], None)
+    if not trip_plan_id and include_queries:
+        query_results = _planning_query_results(session_events, None)
     return {
         "reply_facts": reply_facts(saved) if trip_plan_id else {},
-        "execution_results": execution_summaries(sessions, turn["turn_id"]),
+        "execution_results": common["execution_results"],
         "observations": observations,
         "original_query": turn["original_query"],
         "tripplan": snapshot,
         "previous_round_summary": summary,
         "adjustment_history": history,
         "query_results": query_results,
-        "memory_results": planning_memory_results(sessions, turn["turn_id"]),
+        "memory_results": common["memory_results"],
     }

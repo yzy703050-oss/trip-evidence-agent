@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from inspect import unwrap
 
 from trip_assistant.presentation.facts import valid_save_receipt
 from trip_assistant.presentation.trip_reply import validate_trip_reply
@@ -94,7 +95,9 @@ async def execute_batch(calls, *, registry, turn, budget, sessions, resuming=Fal
                         )
                         for q in args["query_plan"]
                     )
-                if tool.followup:
+                if tool.followup and (
+                    not expand or unwrap(expand) != tool.followup.service.expand_queries
+                ):
                     query_keys.extend(tool.followup.expand_queries(args, turn))
             except ToolFailure as error:
                 if error.code != "EVIDENCE_EXPIRED" or not tool.followup:

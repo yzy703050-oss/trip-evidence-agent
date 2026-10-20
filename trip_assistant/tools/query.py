@@ -37,10 +37,13 @@ class QueryService:
 
     def request_key(self, item):
         provider, parameters, _ = self.prepare(item)
-        if item["domain"] == "hotel" and getattr(provider, "hotel_places", False):
+        return self._request_key(item["domain"], provider, parameters)
+
+    def _request_key(self, domain, provider, parameters):
+        if domain == "hotel" and getattr(provider, "hotel_places", False):
             parameters = {k: parameters[k] for k in ("city", "keywords", "search_kind")}
         return query_key(
-            item["domain"],
+            domain,
             {
                 "provider": type(provider).__module__ + "." + type(provider).__qualname__,
                 "parameters": parameters,
@@ -101,11 +104,12 @@ class QueryService:
                     for i in range(3)
                 )
             else:
-                keys.append(self.request_key(item))
+                keys.append(self._request_key(item["domain"], provider, p))
         return keys
 
     async def fetch(self, item, turn):
-        key = self.request_key(item)
+        prepared = self.prepare(item)
+        key = self._request_key(item["domain"], *prepared[:2])
         observed = self.refresh_generations.get(key, 0)
         async with self.locks.setdefault(key, asyncio.Lock()):
             if item.get("refresh") and self.refresh_generations.get(key, 0) != observed:
@@ -119,19 +123,18 @@ class QueryService:
                 item = {**item, "refresh": False}
             elif item.get("refresh"):
                 turn.setdefault("query_attempts", {}).pop(key, None)
-            value = await self._fetch_safe(item, turn)
+            value = await self._fetch_safe(item, turn, prepared, key)
             if item.get("refresh"):
                 self.refresh_failures[key] = deepcopy(turn.get("query_attempts", {}).get(key))
                 self.refresh_generations[key] = observed + 1
             return value
 
-    async def _fetch_safe(self, item, turn):
-        key = self.request_key(item)
+    async def _fetch_safe(self, item, turn, prepared, key):
         attempts = turn.setdefault("query_attempts", {})
         if not item.get("refresh") and key in attempts:
             return deepcopy(attempts[key])
         try:
-            return await self._fetch(item, turn)
+            return await self._fetch(item, turn, prepared, key)
         except ProviderQueryError as error:
             result = error.result.to_dict()
             result.update(domain=item["domain"], cache_hit=False)
@@ -154,17 +157,14 @@ class QueryService:
                 "cache_hit": False,
                 "reason": "查询失败，供应商未返回可核实结果。",
             }
-        result.setdefault("query", self.prepare(item)[1])
+        result.setdefault("query", prepared[1])
         attempts[key] = deepcopy(result)
         return result
 
-    async def _fetch(self, item, turn):
+    async def _fetch(self, item, turn, prepared, key):
         domain = item["domain"]
-        provider, p, query = self.prepare(item)
-        key = self.request_key(item)
+        provider, p, query = prepared
         attempts = turn.setdefault("query_attempts", {})
-        if not item.get("refresh") and key in attempts:
-            return deepcopy(attempts[key])
         value = (
             None
             if item.get("refresh")

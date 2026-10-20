@@ -641,8 +641,15 @@ class TripService:
         task.update(draft_plan=draft, status="draft", draft_stage="selection")
 
     def expand_queries(self, args, turn):
-        self.preview(args["tripplan"], turn)
-        return []
+        prepared = self.preview(args["tripplan"], turn)
+        if args["tripplan"].get("operation", "propose") not in {"propose", "amend"}:
+            return []
+        pending = [
+            p["item"]
+            for p in prepared["working"].get("pending_queries", [])
+            if p["reason"] == "awaiting_query"
+        ]
+        return prepared["query_keys"] + self.queries.expand_queries({"query_plan": pending}, turn)
 
     async def apply(self, tripplan, turn):
         operation_id = turn["operation_id"]
@@ -707,8 +714,6 @@ class TripService:
                 args,
                 expected,
                 operation_id,
-                goal_assessment=turn.get("goal_assessment"),
-                require_goal_assessment=turn.get("require_goal_assessment", False),
             )
 
     def save_result(

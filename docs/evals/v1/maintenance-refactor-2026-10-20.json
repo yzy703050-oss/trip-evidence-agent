@@ -1,0 +1,224 @@
+{
+  "date": "2026-10-20",
+  "evaluation": "maintenance-refactor/batch4",
+  "model": "deepseek-flash",
+  "temperature": 0.3,
+  "thinking": "disabled",
+  "fixed_now": "2026-10-20T11:06:27.927781+08:00",
+  "planning_rounds": 8,
+  "max_output_tokens": 8192,
+  "supplier_mode": "fixed_simulated_train_hotel_and_policy",
+  "reviewer": "single_agent_self_review",
+  "stages": [
+    {
+      "stage": "baseline",
+      "requests": 18,
+      "automatic_passed": 14,
+      "manual_passed": 12,
+      "metrics": {
+        "model_calls": 45,
+        "input_tokens": 357578,
+        "output_tokens": 32887,
+        "cached_input_tokens": 262656,
+        "elapsed_seconds": 135.93099999999998
+      }
+    },
+    {
+      "stage": "batch1",
+      "requests": 18,
+      "automatic_passed": 14,
+      "manual_passed": 13,
+      "metrics": {
+        "model_calls": 46,
+        "input_tokens": 378245,
+        "output_tokens": 27322,
+        "cached_input_tokens": 264448,
+        "elapsed_seconds": 125.98200000000003
+      }
+    },
+    {
+      "stage": "batch2",
+      "requests": 18,
+      "automatic_passed": 16,
+      "manual_passed": 15,
+      "metrics": {
+        "model_calls": 51,
+        "input_tokens": 411110,
+        "output_tokens": 33499,
+        "cached_input_tokens": 295680,
+        "elapsed_seconds": 147.94700000000003
+      }
+    },
+    {
+      "stage": "batch3",
+      "requests": 18,
+      "automatic_passed": 15,
+      "manual_passed": 14,
+      "metrics": {
+        "model_calls": 41,
+        "input_tokens": 324388,
+        "output_tokens": 26338,
+        "cached_input_tokens": 233344,
+        "elapsed_seconds": 112.49699999999999
+      }
+    },
+    {
+      "stage": "batch4",
+      "requests": 18,
+      "automatic_passed": 17,
+      "manual_passed": 17,
+      "metrics": {
+        "model_calls": 50,
+        "input_tokens": 400379,
+        "output_tokens": 32037,
+        "cached_input_tokens": 289792,
+        "elapsed_seconds": 133.52200000000002
+      }
+    }
+  ],
+  "final": {
+    "requests": 18,
+    "automatic_passed": 17,
+    "manual_passed": 17,
+    "model_calls": 50,
+    "input_tokens": 400379,
+    "output_tokens": 32037,
+    "total_tokens": 432416,
+    "mean_tokens": 24023.11111111111,
+    "mean_calls": 2.7777777777777777,
+    "sum_case_elapsed_seconds": 133.522
+  },
+  "final_cases": [
+    {
+      "case": "business_policy_ok",
+      "repeat": 1,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "flexible_tourism",
+      "repeat": 1,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "hard_conflict",
+      "repeat": 1,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "business_policy_missing",
+      "repeat": 1,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "mixed_high_speed",
+      "repeat": 1,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "mixed_early_return",
+      "repeat": 1,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "content_amend",
+      "repeat": 1,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "return_extension",
+      "repeat": 1,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "multi_city",
+      "repeat": 1,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "business_policy_ok",
+      "repeat": 2,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "flexible_tourism",
+      "repeat": 2,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "business_policy_missing",
+      "repeat": 2,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "mixed_high_speed",
+      "repeat": 2,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "hard_conflict",
+      "repeat": 2,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "content_amend",
+      "repeat": 2,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "mixed_early_return",
+      "repeat": 2,
+      "automatic_failures": [
+        "early_return_activity_conflict"
+      ],
+      "additional_manual_issues": [],
+      "manual_verdict": "failed"
+    },
+    {
+      "case": "multi_city",
+      "repeat": 2,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    },
+    {
+      "case": "return_extension",
+      "repeat": 2,
+      "automatic_failures": [],
+      "additional_manual_issues": [],
+      "manual_verdict": "passed"
+    }
+  ],
+  "new_real_model_requests_for_this_publication": 0,
+  "known_failure": "02-mixed_early_return: 07:20 return train conflicts with morning activity and afternoon-return explanation",
+  "subsequent_planning_round_optimization": "withdrawn_and_excluded"
+}

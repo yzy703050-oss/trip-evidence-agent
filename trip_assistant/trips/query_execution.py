@@ -142,15 +142,7 @@ class TripQueryExecutor:
     def expand_queries(self, args, turn):
         if args["tripplan"].get("operation", "propose") not in {"propose", "amend"}:
             return []
-        prepared = self.service.preview(args["tripplan"], turn)
-        pending = [
-            (p["task_id"], p["item"])
-            for p in prepared["working"].get("pending_queries", [])
-            if p["reason"] == "awaiting_query"
-        ]
-        return self.service.queries.expand_queries(
-            {"query_plan": [item for _, item in pending + prepared["requests"]]}, turn
-        )
+        return self.service.expand_queries(args, turn)
 
     async def run(self, trip_id, revision, turn):
         receipt = self.service.store.lookup_operation(turn["operation_id"])

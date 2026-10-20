@@ -17,7 +17,7 @@ class TripMemory:
         self.path = self.directory / "trip.md"
 
     def rebuild(self, workflow_store):
-        from trip_assistant.storage.trips import _file_lock
+        from trip_assistant.storage.locking import _file_lock
 
         with _file_lock(self.directory / "trip-summary.lock"):
             indexed = hasattr(workflow_store, "list_summaries")
