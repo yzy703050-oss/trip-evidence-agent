@@ -24,6 +24,20 @@ LIMIT_CODES = {
 }
 
 
+def decision_role(results):
+    role = "verifier"
+    for result in results:
+        if result.get("name") == "request_replan" and result.get("status") == "ok":
+            role = "main"
+        elif (
+            result.get("name") == "write_trip"
+            and result.get("status") in {"completed", "partial"}
+            and result.get("trip_plan_id")
+        ):
+            role = "verifier"
+    return role
+
+
 def goal_partial_reply(result, calls):
     validation = result.get("validation") or {}
     assessment = validation.get("goal_assessment") or {}

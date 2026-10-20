@@ -1,53 +1,16 @@
 """Transactional workflow snapshots, summaries and compatible travel history."""
 
 import json
-import os
-import threading
 import uuid
-from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime
 
-from trip_assistant.storage.sessions import storage_component
-
-_guard = threading.Lock()
-_locks = {}
+from trip_assistant.storage.identity import storage_component
+from trip_assistant.storage.locking import _file_lock as _file_lock
 
 
 class WorkflowConflictError(ValueError):
     """A newer workflow revision exists; never replay queries to resolve this."""
-
-
-@contextmanager
-def _file_lock(path):
-    key = path.resolve()
-    with _guard:
-        lock = _locks.setdefault(key, threading.RLock())
-    with lock:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a+b") as handle:
-            handle.seek(0, 2)
-            if handle.tell() == 0:
-                handle.write(b"\0")
-                handle.flush()
-            handle.seek(0)
-            if os.name == "nt":
-                import msvcrt
-
-                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-            else:
-                import fcntl
-
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                handle.seek(0)
-                if os.name == "nt":
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-                else:
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
 
 class TripStore:
     def record_unchanged(self, workflow, operation_id):

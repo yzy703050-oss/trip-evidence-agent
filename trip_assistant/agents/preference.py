@@ -49,19 +49,19 @@ def select_analysis_samples(history):
     return list(unique.values())
 
 
+def _uncovered_samples(history, covered_ids):
+    return [r for r in select_analysis_samples(history) if r["trip_plan_id"] not in covered_ids]
+
+
 def pending_analysis(history, covered_ids):
-    rows = [r for r in select_analysis_samples(history) if r["trip_plan_id"] not in covered_ids]
+    rows = _uncovered_samples(history, covered_ids)
     return rows if len(rows) >= 3 else []
 
 
 def get_analysis_trigger(history, state, *, explicit_reanalysis_requested=False, threshold=3):
     if explicit_reanalysis_requested:
         return "user_requested"
-    rows = [
-        r
-        for r in select_analysis_samples(history)
-        if r["trip_plan_id"] not in state.get("covered_trip_ids", [])
-    ]
+    rows = _uncovered_samples(history, state.get("covered_trip_ids", []))
     if len(rows) >= threshold:
         return "incremental" if state.get("initial_summary_done") else "bootstrap"
     return None

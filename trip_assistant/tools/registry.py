@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import dataclass, replace
+from functools import wraps
 from typing import ClassVar, Literal
 
 from pydantic import Field, model_validator
@@ -159,6 +160,7 @@ def trip_review_registry(registry, trip_plan_id, candidate_queries=None, retry_q
     allowed_trips = set(trip_plan_id) if isinstance(trip_plan_id, list) else {trip_plan_id}
     expand = tool.expand_queries or getattr(tool.handler, "expand_queries", None)
 
+    @wraps(expand)
     def bound_queries(args, turn):
         if args["tripplan"].get("trip_plan_id") not in allowed_trips:
             raise ValueError("review_trip_mismatch")

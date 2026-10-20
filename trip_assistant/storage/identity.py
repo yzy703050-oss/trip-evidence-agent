@@ -4,9 +4,16 @@ import hashlib
 from pathlib import Path
 
 
-def user_storage_key(user_id: str) -> str:
-    from trip_assistant.storage.sessions import storage_component
+def storage_component(value: str) -> str:
+    """Reject path traversal while allowing existing Unicode user IDs."""
+    if not isinstance(value, str) or not value or value in {".", ".."}:
+        raise ValueError("user_id and session_id must be non-empty path components")
+    if any(character in value for character in "/\\:\0<>|?*") or value.endswith((".", " ")):
+        raise ValueError("user_id and session_id must be safe path components")
+    return value
 
+
+def user_storage_key(user_id: str) -> str:
     storage_component(user_id)
     return "user_" + hashlib.sha256(user_id.encode("utf-8")).hexdigest()
 
